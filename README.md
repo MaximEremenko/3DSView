@@ -99,7 +99,7 @@ This repository was extracted, with full git history, from the
 [MaximEremenko/Utilities](https://github.com/MaximEremenko/Utilities) monorepo using
 `git filter-repo`. The unified HDF5 reader/writer helper `js/unified_hdf5.js` was
 vendored from that monorepo's `RMCProfileUtilities/Format_Converter`. The companion
-diffuse-scattering calculator, [3DSCalc](https://github.com/MaximEremenko/3DSCalc), lives in its own repository.
+diffuse-scattering calculator, [3DSForge](https://github.com/MaximEremenko/3DSForge), lives in its own repository.
 
 ## License
 
