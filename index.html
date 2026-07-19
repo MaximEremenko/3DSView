@@ -22,6 +22,80 @@
   --warn:#fbbf24;
   --err:#f87171;
   --ok:#4ade80;
+  --btnAlt:#3b4a63;
+  --btnAltHover:#2b3a51;
+  --inputBorder:#b9c8da;
+  --inputBg:#fff;
+  --roBg:#e8eef6;
+  --roText:#5a6b82;
+  --track:#41536b;
+  --thumbRing:#dbeafe;
+  --focusRing:#f8fafc;
+  --topText:#d4dfe9;
+  --subtle:#8fa4b8;
+  --boxBg:#1e2e40;
+  --chipText:#9db0c4;
+  --h2:#e0e8f0;
+  --sideRoBg:#1c2a3a;
+  --sideRoText:#7d91a9;
+  --dropBorder:#3d6080;
+  --dropBg:#1e2e42;
+  --dropText:#d5e3f0;
+  --dropDragBg:#163650;
+  --metaK:#7088a3;
+  --statusBg:#162230;
+  --statusText:#d3deea;
+  --okBg:#0d2818;
+  --warnBg:#2a1d08;
+  --errBg:#2a0a0a;
+  --arrow:#6b8099;
+  --panelText:#c8d5e2;
+  --panelBg:#0b1422;
+  --statsText:#92a6bd;
+  --iconBg:rgba(15,25,35,.85);
+  --iconBorder:rgba(148,163,184,.35);
+}
+html[data-theme="light"]{
+  --frame:#c9d4e0;
+  --top:#e9eef5;
+  --side:#f4f7fa;
+  --side2:#e7edf4;
+  --sideText:#243447;
+  --muted:#5a6b82;
+  --line:#c3d0de;
+  --panel:#ffffff;
+  --plot:#f6f8fb;
+  --warn:#b45309;
+  --err:#dc2626;
+  --ok:#15803d;
+  --btnAlt:#64748b;
+  --btnAltHover:#475569;
+  --track:#b9c8da;
+  --thumbRing:#ffffff;
+  --focusRing:#155f88;
+  --topText:#1c2a3a;
+  --subtle:#64748b;
+  --boxBg:#e7edf4;
+  --chipText:#475569;
+  --h2:#1c2a3a;
+  --sideRoBg:#e8eef6;
+  --sideRoText:#5a6b82;
+  --dropBorder:#7ba2c4;
+  --dropBg:#eef4fa;
+  --dropText:#2b3f55;
+  --dropDragBg:#dbeafe;
+  --metaK:#64748b;
+  --statusBg:#e6edf4;
+  --statusText:#243447;
+  --okBg:#dcfce7;
+  --warnBg:#fef3c7;
+  --errBg:#fee2e2;
+  --arrow:#64748b;
+  --panelText:#243447;
+  --panelBg:#dde6f0;
+  --statsText:#5a6b82;
+  --iconBg:rgba(255,255,255,.85);
+  --iconBorder:rgba(71,85,105,.35);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden;font-family:"Segoe UI",Tahoma,sans-serif;color:var(--ink);background:var(--frame)}
@@ -29,16 +103,16 @@ button,input,select{font:inherit}
 button{border:0;border-radius:6px;background:var(--brand);color:#fff;font-weight:600;cursor:pointer;padding:8px 11px}
 button:hover{background:var(--brand2)}
 button:disabled{opacity:.45;cursor:not-allowed}
-button.alt{background:#3b4a63}
-button.alt:hover{background:#2b3a51}
+button.alt{background:var(--btnAlt)}
+button.alt:hover{background:var(--btnAltHover)}
 label{display:grid;gap:4px;font-size:.8rem;color:var(--muted)}
-input,select{min-width:0;width:100%;border:1px solid #b9c8da;border-radius:6px;background:#fff;color:var(--ink);padding:6px 7px}
-input[readonly]{background:#e8eef6;color:#5a6b82}
+input,select{min-width:0;width:100%;border:1px solid var(--inputBorder);border-radius:6px;background:var(--inputBg);color:var(--ink);padding:6px 7px}
+input[readonly]{background:var(--roBg);color:var(--roText)}
 input[type=range]{padding:0;border:0;accent-color:var(--brand)}
 .dualRange{position:relative;height:30px;--range-low:0%;--range-high:100%;touch-action:none;cursor:pointer}
-.dualRange:before{content:"";position:absolute;left:7px;right:7px;top:13px;height:5px;border-radius:5px;background:linear-gradient(to right,#41536b 0 var(--range-low),var(--brand) var(--range-low) var(--range-high),#41536b var(--range-high) 100%)}
-.dualThumb,.dualThumb:hover{position:absolute;top:6px;width:17px;height:17px;min-width:0;padding:0;transform:translateX(-50%);border:2px solid #dbeafe;border-radius:50%;background:var(--brand);cursor:grab;z-index:2}
-.dualThumb:focus-visible{outline:2px solid #f8fafc;outline-offset:2px}
+.dualRange:before{content:"";position:absolute;left:7px;right:7px;top:13px;height:5px;border-radius:5px;background:linear-gradient(to right,var(--track) 0 var(--range-low),var(--brand) var(--range-low) var(--range-high),var(--track) var(--range-high) 100%)}
+.dualThumb,.dualThumb:hover{position:absolute;top:6px;width:17px;height:17px;min-width:0;padding:0;transform:translateX(-50%);border:2px solid var(--thumbRing);border-radius:50%;background:var(--brand);cursor:grab;z-index:2}
+.dualThumb:focus-visible{outline:2px solid var(--focusRing);outline-offset:2px}
 .dualThumb:disabled{opacity:.45;cursor:not-allowed}
 .dualRange.dragging,.dualRange.dragging .dualThumb{cursor:grabbing}
 .dashboard{
@@ -50,38 +124,38 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
   grid-template-columns:360px minmax(0,1fr) minmax(0,1fr);
   grid-template-rows:48px minmax(240px,1fr) minmax(240px,1fr);
 }
-.topbar{grid-area:topbar;background:var(--top);color:#d4dfe9;display:flex;align-items:center;gap:12px;padding:0 16px;min-width:0}
+.topbar{grid-area:topbar;background:var(--top);color:var(--topText);display:flex;align-items:center;gap:12px;padding:0 16px;min-width:0}
 .topbar-title{display:flex;align-items:center;gap:9px;min-width:0}
 .topbar-logo{width:30px;height:30px;border-radius:6px;background:var(--brand);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;flex:0 0 auto}
 .topbar h1{margin:0;font-size:1rem;font-weight:600;white-space:nowrap}
-.topbar-subtitle{color:#8fa4b8;font-weight:400}
+.topbar-subtitle{color:var(--subtle);font-weight:400}
 .topbar-meta{margin-left:auto;display:flex;gap:8px;align-items:center;min-width:0;overflow:hidden}
-.chip{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#1e2e40;color:#9db0c4;border-radius:12px;padding:3px 10px;font-size:.78rem}
+.chip{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--boxBg);color:var(--chipText);border-radius:12px;padding:3px 10px;font-size:.78rem}
 .sidebar{grid-area:sidebar;min-width:0;min-height:0;overflow:auto;background:var(--side);color:var(--sideText)}
 .sidebar-scroll{padding:12px 10px 18px;display:flex;flex-direction:column;gap:12px}
 .section{display:flex;flex-direction:column;gap:8px;min-width:0}
-.section h2{margin:0 0 2px;color:#e0e8f0;font-size:.93rem;font-weight:600}
-.sidebar label{color:#8fa4b8}
+.section h2{margin:0 0 2px;color:var(--h2);font-size:.93rem;font-weight:600}
+.sidebar label{color:var(--subtle)}
 .sidebar input,.sidebar select{background:var(--side2);border-color:var(--line);color:var(--sideText)}
-.sidebar input[readonly]{background:#1c2a3a;color:#7d91a9}
-.drop{position:relative;border:2px dashed #3d6080;border-radius:8px;min-height:72px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;background:#1e2e42;color:#d5e3f0;cursor:pointer;font-size:.92rem}
-.drop.drag{border-color:var(--brand);background:#163650}
+.sidebar input[readonly]{background:var(--sideRoBg);color:var(--sideRoText)}
+.drop{position:relative;border:2px dashed var(--dropBorder);border-radius:8px;min-height:72px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;background:var(--dropBg);color:var(--dropText);cursor:pointer;font-size:.92rem}
+.drop.drag{border-color:var(--brand);background:var(--dropDragBg)}
 .meta{display:grid;grid-template-columns:96px 1fr;gap:5px 9px;font-size:.84rem;line-height:1.25}
-.meta .k{color:#7088a3}
+.meta .k{color:var(--metaK)}
 .mono{font-family:Consolas,"Courier New",monospace}
-.fine{font-size:.78rem;color:#7088a3}
+.fine{font-size:.78rem;color:var(--metaK)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
 .btns{display:flex;flex-wrap:wrap;gap:7px}
 .btns button{flex:1 1 108px}
-#status{min-height:34px;border-radius:6px;background:#162230;color:#d3deea;padding:8px;font-size:.8rem}
-#status.ok{background:#0d2818;color:var(--ok)}
-#status.warn{background:#2a1d08;color:var(--warn)}
-#status.err{background:#2a0a0a;color:var(--err)}
-.toolbox{border:1px solid var(--line);border-radius:8px;background:#1e2e40;overflow:hidden}
+#status{min-height:34px;border-radius:6px;background:var(--statusBg);color:var(--statusText);padding:8px;font-size:.8rem}
+#status.ok{background:var(--okBg);color:var(--ok)}
+#status.warn{background:var(--warnBg);color:var(--warn)}
+#status.err{background:var(--errBg);color:var(--err)}
+.toolbox{border:1px solid var(--line);border-radius:8px;background:var(--boxBg);overflow:hidden}
 .toolbox>summary{cursor:pointer;list-style:none;padding:9px 10px;font-weight:600;font-size:.88rem;color:var(--sideText)}
 .toolbox>summary::-webkit-details-marker{display:none}
-.toolbox>summary:before{content:"";display:inline-block;width:0;height:0;border-left:5px solid #6b8099;border-top:4px solid transparent;border-bottom:4px solid transparent;margin-right:7px;transition:transform .15s}
+.toolbox>summary:before{content:"";display:inline-block;width:0;height:0;border-left:5px solid var(--arrow);border-top:4px solid transparent;border-bottom:4px solid transparent;margin-right:7px;transition:transform .15s}
 .toolbox[open]>summary:before{transform:rotate(90deg)}
 .toolbody{padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
 .hidden{display:none !important}
@@ -89,16 +163,16 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
 .area-plane3d{grid-area:plane3d}
 .area-iso3d{grid-area:iso3d}
 .area-slice2d{grid-area:slice2d}
-.panelHead{height:30px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;color:#c8d5e2;background:#0b1422}
+.panelHead{height:30px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;color:var(--panelText);background:var(--panelBg)}
 .panelHead h3{margin:0;font-size:.84rem;font-weight:600}
 .plotWrap,.canvasWrap{position:relative;flex:1;min-height:0;overflow:hidden;background:var(--plot)}
 #plot3dPlane,#plot3dIso{width:100%;height:100%}
 #heatmap{width:100%;height:100%;display:block;touch-action:none}
-.stats{min-height:28px;padding:6px 8px;background:#0b1422;color:#92a6bd;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{min-height:28px;padding:6px 8px;background:var(--panelBg);color:var(--statsText);font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plotOverlay{position:absolute;inset:auto 10px 10px auto;display:flex;gap:6px;z-index:5}
-.iconBtn{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:rgba(15,25,35,.85);border:1px solid rgba(148,163,184,.35);color:#c8d5e2}
+.iconBtn{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText)}
 .iconBtn:hover{background:rgba(26,122,173,.65)}
-.empty3d{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8fa4b8;font-family:Consolas,"Courier New",monospace;font-size:.9rem;pointer-events:none}
+.empty3d{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--subtle);font-family:Consolas,"Courier New",monospace;font-size:.9rem;pointer-events:none}
 @media(max-width:980px){
   html,body{overflow:auto}
   .dashboard{height:auto;min-height:100vh;overflow:visible;grid-template-areas:"topbar" "sidebar" "plane3d" "iso3d" "slice2d";grid-template-columns:1fr;grid-template-rows:48px auto 38vh 38vh 45vh}
@@ -110,6 +184,7 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
   .topbar h1{font-size:.9rem}
 }
 </style>
+<script>(function(){try{var t=localStorage.getItem("view3ds-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(_){}})();</script>
 </head>
 <body>
 <main class="dashboard">
@@ -119,6 +194,7 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
       <h1>3DSView <span class="topbar-subtitle">3-D diffuse slices</span></h1>
     </div>
     <div class="topbar-meta">
+      <button id="themeToggle" class="iconBtn" title="Toggle light / dark theme">☀️</button>
       <span class="chip" id="tbFile">No file</span>
       <span class="chip" id="tbKind">Type -</span>
       <span class="chip" id="tbGrid">Grid -</span>
@@ -435,6 +511,33 @@ const CACHE_STORE_NAME = "parsed_volumes";
 // Bump whenever parser semantics change so stale axis/data-kind metadata is not restored.
 const CACHE_VERSION = 6;
 const $ = (id) => document.getElementById(id);
+
+const THEME_KEY = "view3ds-theme";
+const isLightTheme = () => document.documentElement.getAttribute("data-theme") === "light";
+function themePlot(){
+  return isLightTheme() ? {
+    bg:"#f6f8fb", grid:"#cdd9e5", zero:"#94a8bc", text:"#243447",
+    canvasText:"#1c2a3a", axisStroke:"rgba(51,65,85,.8)", mutedText:"#64748b",
+    handle:"#1c2a3a", handleActive:"#b45309", handleOutline:"#f8fafc",
+    shade:"rgba(148,163,184,.4)", frame:"#475569"
+  } : {
+    bg:"#07111f", grid:"#223047", zero:"#52667f", text:"#c8d5e2",
+    canvasText:"#dbeafe", axisStroke:"rgba(203,213,225,.85)", mutedText:"#9db0c4",
+    handle:"#f8fafc", handleActive:"#fde68a", handleOutline:"#0f172a",
+    shade:"rgba(2,6,23,.55)", frame:"#dbeafe"
+  };
+}
+function setTheme(t){
+  if(t === "light") document.documentElement.setAttribute("data-theme", "light");
+  else document.documentElement.removeAttribute("data-theme");
+  try{ localStorage.setItem(THEME_KEY, t); }catch(_){}
+  const b = $("themeToggle");
+  if(b) b.textContent = t === "light" ? "🌙" : "☀️";
+  try{
+    draw2d();
+    if(state.res) render3d();
+  }catch(_){}
+}
 const state = {
   res:null,
   sourceBasis:null,
@@ -4231,9 +4334,10 @@ function barValueFromY(y, b){
 }
 
 function drawColorBarHandle(ctx, b, y, active){
+  const th = themePlot();
   ctx.save();
-  ctx.fillStyle = active ? "#fde68a" : "#f8fafc";
-  ctx.strokeStyle = "#0f172a";
+  ctx.fillStyle = active ? th.handleActive : th.handle;
+  ctx.strokeStyle = th.handleOutline;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(b.x - 7, y);
@@ -4349,10 +4453,11 @@ function draw2d(options={}){
   const bkW = Math.round(cssW * dpr), bkH = Math.round(cssH * dpr);
   if(cv.width !== bkW || cv.height !== bkH){ cv.width = bkW; cv.height = bkH; }
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle = "#07111f";
+  const tcnv = themePlot();
+  ctx.fillStyle = tcnv.bg;
   ctx.fillRect(0,0,cssW,cssH);
   if(!state.res){
-    ctx.fillStyle = "#9db0c4";
+    ctx.fillStyle = tcnv.mutedText;
     ctx.font = "15px Consolas";
     ctx.fillText("No data loaded.", 18, 32);
     $("sliceStats").textContent = "No data loaded.";
@@ -4473,8 +4578,9 @@ function draw2d(options={}){
 }
 
 function drawAxes(ctx, sl, x, y, w, h, cssH, mapXY=null){
-  ctx.fillStyle = "#dbeafe";
-  ctx.strokeStyle = "rgba(203,213,225,.85)";
+  const tax = themePlot();
+  ctx.fillStyle = tax.canvasText;
+  ctx.strokeStyle = tax.axisStroke;
   ctx.font = "11px Consolas";
   function ticks(min, max, count=7){
     const out = [];
@@ -4528,19 +4634,20 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   }
   const yMax = barYFromValue(b.dispMax, b);
   const yMin = barYFromValue(b.dispMin, b);
-  ctx.fillStyle = "rgba(2,6,23,.55)";
+  const tb = themePlot();
+  ctx.fillStyle = tb.shade;
   if(yMax > y) ctx.fillRect(x, y, w, yMax - y);
   if(yMin < y + h) ctx.fillRect(x, yMin, w, y + h - yMin);
   drawColorBarHandle(ctx, b, yMax, state.levelDrag && state.levelDrag.handle === "max");
   drawColorBarHandle(ctx, b, yMin, state.levelDrag && state.levelDrag.handle === "min");
-  ctx.strokeStyle = "#f8fafc";
+  ctx.strokeStyle = tb.handle;
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(x - 5, yMax + .5); ctx.lineTo(x + w + 5, yMax + .5); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x - 5, yMin + .5); ctx.lineTo(x + w + 5, yMin + .5); ctx.stroke();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = "#dbeafe";
+  ctx.strokeStyle = tb.frame;
   ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
-  ctx.fillStyle = "#dbeafe";
+  ctx.fillStyle = tb.canvasText;
   ctx.font = "11px Consolas";
   ctx.fillText(b.rawMax.toExponential(2), x - 82, y + 10);
   ctx.fillText(b.rawMin.toExponential(2), x - 82, y + h - 2);
@@ -5262,6 +5369,7 @@ function plotBoundsWithAxisOverlay(res=state.res){
 }
 
 function sceneLayout(title, camera){
+  const tc = themePlot();
   const b = plotBoundsWithAxisOverlay(state.res);
   const labels = renderAxisLabels();
   const span = [0,1,2].map(i => Math.max(1e-12, Math.abs(b.max[i] - b.min[i])));
@@ -5273,15 +5381,15 @@ function sceneLayout(title, camera){
     showticklabels:false, ticks:"", title:{text:""}
   } : {
     title:labels[i], range:[b.min[i],b.max[i]],
-    gridcolor:"#223047", zerolinecolor:"#52667f", color:"#c8d5e2"
+    gridcolor:tc.grid, zerolinecolor:tc.zero, color:tc.text
   };
   return {
     margin:{l:0,r:0,t:30,b:0},
-    paper_bgcolor:"#07111f",
-    plot_bgcolor:"#07111f",
-    title:{text:title, font:{size:13, color:"#c8d5e2"}},
+    paper_bgcolor:tc.bg,
+    plot_bgcolor:tc.bg,
+    title:{text:title, font:{size:13, color:tc.text}},
     scene:{
-      bgcolor:"#07111f",
+      bgcolor:tc.bg,
       xaxis:sceneAxis(0),
       yaxis:sceneAxis(1),
       zaxis:sceneAxis(2),
@@ -5289,7 +5397,7 @@ function sceneLayout(title, camera){
       aspectratio:{x:span[0]/maxSpan, y:span[1]/maxSpan, z:span[2]/maxSpan},
       camera:camera || undefined
     },
-    font:{color:"#c8d5e2"}
+    font:{color:tc.text}
   };
 }
 
@@ -5895,7 +6003,7 @@ async function savePlotHtml(plotId, tag, title){
     const fig = exportPlotFigure(plotId);
     if(!fig || !Array.isArray(fig.data) || !fig.data.length) throw new Error("Target 3D plot is empty.");
     const payload = JSON.stringify({fig, title, createdAt:new Date().toISOString()}).replace(/</g, "\\u003c");
-    const html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><script src="${PLOTLY_CDN}"><\/script><style>body{margin:0;background:#07111f;color:#dbeafe;font-family:Segoe UI,Tahoma,sans-serif}main{padding:12px;display:grid;gap:10px}#plot{min-height:720px;border:1px solid #263244;background:#07111f}</style></head><body><main><h2 style="margin:0">${title}</h2><div id="plot"></div></main><script>const payload=${payload};Plotly.newPlot("plot",(payload.fig&&payload.fig.data)||[],(payload.fig&&payload.fig.layout)||{},{responsive:true,displaylogo:false});<\/script></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><script src="${PLOTLY_CDN}"><\/script><style>body{margin:0;background:${tx.bg};color:${tx.text};font-family:Segoe UI,Tahoma,sans-serif}main{padding:12px;display:grid;gap:10px}#plot{min-height:720px;border:1px solid ${tx.grid};background:${tx.bg}}</style></head><body><main><h2 style="margin:0">${title}</h2><div id="plot"></div></main><script>const payload=${payload};Plotly.newPlot("plot",(payload.fig&&payload.fig.data)||[],(payload.fig&&payload.fig.layout)||{},{responsive:true,displaylogo:false});<\/script></body></html>`;
     saveText(`${baseName()}_${tag}.html`, html, "text/html;charset=utf-8");
     status(`Saved ${tag} HTML.`, "ok");
   }catch(err){
@@ -6040,6 +6148,8 @@ function bind(){
   $("saveUnified").addEventListener("click", saveUnified);
   $("savePlaneSvg").addEventListener("click", () => savePlotSvg("plot3dPlane", "plane3d"));
   $("saveIsoSvg").addEventListener("click", () => savePlotSvg("plot3dIso", "iso3d"));
+  $("themeToggle").textContent = isLightTheme() ? "🌙" : "☀️";
+  $("themeToggle").addEventListener("click", () => setTheme(isLightTheme() ? "dark" : "light"));
   $("savePlaneHtml").addEventListener("click", () => savePlotHtml("plot3dPlane", "plane3d", "3DSView Slice Plane"));
   $("saveIsoHtml").addEventListener("click", () => savePlotHtml("plot3dIso", "iso3d", "3DSView Isosurface"));
   $("planeZoomIn").addEventListener("click", () => zoomPlot("plot3dPlane", "plane", 0.82));
