@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>3DSView — 3-D Diffuse Scattering Slices</title>
+<title>DSView — 3-D Diffuse Scattering Slices</title>
 <style>
 :root{
   --bg:#eef3f8;
@@ -191,7 +191,7 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
   <header class="topbar">
     <div class="topbar-title">
       <span class="topbar-logo">3DS</span>
-      <h1>3DSView <span class="topbar-subtitle">3-D diffuse slices</span></h1>
+      <h1>DSView <span class="topbar-subtitle">3-D diffuse slices</span></h1>
     </div>
     <div class="topbar-meta">
       <button id="themeToggle" class="iconBtn" title="Toggle light / dark theme">☀️</button>
@@ -6150,8 +6150,8 @@ function bind(){
   $("saveIsoSvg").addEventListener("click", () => savePlotSvg("plot3dIso", "iso3d"));
   $("themeToggle").textContent = isLightTheme() ? "🌙" : "☀️";
   $("themeToggle").addEventListener("click", () => setTheme(isLightTheme() ? "dark" : "light"));
-  $("savePlaneHtml").addEventListener("click", () => savePlotHtml("plot3dPlane", "plane3d", "3DSView Slice Plane"));
-  $("saveIsoHtml").addEventListener("click", () => savePlotHtml("plot3dIso", "iso3d", "3DSView Isosurface"));
+  $("savePlaneHtml").addEventListener("click", () => savePlotHtml("plot3dPlane", "plane3d", "DSView Slice Plane"));
+  $("saveIsoHtml").addEventListener("click", () => savePlotHtml("plot3dIso", "iso3d", "DSView Isosurface"));
   $("planeZoomIn").addEventListener("click", () => zoomPlot("plot3dPlane", "plane", 0.82));
   $("planeZoomOut").addEventListener("click", () => zoomPlot("plot3dPlane", "plane", 1.22));
   $("planeZoomReset").addEventListener("click", () => {
