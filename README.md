@@ -1,9 +1,10 @@
 # Diffuse 3D Slice Viewer (3DS Plotter)
 
 A browser-based viewer for slicing through 3-D diffuse-scattering volumes produced by
-RMCProfile and related programs. The entire application is a single HTML file
-(`SliceDiffuse3DRMC.html`) that runs fully client-side: files are parsed in the browser,
-nothing is uploaded anywhere. It loads RMCProfile 3DS text output, unified HDF5 volumes,
+RMCProfile and related programs. The application is a single HTML file
+(`SliceDiffuse3DRMC.html`) plus a small local helper script (`js/unified_hdf5.js`) used
+for the unified HDF5 export, and it runs fully client-side: files are parsed in the
+browser, nothing is uploaded anywhere. It loads RMCProfile 3DS text output, unified HDF5 volumes,
 DISCUS/Yell HDF5 and generic NeXus files, and provides interactive axis, arbitrary-plane
 and slab-average slicing with linked 2-D and 3-D views.
 
