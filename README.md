@@ -1,8 +1,9 @@
-# Diffuse 3D Slice Viewer (3DS Plotter)
+# DiffuseVis
 
-A browser-based viewer for slicing through 3-D diffuse-scattering volumes produced by
+A browser-based viewer (formerly the 3DS Plotter) for slicing through
+A browser-based viewer — formerly the 3DS Plotter — for slicing through 3-D diffuse-scattering volumes produced by
 RMCProfile and related programs. The application is a single HTML file
-(`SliceDiffuse3DRMC.html`) plus a small local helper script (`js/unified_hdf5.js`) used
+(`index.html`) plus a small local helper script (`js/unified_hdf5.js`) used
 for the unified HDF5 export, and it runs fully client-side: files are parsed in the
 browser, nothing is uploaded anywhere. It loads RMCProfile 3DS text output, unified HDF5 volumes,
 DISCUS/Yell HDF5 and generic NeXus files, and provides interactive axis, arbitrary-plane
@@ -72,7 +73,7 @@ HDF5 formats (`.h5`, `.hdf5`, `.nx`, `.nxs`), read with h5wasm:
 ## Getting started
 
 1. Clone or download this repository.
-2. Open `SliceDiffuse3DRMC.html` in a modern browser. All application code is local, so
+2. Open `index.html` in a modern browser. All application code is local, so
    opening the file directly usually works; if your browser restricts local pages, serve
    the folder instead, e.g.:
 
@@ -80,7 +81,7 @@ HDF5 formats (`.h5`, `.hdf5`, `.nx`, `.nxs`), read with h5wasm:
    python -m http.server 8000
    ```
 
-   and browse to `http://localhost:8000/SliceDiffuse3DRMC.html`.
+   and browse to `http://localhost:8000/index.html`.
 3. Drop a data file onto the input area (or click it to browse).
 
 Two libraries are fetched from CDNs on demand, so an internet connection is required for
