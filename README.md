@@ -33,9 +33,11 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **3-D render controls**: isosurface percentile and surface count, voxel cap,
   auto-refresh toggle, independent show/hide for the plane and isosurface views. The
   camera is preserved across slice updates, with zoom and reset buttons on each panel.
-- **Large-file handling**: text files larger than 64 MB are streamed line-by-line;
-  indexed files of 192 MB or more are parsed in parallel Web Workers (up to 8). Parsed
-  volumes are cached in IndexedDB so reloading the same file is nearly instant.
+- **Large-file handling**: text files larger than 64 MB are streamed line-by-line.
+  Regularly ordered indexed files are streamed single-threaded at any size; indexed
+  files whose row order cannot be streamed directly are, at 192 MB or more, parsed in
+  parallel Web Workers (up to 8). Parsed volumes are cached in IndexedDB so reloading
+  the same file is nearly instant.
 - **Export**: PNG of the 2-D slice, CSV of the slice values, the full volume as a
   unified HDF5 file (`*_unified.h5`, written in the browser via `js/unified_hdf5.js` and
   h5wasm), SVG snapshots of either 3-D plot, and standalone interactive HTML copies of
