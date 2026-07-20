@@ -1,5 +1,7 @@
 # 3DSView
 
+**Live tool:** https://maximeremenko.github.io/3DSView/
+
 A browser-based viewer — formerly the 3DS Plotter — for slicing through 3-D diffuse-scattering volumes produced by
 RMCProfile and related programs. The application is a single HTML file
 (`index.html`) plus a small local helper script (`js/unified_hdf5.js`) used
