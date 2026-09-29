@@ -66,10 +66,15 @@ and slab-average slicing with linked 2-D and 3-D views.
   - **Colour maps:** sequential Viridis, Plasma, Inferno, Magma, Cividis, Turbo and Gray,
     plus diverging RdBu and Coolwarm for signed data. Any map can be reversed, and empty
     voxels can be drawn transparent, gray, white or black.
-  - **Levels:** slice-auto, global-auto or manual. Auto levels take a percentile window,
-    0.5–99.5 % by default, so Bragg peaks do not wash out the diffuse signal. They can be
-    made symmetric about 0, and the colour-bar handles can be dragged on the 2-D map.
-  - **Histogram:** a histogram of the shown slice marks the display window.
+  - **Levels:** global-auto (the default, so colours keep their meaning while you step
+    through slices), slice-auto or manual; the auto choice is remembered. Auto levels
+    take a percentile window, 0.5–99.5 % by default, so Bragg peaks do not wash out the
+    diffuse signal. They can be made symmetric about 0.
+  - **Colour bar and histogram:** the colour bar spans the display window, as the map
+    does. Drag its handles on the 2-D map, or drag a limit or the whole window on the
+    histogram of the shown slice; a click moves the nearer limit, and a double-click on
+    the histogram returns to auto levels. When the window is a small part of the value
+    range, both zoom onto it, and arrows on the bar mark the range beyond.
   - **Signed data:** real-space volumes (delta-PDF, Patterson, density) open on a linear
     scale with RdBu and symmetric levels.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
@@ -78,9 +83,11 @@ and slab-average slicing with linked 2-D and 3-D views.
   least 1 % of values are zero and can be toggled with **Treat 0 as no data**. Exports
   keep the original zeros.
 - **3-D render controls**: isosurface percentile and surface count, voxel cap and an
-  auto-refresh toggle. The camera is preserved across slice updates, with zoom and reset
-  buttons on each view; the default camera backs off in tall, narrow views so the whole
-  box stays in frame.
+  auto-refresh toggle. Grids whose axes run along x, y and z in the plot get a true
+  isosurface, even when the file's UB matrix carries rounding noise; rotated or skewed
+  grids are shown as a point cloud. The camera is preserved across slice updates, with
+  zoom and reset buttons on each view, and its distance follows the view's shape so the
+  box stays in frame in tall, narrow views.
 - **Large-file handling**: text files larger than 64 MB are streamed line-by-line.
   Regularly ordered indexed files are streamed single-threaded at any size; indexed
   files whose row order cannot be streamed directly are, at 192 MB or more, parsed in

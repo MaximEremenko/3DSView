@@ -515,8 +515,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <div class="row2">
           <label>Levels
             <select id="levelMode" disabled>
-              <option value="slice" selected>Slice auto</option>
-              <option value="global">Global auto</option>
+              <option value="global" selected>Global auto</option>
+              <option value="slice">Slice auto</option>
               <option value="manual">Manual</option>
             </select>
           </label>
@@ -534,7 +534,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <label>Max<input id="levelMax" type="number" step="any" disabled></label>
           <button id="resetLevels" class="alt" disabled>Reset</button>
         </div>
-        <canvas id="levelHist" class="levelHist" title="Distribution of the shown slice values; the bright band is the display window"></canvas>
+        <canvas id="levelHist" class="levelHist" title="Distribution of the shown slice values; the bright band is the display window. Drag a limit or the band, or click to move the nearer limit; double-click for auto levels."></canvas>
         <div id="levelInfo" class="mono fine">Display levels: -</div>
         <label class="check"><input id="levelSymmetric" type="checkbox" disabled>Symmetric about 0</label>
       </div>
@@ -855,7 +855,9 @@ const state = {
   ui:null,
   stale3d:{plane:false, iso:false},
   stepTimer:0,
-  axisIndex:{}
+  axisIndex:{},
+  lastHist:null,
+  histDrag:null
 };
 
 const COLOR_MAPS = {
@@ -5295,11 +5297,15 @@ function setDisplayLevelsFromBounds(min, max, bounds){
   return {min:nmin, max:nmax};
 }
 
+function autoLevelMode(){
+  return state.ui && state.ui.levels === "slice" ? "slice" : "global";
+}
+
 function resetDisplayLevels(redraw=true){
   state.manualLevelBounds = null;
   state.levelDrag = null;
   state.levelClickSuppress = false;
-  if($("levelMode").value === "manual") $("levelMode").value = "slice";
+  if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
   if($("levelInfo")) $("levelInfo").textContent = "Display levels: auto";
   syncControls();
   if(redraw && state.res){
@@ -5371,7 +5377,7 @@ function onHeatmapClick(ev){
   if(Math.abs(picked - nmin) <= Math.abs(picked - nmax)) nmin = Math.min(picked, nmax - 1e-12);
   else nmax = Math.max(picked, nmin + 1e-12);
   [nmin, nmax] = symmetricPick(nmin, nmax, picked);
-  setDisplayLevelsFromBounds(nmin, nmax, b);
+  setDisplayLevelsFromBounds(nmin, nmax, {rawMin:b.fullMin, rawMax:b.fullMax});
   draw2d();
   scheduleRender3d(0);
 }
@@ -5436,7 +5442,7 @@ function onHeatmapPointerMove(ev){
   if(drag.handle === "min") nmin = Math.min(picked, nmax - 1e-12);
   else nmax = Math.max(picked, nmin + 1e-12);
   [nmin, nmax] = symmetricPick(nmin, nmax, picked);
-  setDisplayLevelsFromBounds(nmin, nmax, b);
+  setDisplayLevelsFromBounds(nmin, nmax, {rawMin:b.fullMin, rawMax:b.fullMax});
   drag.moved = true;
   state.levelClickSuppress = true;
   draw2d();
@@ -5461,7 +5467,11 @@ function onHeatmapPointerUp(ev){
   const moved = !!drag.moved;
   state.levelDrag = null;
   cv.style.cursor = "default";
-  if(moved) scheduleRender3d(0);
+  if(moved){
+    // The bar zoom follows the new window once the drag ends.
+    paint2d();
+    scheduleRender3d(0);
+  }
 }
 
 // Placement of a slice on the 2-D map: an affine map from slice coordinates
@@ -5748,6 +5758,75 @@ function pointInMapArea(pt){
   return pt.x >= a.x && pt.x <= a.x + a.w && pt.y >= a.y && pt.y <= a.y + a.h;
 }
 
+// ---- Level histogram interaction: drag either limit or the whole window,
+// click to move the nearer limit there, double-click for auto levels.
+function histPointer(ev){
+  const g = state.lastHist, r = $("levelHist").getBoundingClientRect();
+  if(!g) return null;
+  const x = clamp(ev.clientX - r.left, 0, g.w), span = g.rawMax - g.rawMin;
+  const px = v => (v - g.rawMin) / span * g.w;
+  return {g, x, value:g.rawMin + x / Math.max(1, g.w) * span, x0:px(g.min), x1:px(g.max)};
+}
+
+function histTarget(p){
+  const d0 = Math.abs(p.x - p.x0), d1 = Math.abs(p.x - p.x1);
+  if(Math.min(d0, d1) <= 7) return d0 <= d1 ? "min" : "max";
+  if(p.x > p.x0 && p.x < p.x1) return "band";
+  return p.x < p.x0 ? "min" : "max";
+}
+
+// The range captured at pointer-down maps positions to values for the whole
+// drag, although the histogram redraws under it.
+function applyHistDrag(p){
+  const d = state.histDrag, g = d.g, span = g.rawMax - g.rawMin, gap = span * 1e-9;
+  const value = g.rawMin + clamp(p.x, 0, g.w) / Math.max(1, g.w) * span;
+  let nmin = d.min, nmax = d.max;
+  if(d.target === "band"){
+    const width = d.max - d.min;
+    nmin = clamp(d.min + (p.x - d.x) / Math.max(1, g.w) * span, g.fullMin, g.fullMax - width);
+    nmax = nmin + width;
+  }else{
+    if(d.target === "min") nmin = Math.min(value, nmax - gap);
+    else nmax = Math.max(value, nmin + gap);
+    [nmin, nmax] = symmetricPick(nmin, nmax, value);
+  }
+  setDisplayLevelsFromBounds(nmin, nmax, {rawMin:g.fullMin, rawMax:g.fullMax});
+  draw2d();
+}
+
+function bindLevelHistogram(){
+  const cv = $("levelHist");
+  cv.addEventListener("pointerdown", ev => {
+    if(!state.res || ev.button !== 0) return;
+    const p = histPointer(ev);
+    if(!p) return;
+    ev.preventDefault();
+    try{ cv.setPointerCapture(ev.pointerId); }catch(_){}
+    state.histDrag = {target:histTarget(p), x:p.x, min:p.g.min, max:p.g.max, g:{...p.g}};
+    cv.style.cursor = state.histDrag.target === "band" ? "grabbing" : "ew-resize";
+    if(state.histDrag.target !== "band") applyHistDrag(p);
+  });
+  cv.addEventListener("pointermove", ev => {
+    const p = histPointer(ev);
+    if(!p) return;
+    if(state.histDrag){ applyHistDrag(p); return; }
+    const t = histTarget(p);
+    cv.style.cursor = t === "band" ? "grab" : Math.min(Math.abs(p.x - p.x0), Math.abs(p.x - p.x1)) <= 7 ? "ew-resize" : "pointer";
+  });
+  const end = () => {
+    if(!state.histDrag) return;
+    state.histDrag = null;
+    cv.style.cursor = "";
+    // The zoom follows the new window once the drag ends.
+    if(state.lastSlice) drawLevelHistogram(state.lastSlice.transformed.hist, state.lastSlice.levels);
+    scheduleRender3d(0);
+  };
+  cv.addEventListener("pointerup", end);
+  cv.addEventListener("pointercancel", end);
+  cv.addEventListener("lostpointercapture", end);
+  cv.addEventListener("dblclick", () => resetDisplayLevels(true));
+}
+
 // Distribution of the shown slice values over the colour-bar range, with the
 // display window highlighted.
 function drawLevelHistogram(hist, levels){
@@ -5761,27 +5840,30 @@ function drawLevelHistogram(hist, levels){
   const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
+  state.lastHist = null;
   if(!hist || !hist.total || !(levels.rawMax > levels.rawMin)) return;
+  const [lo, hi] = state.histDrag ? [state.histDrag.g.rawMin, state.histDrag.g.rawMax] : histogramRange(levels);
+  state.lastHist = {w, rawMin:lo, rawMax:hi, fullMin:levels.rawMin, fullMax:levels.rawMax, min:levels.min, max:levels.max};
   const bins = Math.max(16, Math.min(160, Math.floor(w / 2)));
   const counts = new Float64Array(bins);
-  const span = levels.rawMax - levels.rawMin, width = (hist.max - hist.min) / hist.counts.length;
+  const span = hi - lo, width = (hist.max - hist.min) / hist.counts.length;
   for(let b=0;b<hist.counts.length;b++){
     if(!hist.counts[b]) continue;
     const v = hist.min + (b + 0.5) * width;
-    const d = Math.floor((v - levels.rawMin) / span * bins);
+    const d = Math.floor((v - lo) / span * bins);
     if(d >= 0 && d < bins) counts[d] += hist.counts[b];
   }
   let peak = 0;
   for(const c of counts) peak = Math.max(peak, Math.log1p(c));
   const th = themePlot();
-  const x0 = (levels.min - levels.rawMin) / span * w, x1 = (levels.max - levels.rawMin) / span * w;
+  const x0 = (levels.min - lo) / span * w, x1 = (levels.max - lo) / span * w;
   ctx.fillStyle = th.shade;
   ctx.fillRect(0, 0, Math.max(0, x0), h);
   ctx.fillRect(Math.min(w, x1), 0, w - Math.min(w, x1), h);
   const barW = w / bins;
   for(let d=0;d<bins;d++){
     if(!counts[d]) continue;
-    const v = levels.rawMin + (d + 0.5) / bins * span;
+    const v = lo + (d + 0.5) / bins * span;
     const bh = Math.max(1, (h - 4) * Math.log1p(counts[d]) / (peak || 1));
     ctx.fillStyle = v >= levels.min && v <= levels.max ? "rgba(26,122,173,.95)" : "rgba(132,151,173,.55)";
     ctx.fillRect(d * barW, h - bh, Math.max(1, barW - 0.5), bh);
@@ -5792,6 +5874,32 @@ function drawLevelHistogram(hist, levels){
     if(x < 0 || x > w) continue;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
   }
+  if(lo > levels.rawMin || hi < levels.rawMax){
+    // Zoomed: label the ends of the shown range.
+    ctx.font = "9px Consolas";
+    const tag = (text, x, align) => {
+      ctx.textAlign = align;
+      const tw = ctx.measureText(text).width, bx = align === "right" ? x - tw : x;
+      ctx.fillStyle = th.bg;
+      ctx.globalAlpha = 0.75;
+      ctx.fillRect(bx - 2, 2, tw + 4, 11);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = th.mutedText;
+      ctx.fillText(text, x, 11);
+    };
+    tag(lo.toExponential(1), 3, "left");
+    tag(hi.toExponential(1), w - 3, "right");
+    ctx.textAlign = "left";
+  }
+}
+
+// Shown range of the level histogram. A window that is a small part of the
+// value range (global levels over Bragg peaks, say) gets a zoomed view so its
+// limits stay easy to grab.
+function histogramRange(levels){
+  const lo = levels.rawMin, hi = levels.rawMax, width = levels.max - levels.min;
+  if(!(hi > lo) || !(width > 0) || width >= 0.4 * (hi - lo)) return [lo, hi];
+  return [Math.max(lo, levels.min - 0.75 * width), Math.min(hi, levels.max + 0.75 * width)];
 }
 
 function niceTicks(min, max, count=7){
@@ -5850,21 +5958,25 @@ function drawAxes(ctx, sl, layout, cssH){
 }
 
 function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
-  for(let i=0;i<h;i++){
-    const rgb = rgbFromStops(stops, 1 - i / Math.max(1, h - 1));
-    ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-    ctx.fillRect(x, y+i, w, 1);
+  let fullMin = Number.isFinite(levels.rawMin) ? levels.rawMin : stats.min;
+  let fullMax = Number.isFinite(levels.rawMax) ? levels.rawMax : stats.max;
+  if(!(fullMax > fullMin)){
+    fullMin = stats.min;
+    fullMax = stats.max > stats.min ? stats.max : stats.min + 1;
   }
-  const b = {
-    x, y, w, h,
-    rawMin:Number.isFinite(levels.rawMin) ? levels.rawMin : stats.min,
-    rawMax:Number.isFinite(levels.rawMax) ? levels.rawMax : stats.max,
-    dispMin:levels.min,
-    dispMax:levels.max
-  };
-  if(!(b.rawMax > b.rawMin)){
-    b.rawMin = stats.min;
-    b.rawMax = stats.max > stats.min ? stats.max : stats.min + 1;
+  // The bar zooms like the level histogram; the zoom holds while a handle is
+  // dragged, so the handle stays under the pointer.
+  const held = state.levelDrag && state.levelDrag.active && state.lastBar;
+  const [lo, hi] = held ? [state.lastBar.rawMin, state.lastBar.rawMax]
+    : histogramRange({rawMin:fullMin, rawMax:fullMax, min:levels.min, max:levels.max});
+  const b = {x, y, w, h, rawMin:lo, rawMax:hi, fullMin, fullMax, dispMin:levels.min, dispMax:levels.max};
+  // The ramp spans the display window, as on the map; values beyond it take
+  // the end colours.
+  const windowSpan = b.dispMax - b.dispMin || 1;
+  for(let i=0;i<h;i++){
+    const rgb = rgbFromStops(stops, (barValueFromY(y + i + 0.5, b) - b.dispMin) / windowSpan);
+    ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    ctx.fillRect(x, y + i, w, 1);
   }
   const yMax = barYFromValue(b.dispMax, b);
   const yMin = barYFromValue(b.dispMin, b);
@@ -5881,6 +5993,18 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   ctx.lineWidth = 1;
   ctx.strokeStyle = tb.frame;
   ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+  // Arrows mark more value range beyond a zoomed bar's ends.
+  ctx.fillStyle = tb.mutedText;
+  const arrow = (ty, dir) => {
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, ty);
+    ctx.lineTo(x + w / 2 - 5, ty + 6 * dir);
+    ctx.lineTo(x + w / 2 + 5, ty + 6 * dir);
+    ctx.closePath();
+    ctx.fill();
+  };
+  if(b.rawMax < b.fullMax) arrow(y - 9, 1);
+  if(b.rawMin > b.fullMin) arrow(y + h + 9, -1);
   ctx.font = "11px Consolas";
   // A zoomed map can reach under the labels, so each gets a backdrop.
   const label = (text, lx, ly) => {
@@ -6546,31 +6670,78 @@ function chooseVolumeStrides(shape, cap){
   return strides;
 }
 
+// For each grid axis, the Cartesian axis it runs along in the plot, when the
+// plot basis maps the grid onto x, y and z (a scaled permutation, up to the
+// rounding in a file's UB or cell); null when the grid is rotated or skewed.
+function alignedPlotAxes(res){
+  if(isSkewedGrid(res)) return null;
+  const basis = useBasisToQ(res) ? res.Bq : directPlotBasis(res);
+  if(!validMatrix3(basis)) return [0, 1, 2];
+  const map = basis.map(row => {
+    const norm = Math.hypot(row[0], row[1], row[2]);
+    let c = 0;
+    for(let i=1;i<3;i++) if(Math.abs(row[i]) > Math.abs(row[c])) c = i;
+    return norm > 0 && [0, 1, 2].every(i => i === c || Math.abs(row[i]) <= 1e-5 * norm) ? c : -1;
+  });
+  return map.includes(-1) || new Set(map).size !== 3 ? null : map;
+}
+
 function buildVolumeSample(res, mode, cap){
   const maxVox = Math.max(5000, Math.floor(cap || 220000));
   const ranges = displayIndexRanges(res);
   const shownShape = ranges.map(range => range[1] - range[0] + 1);
   const strides = chooseVolumeStrides(shownShape, maxVox);
+  const picks = ranges.map((range, a) => {
+    const out = [];
+    for(let n=range[0];n<=range[1];n+=strides[a]) out.push(n);
+    return out;
+  });
   const x = [], y = [], z = [], value = [], sorted = [], custom = [];
   let min = Infinity, max = -Infinity, finiteCount = 0, skippedGeometry = 0;
-  for(let i=ranges[0][0];i<=ranges[0][1];i+=strides[0]){
-    for(let j=ranges[1][0];j<=ranges[1][1];j+=strides[1]){
-      for(let k=ranges[2][0];k<=ranges[2][1];k+=strides[2]){
-        const v = transformedValue(res.I[idx3(res.shape, i, j, k)], mode);
-        const p = pointAtIndex(res, i, j, k);
-        const h = p[0], kk = p[1], l = p[2], q = plotPoint(res, h, kk, l);
-        if(!Number.isFinite(q[0]) || !Number.isFinite(q[1]) || !Number.isFinite(q[2])){
-          skippedGeometry++;
-          continue;
-        }
-        x.push(q[0]); y.push(q[1]); z.push(q[2]); value.push(v); custom.push([h,kk,l,q[0],q[1],q[2]]);
-        if(Number.isFinite(v)){
-          sorted.push(v);
-          finiteCount++;
-          if(v < min) min = v;
-          if(v > max) max = v;
+  const add = (i, j, k, q, p) => {
+    const v = transformedValue(res.I[idx3(res.shape, i, j, k)], mode);
+    x.push(q[0]); y.push(q[1]); z.push(q[2]); value.push(v); custom.push([p[0], p[1], p[2], q[0], q[1], q[2]]);
+    if(Number.isFinite(v)){
+      sorted.push(v);
+      finiteCount++;
+      if(v < min) min = v;
+      if(v > max) max = v;
+    }
+  };
+  // Plotly isosurfaces need the points on an exact x-y-z grid. When the grid
+  // axes run along x, y and z, each coordinate comes from its own axis alone,
+  // so rounding in the basis cannot split a grid line, and the points are
+  // listed x-major with ascending coordinates.
+  const axesMap = alignedPlotAxes(res);
+  if(axesMap){
+    const basis = useBasisToQ(res) ? res.Bq : directPlotBasis(res);
+    const axisFor = [0, 1, 2].map(c => axesMap.indexOf(c));
+    const lines = axisFor.map(a => picks[a].map(n => {
+      const at = [0, 0, 0];
+      at[a] = n;
+      const p = pointAtIndex(res, at[0], at[1], at[2]);
+      return {n, t:validMatrix3(basis) ? p[a] * basis[a][axesMap[a]] : p[a]};
+    }).sort((u, w) => u.t - w.t));
+    const at = [0, 0, 0], q = [0, 0, 0];
+    for(const X of lines[0]){
+      at[axisFor[0]] = X.n; q[0] = X.t;
+      for(const Y of lines[1]){
+        at[axisFor[1]] = Y.n; q[1] = Y.t;
+        for(const Z of lines[2]){
+          at[axisFor[2]] = Z.n; q[2] = Z.t;
+          add(at[0], at[1], at[2], q, pointAtIndex(res, at[0], at[1], at[2]));
         }
       }
+    }
+  }else{
+    for(const i of picks[0]) for(const j of picks[1]) for(const k of picks[2]){
+      const p = pointAtIndex(res, i, j, k);
+      const q = plotPoint(res, p[0], p[1], p[2]);
+      if(!Number.isFinite(q[0]) || !Number.isFinite(q[1]) || !Number.isFinite(q[2])){
+        skippedGeometry++;
+        continue;
+      }
+      add(i, j, k, q, p);
     }
   }
   sorted.sort((a,b) => a - b);
@@ -6596,7 +6767,8 @@ function buildVolumeSample(res, mode, cap){
     total:value.length,
     invalid:value.length - finiteCount,
     skippedGeometry,
-    strides
+    strides,
+    aligned:!!axesMap
   };
 }
 
@@ -6747,12 +6919,40 @@ function plotBoundsWithAxisOverlay(res=state.res){
 
 // Plotly frames a 3-D scene by the view height, so a tall, narrow view clips
 // its sides; the default camera backs off in proportion.
-function defaultSceneCamera(plotId){
+function viewAspectFit(plotId){
   const gd = plotId ? $(plotId) : null;
   const r = gd && gd.getBoundingClientRect ? gd.getBoundingClientRect() : null;
-  if(!r || !r.width || !r.height || r.height <= r.width) return undefined;
-  const f = 1.25 * Math.min(2.2, r.height / r.width);
-  return {eye:{x:f, y:f, z:f}};
+  if(!r || !r.width || !r.height) return 1;
+  return Math.min(2.2, Math.max(1, r.height / r.width));
+}
+
+function defaultSceneCamera(plotId){
+  const f = viewAspectFit(plotId);
+  return f > 1 ? {eye:{x:1.25 * f, y:1.25 * f, z:1.25 * f}} : undefined;
+}
+
+// Keeps the framing when a view changes shape: the camera distance scales
+// with the height-to-width ratio it was set up for.
+function refitCamera(plotId, key){
+  const gd = $(plotId);
+  if(!window.Plotly || !gd || !gd._fullLayout || !Number.isFinite(gd._camFit)) return;
+  if(key === "plane" && state.moveActive) return;
+  const f = viewAspectFit(plotId), s = f / gd._camFit;
+  if(Math.abs(s - 1) < 0.02) return;
+  gd._camFit = f;
+  const cam = readSceneCamera(plotId) || state.cameras[key];
+  const eye = cam && cam.eye ? cam.eye : {x:1.25, y:1.25, z:1.25};
+  const next = {...(cam || {}), eye:{x:eye.x * s, y:eye.y * s, z:eye.z * s}};
+  state.cameras[key] = next;
+  Promise.resolve(Plotly.relayout(gd, {"scene.camera":next})).catch(() => {});
+}
+
+function resetCamera(plotId, key){
+  state.cameras[key] = null;
+  const gd = $(plotId);
+  if(!window.Plotly || !gd) return;
+  gd._camFit = viewAspectFit(plotId);
+  Plotly.relayout(gd, {"scene.camera":defaultSceneCamera(plotId) || null});
 }
 
 function sceneLayout(title, camera, plotId=null){
@@ -6866,6 +7066,8 @@ async function finalizeSliceMoveCameraLock(){
 
 function wireCamera(plotId, key){
   const gd = $(plotId);
+  // The camera just drawn belongs to the view's current shape.
+  if(gd) gd._camFit = viewAspectFit(plotId);
   if(!gd || gd._rmcCameraHooked || typeof gd.on !== "function") return;
   const onCamera = ev => {
     if(key === "plane" && state.moveActive) return;
@@ -7120,9 +7322,8 @@ async function renderIso3d(Plotly){
     }
   }
   let trace;
-  const activeBasis = useBasisToQ(state.res) ? state.res.Bq : directPlotBasis(state.res);
-  // Plotly isosurfaces need a rectilinear grid; skewed geometry gets a point cloud.
-  if((usePlotBasis(state.res) && isNonOrthBq(activeBasis)) || isSkewedGrid(state.res)){
+  // Plotly isosurfaces need an x-y-z grid; rotated or skewed grids get a point cloud.
+  if(!sample.aligned){
     const keep = [];
     for(let i=0;i<sample.value.length;i++) if(sample.value[i] >= isoMin) keep.push(i);
     const maxPts = 120000, stride = Math.max(1, Math.ceil(keep.length / maxPts)), n = Math.max(0, Math.ceil(keep.length / stride));
@@ -7783,7 +7984,8 @@ async function onFile(file){
   $("idx").min = "0";
   $("idx").max = String(Math.max(0, parsed.shape[2] - 1));
   $("idx").value = String(Math.floor((parsed.shape[2] - 1) / 2));
-  $("levelMode").value = "slice";
+  // Levels stay global while slicing unless per-slice levels were chosen.
+  $("levelMode").value = autoLevelMode();
   const signed = applySignedDefaults(parsed);
   // RMCProfile text uses 0 for "no data" (the PMN coverage masks, for example).
   const autoZero = /^indexed text/.test(parsed.format || "") && zeroFraction(parsed) >= 0.01;
@@ -7812,7 +8014,7 @@ async function onFile(file){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global"};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", render:"3-D rendering", export:"Export"};
 
 function loadUiPrefs(){
@@ -7826,13 +8028,14 @@ function loadUiPrefs(){
     if(typeof saved.side === "boolean") ui.side = saved.side;
     if(Number.isFinite(saved.dockW)) ui.dockW = clamp(saved.dockW, 0.2, 0.75);
     if(Number.isFinite(saved.stack)) ui.stack = clamp(saved.stack, 0.15, 0.85);
+    if(["global", "slice"].includes(saved.levels)) ui.levels = saved.levels;
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels})); }catch(_){}
 }
 
 function applyUi(){
@@ -7987,7 +8190,8 @@ function observeViewSizes(){
       for(const id of ["plot3dPlane", "plot3dIso"]){
         const gd = $(id);
         if(!pending.has(id) || !gd || !gd._fullLayout || !gd.getClientRects().length) continue;
-        try{ Promise.resolve(Plotly.Plots.resize(gd)).catch(() => {}); }catch(_){}
+        const key = id === "plot3dPlane" ? "plane" : "iso";
+        try{ Promise.resolve(Plotly.Plots.resize(gd)).then(() => refitCamera(id, key)).catch(() => {}); }catch(_){}
       }
     }
     pending.clear();
@@ -8047,6 +8251,7 @@ function onShortcut(ev){
 
 function bindLayout(){
   state.ui = loadUiPrefs();
+  $("levelMode").value = state.ui.levels;
   applyUi();
 
   const pick = () => $("file").click();
@@ -8243,7 +8448,9 @@ function bind(){
     $(id).addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   }
   $("levelMode").addEventListener("change", () => {
-    if($("levelMode").value !== "manual") state.manualLevelBounds = null;
+    const mode = $("levelMode").value;
+    if(mode !== "manual") state.manualLevelBounds = null;
+    if(mode !== "manual" && state.ui) setUi({levels:mode});
     syncControls();
     draw2d();
     scheduleRender3d();
@@ -8323,17 +8530,12 @@ function bind(){
   $("saveIsoHtml").addEventListener("click", () => savePlotHtml("plot3dIso", "iso3d", "3DSView Isosurface"));
   $("planeZoomIn").addEventListener("click", () => zoomPlot("plot3dPlane", "plane", 0.82));
   $("planeZoomOut").addEventListener("click", () => zoomPlot("plot3dPlane", "plane", 1.22));
-  $("planeZoomReset").addEventListener("click", () => {
-    state.cameras.plane = null;
-    if(window.Plotly) Plotly.relayout($("plot3dPlane"), {"scene.camera":defaultSceneCamera("plot3dPlane") || null});
-  });
+  $("planeZoomReset").addEventListener("click", () => resetCamera("plot3dPlane", "plane"));
   $("isoZoomIn").addEventListener("click", () => zoomPlot("plot3dIso", "iso", 0.82));
   $("isoZoomOut").addEventListener("click", () => zoomPlot("plot3dIso", "iso", 1.22));
-  $("isoZoomReset").addEventListener("click", () => {
-    state.cameras.iso = null;
-    if(window.Plotly) Plotly.relayout($("plot3dIso"), {"scene.camera":defaultSceneCamera("plot3dIso") || null});
-  });
+  $("isoZoomReset").addEventListener("click", () => resetCamera("plot3dIso", "iso"));
   bindLayout();
+  bindLevelHistogram();
   syncControls();
   draw2d();
 }
