@@ -120,7 +120,8 @@ label{display:grid;gap:4px;font-size:.8rem;color:var(--muted)}
 input,select{min-width:0;width:100%;border:1px solid var(--inputBorder);border-radius:6px;background:var(--inputBg);color:var(--ink);padding:6px 7px}
 input[readonly]{background:var(--roBg);color:var(--roText)}
 input[type=range]{padding:0;border:0;accent-color:var(--brand);background:transparent}
-label.check{display:flex;align-items:center;gap:7px;align-self:end;min-height:34px}
+label.check{display:flex;align-items:center;gap:7px;align-self:flex-start;min-height:34px}
+.row2>label.check,.row3>label.check{align-self:end}
 label.check input{width:auto;margin:0;accent-color:var(--brand)}
 kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--kbdBg);color:var(--panelText);font:12px Consolas,"Courier New",monospace;text-align:center}
 .levelHist{width:100%;height:54px;display:block;border-radius:6px;background:var(--side2)}
@@ -232,10 +233,12 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .stepBtn:hover{background:var(--soft)}
 .barRight{display:flex;align-items:center;gap:6px;margin-left:auto}
 .profileStrip{flex:0 0 var(--profile-h, 34%);min-height:120px;display:flex;flex-direction:column;background:var(--plot)}
-.profileHead{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:4px 8px;background:var(--toolbar);border-bottom:1px solid var(--line);color:var(--statsText);font-size:.78rem}
+.profileHead{display:flex;align-items:flex-start;gap:8px;padding:4px 8px;background:var(--toolbar);border-bottom:1px solid var(--line);color:var(--statsText);font-size:.78rem}
+.profileControls{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.profileEnd{flex:0 0 auto;display:flex;align-items:center;gap:4px}
 .profileHead label{display:inline-flex;align-items:center;gap:5px;color:var(--statsText);font-size:.78rem}
 .profileHead label.check{min-height:0;align-self:center}
-.profileHead input[type=number]{width:78px;padding:3px 5px;font-size:.8rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
+.profileHead input[type=number]{width:62px;padding:3px 5px;font-size:.8rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
 .profileFields{display:inline-flex;gap:10px}
 .profileInfo{padding:2px 10px;min-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--statsText);font:11px Consolas,"Courier New",monospace}
 .profilePlot{position:relative;flex:1;min-height:0}
@@ -858,6 +861,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="splitH hidden" id="profileSplit" role="separator" aria-orientation="horizontal" aria-label="Resize the profiles" tabindex="0" title="Drag to resize; double-click to reset"></div>
       <section class="profileStrip hidden" id="profileStrip" aria-label="Profiles">
         <div class="profileHead">
+          <div class="profileControls">
           <div class="tabs" role="group" aria-label="Profile">
             <button type="button" data-profile="line">Line cut</button>
             <button type="button" data-profile="q">|Q| profile</button>
@@ -868,9 +872,11 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           </span>
           <label title="Empty: about one bin per grid step">Bins <input id="profileBins" type="number" min="2" max="20000" step="1" placeholder="auto"></label>
           <label class="check"><input id="profileLog" type="checkbox">Log</label>
-          <span class="grow"></span>
-          <button type="button" id="profileCsv" class="iconBtn ghost wide" title="Save the profile as CSV" disabled>CSV</button>
-          <button type="button" id="profileClose" class="iconBtn ghost" title="Close the profiles (P)">&times;</button>
+          </div>
+          <div class="profileEnd">
+            <button type="button" id="profileCsv" class="iconBtn ghost wide" title="Save the profile as CSV" disabled>CSV</button>
+            <button type="button" id="profileClose" class="iconBtn ghost" title="Close the profiles (P)">&times;</button>
+          </div>
         </div>
         <div id="profileInfo" class="profileInfo"></div>
         <div class="profilePlot" id="profilePlot">
@@ -1346,7 +1352,10 @@ function fmtAxis(v, values){
 
 // A display level for the level fields, to six significant digits.
 function fmtLevel(v){
-  return Number.isFinite(v) ? String(Number(Number(v).toPrecision(6))) : "";
+  if(!Number.isFinite(v)) return "";
+  const a = Math.abs(v);
+  if(a >= 1e6 || (a > 0 && a < 1e-4)) return Number(v).toExponential(5).replace(/\.?0+e/, "e").replace("e+", "e");
+  return String(Number(Number(v).toPrecision(6)));
 }
 
 // A spacing to three significant digits.
@@ -7720,13 +7729,28 @@ function paintTriOn(ctx, cssW, cssH){
   const idx = ["h", "k", "l"].map(triIndexFor);
   ctx.font = "12px Consolas";
   ctx.fillStyle = tc.canvasText;
-  const lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), "",
-    "Click a view to move the", "other two through it.", "Drag a box to zoom.", "The framed view follows", "the slider and the keys."];
-  lines.forEach((text, i) => {
+  const room = cssW - 28 - 126 - (pw + 18);
+  const hint = wrapCanvasText(ctx, "Click a view to move the other two through it. Drag a box to zoom. The framed view follows the slider and the keys.", room);
+  const lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), "", ...hint];
+  const fits = Math.max(4, Math.floor((cssH - ph - 30) / 18));
+  lines.slice(0, fits).forEach((text, i) => {
     if(i >= 1 && i <= 3) ctx.fillStyle = AXIS_COLOURS[i - 1];
     else ctx.fillStyle = i === 0 ? tc.canvasText : tc.mutedText;
     ctx.fillText(text, pw + 18, ph + 30 + i * 18);
   });
+}
+
+// Words of text in lines no wider than width on the canvas.
+function wrapCanvasText(ctx, text, width){
+  const out = [];
+  let line = "";
+  for(const word of String(text).split(/\s+/).filter(Boolean)){
+    const next = line ? `${line} ${word}` : word;
+    if(line && ctx.measureText(next).width > width){ out.push(line); line = word; }
+    else line = next;
+  }
+  if(line) out.push(line);
+  return out;
 }
 
 function triPanelAt(pt){
@@ -8328,7 +8352,7 @@ function setValEdit(id, text){
   if(!el || document.activeElement === el) return;
   el.value = text;
   el.dataset.shown = text;
-  el.style.width = `${Math.max(3, text.length + 1)}ch`;
+  el.style.width = `calc(${Math.max(3, text.length + 1)}ch + 8px)`;
 }
 
 // Enter applies a field, Escape restores its shown value.
@@ -9312,12 +9336,19 @@ function structureTraces(st, repeat){
       g.x.push(p[0]); g.y.push(p[1]); g.z.push(p[2]); g.text.push(text);
     }
   }
+  const shrink = atomMarkerScale([...byElement.values()].reduce((n, g) => n + g.x.length, 0));
   for(const [element, g] of byElement){
     const style = elementStyle(element);
     traces.push({type:"scatter3d", mode:"markers", name:element, x:g.x, y:g.y, z:g.z, text:g.text, hovertemplate:"%{text}<extra></extra>",
-      marker:{size:5 + 8 * style.radius, color:style.color, opacity:0.95, line:{color:"rgba(2,6,23,.6)", width:1}}});
+      marker:{size:(5 + 8 * style.radius) * shrink, color:style.color, opacity:0.95, line:{color:"rgba(2,6,23,.6)", width:shrink < 0.5 ? 0 : 1}}});
   }
   return traces;
+}
+
+// Marker scale for n drawn atoms: full size up to a few hundred, then in
+// step with their spacing on screen, which falls as the cube root of n.
+function atomMarkerScale(n){
+  return clamp(6 / Math.cbrt(Math.max(1, n)), 0.2, 1);
 }
 
 function refreshStructureView(){

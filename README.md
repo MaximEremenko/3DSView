@@ -150,6 +150,8 @@ and slab-average slicing with linked 2-D and 3-D views.
     0.333 on the B site).
   - A CIF gives its cell and sites, expanded by the listed symmetry operations; a CIF
     without them shows the listed sites only.
+  - Atoms are drawn smaller as the block holds more of them, so a large supercell does
+    not fill the view as one solid ball.
   - The camera tools work as in the other views: view along a*, b*, c*, a, b, c or a
     typed direction, roll, tilt, turn and orthographic projection.
 - **Interatomic vectors** (<kbd>V</kbd>, or the button above the map): on a real-space map

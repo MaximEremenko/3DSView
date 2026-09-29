@@ -332,3 +332,13 @@ test("plane maps are sampled at the data step unless set by hand", () => {
   app.setControl("pRes", {value:"300"});
   assert.equal(app.context.planeMapPoints(res, 20, "pRes"), 300);
 });
+
+test("levels in the fields read like the colour bar's when large or small", () => {
+  const app = loadApp();
+  assert.equal(app.context.fmtLevel(4087770000), "4.08777e9");
+  assert.equal(app.context.fmtLevel(3.82813e10), "3.82813e10");
+  assert.equal(app.context.fmtLevel(1e10), "1e10");
+  assert.equal(app.context.fmtLevel(-2.5e-7), "-2.5e-7");
+  assert.equal(Number(app.context.fmtLevel(4087770000)), 4087770000, "the field still reads as the number");
+  assert.equal(app.context.fmtLevel(0), "0");
+});

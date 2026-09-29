@@ -163,3 +163,15 @@ test("vectors on a Cartesian map take a along x", () => {
   assertClose(cart[0], -1.5, 1e-9, "b = (a cos 120, a sin 120)");
   assertClose(cart[1], 1.5 * Math.sqrt(3), 1e-9);
 });
+
+test("atoms shrink as the drawn block holds more of them", () => {
+  const app = loadApp();
+  const one = {cell:[4, 4, 4, 90, 90, 90], atoms:[{element:"Cu", frac:[0.5, 0.5, 0.5], occupancy:1}]};
+  const atoms = [];
+  for(let i=0;i<16;i++) for(let j=0;j<16;j++) for(let k=0;k<16;k++) atoms.push({element:"Cu", frac:[(i + 0.5) / 16, (j + 0.5) / 16, (k + 0.5) / 16], occupancy:1});
+  const many = {cell:[64, 64, 64, 90, 90, 90], atoms};
+  const size = st => app.context.structureTraces(st, [1, 1, 1]).find(t => t.mode === "markers").marker.size;
+  const small = size(many), full = size(one);
+  assert.ok(small < full / 2, `4096 atoms draw smaller (${small} against ${full})`);
+  assert.equal(app.context.atomMarkerScale(8), 1, "a few atoms keep their size");
+});
