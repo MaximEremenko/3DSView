@@ -188,3 +188,36 @@ test("the metric check flags operations that do not fit the cell", () => {
   const direct = app.context.makeVolumeResult("map.h5", [3, 3, 3], ax, ax, ax, new Float64Array(27), "test", "uvw");
   assert.ok(Number.isNaN(app.context.symmetryMetricChange(direct, "6/mmm")), "no check without a reciprocal basis");
 });
+
+test("the edge mask takes measured voxels next to empty ones", () => {
+  const app = loadApp();
+  const ax = Array.from({length:7}, (_, i) => i - 3);
+  const count = m => Array.from(m).reduce((s, v) => s + v, 0);
+  const values = new Float64Array(343).fill(1);
+  values[(3 * 7 + 3) * 7 + 3] = NaN;
+  const res = app.context.makeVolumeResult("edge.h5", [7, 7, 7], ax, ax, ax, values, "test", "hkl");
+  assert.equal(count(app.context.edgeMask(res, 1)), 26, "the 26 neighbours of the hole");
+  assert.equal(count(app.context.edgeMask(res, 2)), 124, "a 5 x 5 x 5 box less the hole");
+  assert.equal(count(app.context.edgeMask(res, 0)), 0);
+  const full = app.context.makeVolumeResult("full.h5", [7, 7, 7], ax, ax, ax, new Float64Array(343).fill(1), "test", "hkl");
+  assert.equal(count(app.context.edgeMask(full, 2)), 0, "the edge of the grid is not an edge of the data");
+});
+
+test("the outlier cut flags a spike among its symmetry equivalents", async () => {
+  const app = loadApp();
+  const ax = Array.from({length:7}, (_, i) => i - 3);
+  const values = new Float64Array(343);
+  for(let i=0;i<7;i++) for(let j=0;j<7;j++) for(let k=0;k<7;k++){
+    const s = [ax[i], ax[j], ax[k]].map(Math.abs).sort();
+    values[(i * 7 + j) * 7 + k] = 1 + s[0] + 10 * s[1] + 100 * s[2];   // unchanged by m-3m
+  }
+  const spike = (5 * 7 + 4) * 7 + 3;   // (2, 1, 0)
+  values[spike] *= 50;
+  const res = app.context.makeVolumeResult("spike.h5", [7, 7, 7], ax, ax, ax, values, "test", "hkl");
+  res.Bq = app.basisFromCell([4, 4, 4, 90, 90, 90], true).Bq;
+  const flagged = Array.from(await app.context.outlierMask(res, "m-3m", 5)).map((v, i) => (v ? i : -1)).filter(i => i >= 0);
+  assert.deepEqual(flagged, [spike]);
+  const skip = new Uint8Array(343);
+  skip[spike] = 1;
+  assert.equal(Array.from(await app.context.outlierMask(res, "m-3m", 5, skip)).filter(Boolean).length, 0, "voxels left out are not judged");
+});

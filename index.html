@@ -709,6 +709,19 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <div id="symInfo" class="mono fine"></div>
         <p class="fine">Each voxel is averaged with its symmetry equivalents that hold data; empty voxels stay out of the average. <b>Fill empty voxels only</b> keeps the measured values and fills the gaps; with &minus;1 it completes Friedel pairs. Then pick <b>Data &minus; symmetrized</b> above the map to see where the data break the symmetry, or <b>Equivalents found</b> for the coverage. Exports save the values on show.</p>
       </div>
+      <div class="group">
+        <h3>Mask preview</h3>
+        <div class="row2">
+          <label>Edge erosion (voxels)<input id="maskEdge" type="number" min="0" max="10" step="1" value="1" disabled></label>
+          <label>Outlier cut (k&middot;&sigma;)<input id="maskOutlier" type="number" min="0" max="50" step="0.5" value="5" disabled></label>
+        </div>
+        <div class="btns">
+          <button id="maskRun" disabled>Preview</button>
+          <button id="maskClear" class="alt" disabled>Clear</button>
+        </div>
+        <div id="maskInfo" class="mono fine"></div>
+        <p class="fine">Edge erosion marks measured voxels within <i>r</i> voxels of empty ones, where detector edges leave high values. The outlier cut marks voxels more than <i>k</i> robust standard deviations (1.4826 &times; MAD) above the median of their symmetry equivalents, with the Laue class above; 0 turns either off. Pick <b>Masked data</b> or <b>Removed by the mask</b> above the map to check them. This only previews a mask: masking as a recorded processing step is done in 3DSConvert.</p>
+      </div>
     </section>
 
     <section class="page" data-page="export">
@@ -767,6 +780,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <option value="symcount">Equivalents found</option>
           <option value="sigma">&sigma;</option>
           <option value="snr">I/&sigma;</option>
+          <option value="masked">Masked data (preview)</option>
+          <option value="maskdrop">Removed by the mask</option>
         </select>
         <select id="sliceMode" disabled title="Slice mode">
           <option value="axis" selected>Axis slice</option>
@@ -4658,6 +4673,7 @@ const SIGNED_VIEWS = new Set(["diff", "resid", "symdev"]);
 // Builds the volume for a Show mode on the data grid; null for the data itself.
 function buildView(mode, res=state.res){
   if(!res || !mode || mode === "data") return null;
+  if(mode === "masked" || mode === "maskdrop") return buildMaskView(mode, res);
   if(mode === "sym" || mode === "symdev" || mode === "symcount") return buildSymView(mode, res);
   const n = res.I.length, I = res.I, sig = res.sigma;
   const cmp = state.cmpAligned, fit = state.cmpFit || {scale:1, offset:0};
@@ -4681,6 +4697,150 @@ function buildView(mode, res=state.res){
     levelsFrom:mode === "cmp" ? res : null};
   view.global = computeGlobalDisplayBounds(view);
   return view;
+}
+
+// ---- Mask preview: detector-edge erosion and symmetry outliers
+//
+// Previews what a mask would remove, as two Show views; masking as a
+// recorded processing step belongs to the converter.
+
+// Measured voxels within r voxels (box distance) of an empty one: the empty
+// set is dilated along each axis in turn with a running count.
+function edgeMask(res, r){
+  const [n0, n1, n2] = res.shape, I = res.I, N = I.length;
+  const out = new Uint8Array(N);
+  if(!(r >= 1)) return out;
+  let cur = new Uint8Array(N);
+  for(let v=0;v<N;v++) cur[v] = I[v] !== I[v] ? 1 : 0;
+  const lens = [n0, n1, n2], strides = [n1 * n2, n2, 1];
+  for(let a=0;a<3;a++){
+    const n = lens[a], s = strides[a], [b, c] = [0, 1, 2].filter(x => x !== a), next = new Uint8Array(N);
+    for(let p=0;p<lens[b];p++) for(let q=0;q<lens[c];q++){
+      const base = p * strides[b] + q * strides[c];
+      let count = 0;
+      for(let t=0;t<=Math.min(r, n - 1);t++) count += cur[base + t * s];
+      for(let t=0;t<n;t++){
+        if(count) next[base + t * s] = 1;
+        if(t + r + 1 < n) count += cur[base + (t + r + 1) * s];
+        if(t - r >= 0) count -= cur[base + (t - r) * s];
+      }
+    }
+    cur = next;
+  }
+  for(let v=0;v<N;v++) out[v] = cur[v] && I[v] === I[v] ? 1 : 0;
+  return out;
+}
+
+// Voxels more than k·1.4826·MAD above the median of their symmetry orbit,
+// for orbits with at least three voxels with data; skip leaves voxels out
+// (those already at an edge). Each orbit is visited once.
+async function outlierMask(res, cls, k, skip=null, onStep=null){
+  const {maps} = gridSymmetryMaps(res, cls);
+  const [n0, n1, n2] = res.shape, I = res.I, N = I.length;
+  const out = new Uint8Array(N), seen = new Uint8Array(N), members = [], vals = [];
+  let next = 1 << 21;
+  for(let v=0;v<N;v++){
+    if(v >= next){
+      next += 1 << 21;
+      if(onStep) await onStep(v, N);
+    }
+    if(seen[v]) continue;
+    const i = Math.floor(v / (n1 * n2)), j = Math.floor(v / n2) % n1, l = v % n2;
+    members.length = 0;
+    vals.length = 0;
+    for(const {A, t} of maps){
+      const a = t[0] + i * A[0][0] + j * A[1][0] + l * A[2][0];
+      const b = t[1] + i * A[0][1] + j * A[1][1] + l * A[2][1];
+      const c = t[2] + i * A[0][2] + j * A[1][2] + l * A[2][2];
+      if(a < 0 || a >= n0 || b < 0 || b >= n1 || c < 0 || c >= n2) continue;
+      const w = (a * n1 + b) * n2 + c;
+      if(seen[w]) continue;
+      seen[w] = 1;
+      members.push(w);
+      const x = I[w];
+      if(x === x && !(skip && skip[w])) vals.push(x);
+    }
+    if(vals.length < 3) continue;
+    vals.sort((x, y) => x - y);
+    const median = vals[vals.length >> 1];
+    const dev = vals.map(x => Math.abs(x - median)).sort((x, y) => x - y);
+    // Equivalents made identical by an earlier symmetrization differ only by
+    // rounding; the spread is taken as at least 0.1 % of the median.
+    const cut = median + k * 1.4826 * Math.max(dev[dev.length >> 1], 1e-3 * Math.abs(median));
+    for(const w of members){
+      const x = I[w];
+      if(x === x && x > cut && !(skip && skip[w])) out[w] = 1;
+    }
+  }
+  return out;
+}
+
+function buildMaskView(mode, res){
+  const m = state.maskPreview;
+  if(!m || m.res !== res) return null;
+  const I = res.I, keepRemoved = mode === "maskdrop", out = new Float64Array(I.length);
+  for(let v=0;v<I.length;v++) out[v] = (m.mask[v] ? keepRemoved : !keepRemoved) ? I[v] : NaN;
+  const b = finiteBounds(out);
+  const view = {...res, I:out, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma:null,
+    valueName:keepRemoved ? "Removed by the mask" : "Masked data", columnName:keepRemoved ? "removed_by_mask" : "masked",
+    fileTag:`_${mode}`, viewMode:mode, levelsFrom:res};
+  view.global = computeGlobalDisplayBounds(view);
+  return view;
+}
+
+function syncMaskControls(){
+  const has = !!state.res, busy = !!state.maskBusy;
+  for(const id of ["maskEdge", "maskOutlier", "maskRun"]) $(id).disabled = !has || busy;
+  $("maskClear").disabled = !has || busy || !state.maskPreview;
+}
+
+async function runMaskPreview(){
+  const res = state.res;
+  if(!res || state.maskBusy) return;
+  const r = clamp(Math.floor(Number($("maskEdge").value) || 0), 0, 10), k = Math.max(0, Number($("maskOutlier").value) || 0);
+  const cls = $("laueClass").value;
+  if(!r && !k){ status("Set an edge erosion or an outlier cut for the preview.", "warn"); return; }
+  state.maskBusy = true;
+  syncMaskControls();
+  const t0 = performance.now();
+  try{
+    status("Building the mask preview ...");
+    await nextFrame();
+    const mask = new Uint8Array(res.I.length);
+    let edges = 0, outliers = 0;
+    if(r){
+      const e = edgeMask(res, r);
+      for(let v=0;v<e.length;v++) if(e[v]){ mask[v] = 1; edges++; }
+    }
+    if(k){
+      if(cls === "custom") setCustomSymmetry($("symOps").value);
+      const o = await outlierMask(res, cls, k, mask, async (done, total) => {
+        status(`Mask preview: outliers ${Math.round(100 * done / total)} % ...`);
+        await nextFrame();
+      });
+      for(let v=0;v<o.length;v++) if(o[v] && !mask[v]){ mask[v] = 2; outliers++; }
+    }
+    // A file loaded meanwhile takes over.
+    if(state.res !== res) return;
+    state.maskPreview = {res, mask, r, k, cls, edges, outliers};
+    setShowMode("masked");
+    const pct = n => fmt(100 * n / Math.max(1, res.filled), 3);
+    $("maskInfo").textContent = `${edges.toLocaleString()} edge voxels (${pct(edges)} %, r = ${r}); ${outliers.toLocaleString()} outliers (${pct(outliers)} %, k = ${fmt(k, 3)}${k ? `, ${LAUE_CLASSES[cls].label}` : ""}); ${(res.filled - edges - outliers).toLocaleString()} voxels kept.`;
+    status(`Mask preview in ${fmt((performance.now() - t0) / 1000, 2)} s: ${$("maskInfo").textContent}`, "ok");
+  }catch(err){
+    status(`Mask preview failed: ${err.message}`, "err");
+  }finally{
+    state.maskBusy = false;
+    syncMaskControls();
+  }
+}
+
+function clearMaskPreview(){
+  state.maskPreview = null;
+  $("maskInfo").textContent = "";
+  if(SHOW_NEEDS[state.showMode] && !SHOW_NEEDS[state.showMode](state.res)) setShowMode("data");
+  else syncShowOptions();
+  syncMaskControls();
 }
 
 // ---- Crystal symmetry: Laue-class averaging on the data grid
@@ -11371,7 +11531,9 @@ const SHOW_NEEDS = {
   split:res => comparisonReady(res),
   diff:res => comparisonReady(res),
   ratio:res => comparisonReady(res),
-  resid:res => comparisonReady(res) && !!res.sigma
+  resid:res => comparisonReady(res) && !!res.sigma,
+  masked:res => !!(state.maskPreview && state.maskPreview.res === res),
+  maskdrop:res => !!(state.maskPreview && state.maskPreview.res === res)
 };
 
 function syncShowOptions(){
@@ -11423,7 +11585,7 @@ function setShowMode(mode){
   applyViewDisplay(prev, next);
   // Levels start from auto for new kinds of values; the data, the
   // symmetrized data and the comparison share them.
-  const family = mode => (["data", "sym", "cmp", "split"].includes(mode) ? "intensity" : mode);
+  const family = mode => (["data", "sym", "cmp", "split", "masked", "maskdrop"].includes(mode) ? "intensity" : mode);
   if(family(prev) !== family(next)){
     state.manualLevelBounds = null;
     if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
@@ -11438,6 +11600,7 @@ function setShowMode(mode){
 // fit it, and the other views are rebuilt.
 function dataChanged(){
   state.isoSample = null;
+  state.maskPreview = null;
   const hadSym = !!state.sym;
   state.sym = null;
   // The comparison stays on the grid (values and relabels keep voxel order); its fit follows the data.
@@ -11487,6 +11650,7 @@ function updateSymInfo(note=null){
 }
 
 function syncSymControls(){
+  syncMaskControls();
   const has = !!state.res, busy = !!state.symBusy;
   for(const id of ["laueClass", "symMode", "symOps"]) $(id).disabled = !has || busy;
   $("symApply").disabled = !has || busy;
@@ -11541,6 +11705,7 @@ function clearSymmetry(){
 
 // A new file: back to its own values, with a Laue class suggested for it.
 function resetViewsForNewData(res){
+  state.maskPreview = null;
   state.tri = {views:{h:null, k:null, l:null}, panels:[], cache:new Map(), images:{}};
   state.plotRes = {map:null, plane:null};
   if(state.viewDisplaySaved){
@@ -12212,6 +12377,8 @@ function bind(){
   $("symOps").addEventListener("keydown", ev => { if(ev.key === "Enter") runSymmetry(); });
   $("symApply").addEventListener("click", runSymmetry);
   $("symClear").addEventListener("click", clearSymmetry);
+  $("maskRun").addEventListener("click", runMaskPreview);
+  $("maskClear").addEventListener("click", clearMaskPreview);
   $("heatmap").addEventListener("click", onHeatmapClick);
   $("heatmap").addEventListener("pointerdown", onHeatmapPointerDown);
   $("heatmap").addEventListener("pointermove", onHeatmapPointerMove);

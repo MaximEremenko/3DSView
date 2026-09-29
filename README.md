@@ -214,7 +214,16 @@ and slab-average slicing with linked 2-D and 3-D views.
     does not close within 48 operations, or is not an integer rotation, is refused. The
     hint's tooltip lists the operations.
   - **Metric check:** for every class the hint says how much the operations change the
-    reciprocal metric, and warns above 2 %, when they probably belong to another setting. The symmetrized view can be
+    reciprocal metric, and warns above 2 %, when they probably belong to another setting.
+- **Mask preview** (Process page): shows what a mask would remove, as two Show views,
+  *Masked data* and *Removed by the mask*. Masking as a recorded processing step is done
+  in 3DSConvert.
+  - *Edge erosion* marks measured voxels within r voxels (box distance) of empty ones,
+    where detector edges leave high values. The edge of the grid does not count.
+  - The *outlier cut* marks voxels more than k robust standard deviations (1.4826 × MAD,
+    at least 0.1 % of the median) above the median of their symmetry equivalents, using
+    the Laue class above, for orbits with at least three voxels with data. Each orbit is
+    visited once: about 2 s for 10 million voxels. The symmetrized view can be
   exported like the data; symmetrization as a recorded processing step is done in
   3DSConvert.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
