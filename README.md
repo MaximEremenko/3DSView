@@ -97,7 +97,8 @@ and slab-average slicing with linked 2-D and 3-D views.
     Slice page); empty voxels stay out, and the
     readout, the line-cut thickness and the comparison's slice agreement follow the slab.
   - *Normal plane*: define an arbitrary plane by its normal and origin in HKL/Q space,
-    move it along the normal, and control the interpolation resolution and plane extent.
+    move it along the normal, and set the plane extent. The map is sampled at the data
+    resolution unless points per side are set by hand.
   - *Volume average*: average a slab of adjustable half-width and sample count around the
     plane.
 - **Three linked slices** (<kbd>G</kbd>, or the grid button beside the plane selector, in
@@ -163,8 +164,12 @@ and slab-average slicing with linked 2-D and 3-D views.
   step needs, so float32 axes read -8 rather than -7.999999508.
 - **Resolution** (Slice page, above Shown volume): set how finely each figure is drawn,
   and see the points and spacing that gives.
-  - **Map points per side** for normal-plane and slab maps. Axis slices show every data
-    point, up to 1.5 million.
+  - **Map resolution** (the selector on the map toolbar): axis slices show every data
+    point, up to 1.5 million. Normal-plane and slab maps are sampled at the finest data
+    step by default (*Data resolution*), twice as fine (*2× finer*), or at the points per
+    side typed on the Slice page (*Custom points*, up to 2400). While a slice or plane is
+    dragged, the map keeps its full resolution up to 400,000 cells (planes up to 360
+    points per side) and is redrawn in full when the move ends.
   - **3-D plane points per side** (180 by default, up to 520).
   - **Isosurface voxel cap**, the same field as on the 3-D page; the stride follows from it.
   - **PNG image**: 1x to 4x the size on screen, with the resulting pixel size of each

@@ -319,3 +319,16 @@ test("level fields are data values on every display scale", () => {
   assertClose(dragged.max, Math.log10(101), 1e-12);
   assert.equal(app.context.document.elements.levelMax.value, "100", "a dragged level is written as an intensity");
 });
+
+test("plane maps are sampled at the data step unless set by hand", () => {
+  const app = loadApp();
+  const ax = Array.from({length:65}, (_, i) => -8 + 0.25 * i);   // step 0.25
+  const res = app.context.makeVolumeResult("planes.h5", [65, 3, 3], ax, [0, 1, 2], [0, 1, 2], new Float64Array(65 * 9), "test", "hkl");
+  app.state.ui = {mapQuality:"data"};
+  assert.equal(app.context.planeMapPoints(res, 20, "pRes"), 81, "20 r.l.u. at the 0.25 step");
+  app.state.ui.mapQuality = "double";
+  assert.equal(app.context.planeMapPoints(res, 20, "pRes"), 161);
+  app.state.ui.mapQuality = "custom";
+  app.setControl("pRes", {value:"300"});
+  assert.equal(app.context.planeMapPoints(res, 20, "pRes"), 300);
+});

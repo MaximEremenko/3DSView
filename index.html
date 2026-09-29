@@ -485,7 +485,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <label>cL<input id="pCL" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
         </div>
         <div class="row2">
-          <label>Resolution<input id="pRes" type="number" value="220" min="32" max="520" step="1" disabled></label>
+          <label>Points per side<input id="pRes" type="number" value="220" min="32" max="2400" step="1" title="Points along each side of the map; typing a value sets the map resolution to Custom" disabled></label>
           <label>Plane scale<input id="pScale" type="number" value="1.35" min="0.2" max="4" step="0.05" disabled></label>
         </div>
         <div class="btns">
@@ -511,7 +511,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <label>cL<input id="avCL" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
         </div>
         <div class="row2">
-          <label>Resolution<input id="avRes" type="number" value="180" min="32" max="420" step="1" disabled></label>
+          <label>Points per side<input id="avRes" type="number" value="180" min="32" max="2400" step="1" title="Points along each side of the map; typing a value sets the map resolution to Custom" disabled></label>
           <label>Plane scale<input id="avScale" type="number" value="1.2" min="0.2" max="4" step="0.05" disabled></label>
         </div>
         <div class="row2">
@@ -800,6 +800,11 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button type="button" id="triToggle" class="iconBtn ghost" title="Three linked slices through one point (G)" aria-pressed="false" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M15 17h4M17 15v4"/></svg></button>
         </span>
         <div class="barRight">
+          <select id="mapQuality" disabled title="Resolution of the map on screen. Axis slices show every data point; normal-plane and slab maps are sampled at the finest data step, twice as fine, or at the points per side set on the Slice page">
+            <option value="data" selected>Data resolution</option>
+            <option value="double">2&times; finer</option>
+            <option value="custom">Custom points</option>
+          </select>
           <select id="scale" disabled title="Value scale">
             <option value="log1p" selected>log10(value+1)</option>
             <option value="log">log10(value)</option>
@@ -1036,7 +1041,7 @@ const H5WASM_LOCAL = "./js/h5wasm.js";
 const STREAM_TEXT_THRESHOLD = 64 * 1024 * 1024;
 const MAX_BROWSER_VOXELS = 1000000000;
 const MAX_AXIS_SLICE_CELLS = 1500000;
-const MAX_LIVE_AXIS_SLICE_CELLS = 90000;
+const MAX_LIVE_AXIS_SLICE_CELLS = 400000;
 const MAX_3D_SLICE_CELLS = 180 * 180;
 const PARALLEL_INDEXED_MIN_BYTES = 192 * 1024 * 1024;
 const PARALLEL_INDEXED_CHUNK_BYTES = 128 * 1024 * 1024;
@@ -6733,6 +6738,16 @@ function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, inc
   return {type:"axis", fixedAxis:2, fixedIndex:fixed, rowAxis:0, colAxis:1, rows, cols, d, x3, y3, z3, plane:`${labels[2]}[${fixed}] = ${fmt(res.l[fixed])}${thick}`, thickness:half, xLabel:labels[1], yLabel:labels[0], xMin:res.k[ranges[1][0]], xMax:res.k[ranges[1][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,1), yVec:gridVector(res,0), ...smp};
 }
 
+// Points per side of a normal-plane or slab map of the given size (native
+// units): at the finest data step, twice as fine, or as typed on the Slice page.
+function planeMapPoints(res, size, typedId){
+  const q = state.ui && state.ui.mapQuality || "data";
+  if(q === "custom") return clamp(Math.floor(Number($(typedId).value) || 220), 32, 2400);
+  const steps = [0, 1, 2].filter(a => res.shape[a] > 1).map(a => fixedAxisStep(res, a)).filter(s => s > 0);
+  const step = steps.length ? Math.min(...steps) : size / 219;
+  return clamp(Math.ceil((q === "double" ? 2 : 1) * size / step) + 1, 32, q === "double" ? 2400 : 1600);
+}
+
 function buildNormalPlaneSlice(res, resOverride=null, include3d=true){
   if(!state.plane) resetPlaneState();
   const p = state.plane;
@@ -6745,8 +6760,9 @@ function buildNormalPlaneSlice(res, resOverride=null, include3d=true){
     1e-6
   );
   const scale = Math.max(0.2, Math.min(4, Number($("pScale").value) || 1.35));
-  const nRes = Math.max(32, Math.min(520, Math.floor(Number.isFinite(resOverride) ? resOverride : Number($("pRes").value) || 220)));
-  const size = range * scale, half = size / 2, step = nRes > 1 ? size / (nRes - 1) : 0;
+  const size = range * scale, half = size / 2;
+  const nRes = Number.isFinite(resOverride) ? clamp(Math.floor(resOverride), 16, 2400) : planeMapPoints(res, size, "pRes");
+  const step = nRes > 1 ? size / (nRes - 1) : 0;
   const rows = nRes, cols = nRes, d = new Float64Array(rows * cols);
   const x3 = include3d ? new Array(rows) : null, y3 = include3d ? new Array(rows) : null, z3 = include3d ? new Array(rows) : null;
   const rawSample = makeTrilinearSampler(res);
@@ -6781,7 +6797,7 @@ function buildAvgVolSlice(res, resOverride=null, include3d=true, options={}){
     1e-6
   );
   const scale = Math.max(0.2, Math.min(4, Number($("avScale").value) || 1.2));
-  const nRes = Math.max(32, Math.min(420, Math.floor(Number.isFinite(resOverride) ? resOverride : Number($("avRes").value) || 180)));
+  const nRes = Number.isFinite(resOverride) ? clamp(Math.floor(resOverride), 16, 2400) : planeMapPoints(res, range * scale, "avRes");
   const slabHalf = Math.max(0.001, Math.min(20, Number($("slabWidth").value) || 0.25));
   const fullSlabN = Math.max(3, Math.min(101, Math.floor(Number($("slabN").value) || 9)));
   const slabN = options.fast ? Math.min(fullSlabN, 3) : fullSlabN;
@@ -6826,11 +6842,15 @@ function currentSlice(resOverride=null, axisCellCap=MAX_AXIS_SLICE_CELLS, includ
   return buildAxisSlice(res, $("axis").value, Number($("idx").value), axisCellCap, include3d);
 }
 
+// While a plane or slab moves: its full points up to a cap that keeps the
+// motion smooth; the full map follows when the move ends.
 function fastMoveSliceResolution(){
   const mode = $("sliceMode").value;
-  if(mode === "plane") return Math.max(32, Math.min(72, Math.floor(Number($("pRes").value) || 220)));
-  if(mode === "avgvol") return Math.max(32, Math.min(44, Math.floor(Number($("avRes").value) || 180)));
-  return null;
+  if(mode !== "plane" && mode !== "avgvol") return null;
+  const res = viewRes(), b = displayBounds(res, false), plane = mode === "plane";
+  const range = Math.max(...[0, 1, 2].map(a => Math.abs(b.max[a] - b.min[a])), 1e-6);
+  const scale = clamp(Number($(plane ? "pScale" : "avScale").value) || (plane ? 1.35 : 1.2), 0.2, 4);
+  return Math.min(planeMapPoints(res, range * scale, plane ? "pRes" : "avRes"), plane ? 360 : 180);
 }
 
 function scheduleDraw2d(options={}){
@@ -7433,6 +7453,7 @@ function draw2d(options={}){
   paint2d();
   if(!fast){
     state.plotRes.map = sliceSampling(sl);
+    if(sl.type !== "axis" && (state.ui.mapQuality || "data") !== "custom") setFieldUnlessEditing(sl.type === "plane" ? "pRes" : "avRes", String(sl.cols));
     updatePlotResInfo();
   }
 
@@ -8633,7 +8654,7 @@ function updatePlotResInfo(){
   if(!$("plotResMap")) return;
   const res = state.res, mode = $("sliceMode").value, planeMap = mode === "plane" || mode === "avgvol";
   $("resMap").disabled = !res || !planeMap;
-  setFieldUnlessEditing("resMap", planeMap ? $(mode === "plane" ? "pRes" : "avRes").value : "");
+  setFieldUnlessEditing("resMap", planeMap ? String(state.plotRes && state.plotRes.map && state.plotRes.map.type !== "axis" ? state.plotRes.map.cols : $(mode === "plane" ? "pRes" : "avRes").value) : "");
   setFieldUnlessEditing("res3dPlane", String(plane3dRes()));
   setFieldUnlessEditing("resIso", $("voxelCap").value);
   $("plotResImage").textContent = imageSizesText();
@@ -8695,7 +8716,7 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","savePlanePng","saveIsoPng","res3dPlane","resIso","isoPct","isoCount","voxelCap","auto3d","isoSampling","isoOpacity","isoSlices","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","mapQuality","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","savePlanePng","saveIsoPng","res3dPlane","resIso","isoPct","isoCount","voxelCap","auto3d","isoSampling","isoOpacity","isoSlices","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -11188,7 +11209,7 @@ async function onFile(file){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data"};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
@@ -11213,13 +11234,14 @@ function loadUiPrefs(){
     if(Number.isFinite(saved.plane3dRes)) ui.plane3dRes = clamp(Math.round(saved.plane3dRes), 32, 520);
     if([1, 2, 3, 4].includes(saved.imageScale)) ui.imageScale = saved.imageScale;
     if(typeof saved.tri === "boolean") ui.tri = saved.tri;
+    if(["data", "double", "custom"].includes(saved.mapQuality)) ui.mapQuality = saved.mapQuality;
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality})); }catch(_){}
 }
 
 function applyUi(){
@@ -11256,6 +11278,7 @@ function applyUi(){
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
   for(const id of ["imageScale", "resImage"]) $(id).value = String(ui.imageScale);
   $("triToggle").classList.toggle("on", !!ui.tri);
+  $("mapQuality").value = ui.mapQuality;
   $("triToggle").setAttribute("aria-pressed", String(!!ui.tri));
   updatePlotResInfo();
   saveUiPrefs();
@@ -12476,7 +12499,8 @@ function bind(){
     scheduleDraw2d({fast:true, sync3d:true});
   });
   $("planeMove").addEventListener("change", () => { finalizeSliceMoveCameraLock(); });
-  $("pRes").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
+  $("pRes").addEventListener("change", () => { setUi({mapQuality:"custom"}); draw2d(); scheduleRender3d(); });
+  $("mapQuality").addEventListener("change", () => { setUi({mapQuality:$("mapQuality").value}); draw2d(); scheduleRender3d(); });
   $("pScale").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("avgApply").addEventListener("click", () => { finishSliceMoveCameraLock(); applyAvgVolInputs(); draw2d(); scheduleRender3d(); });
   $("avgReset").addEventListener("click", () => { finishSliceMoveCameraLock(); resetAvgVolState(); draw2d(); scheduleRender3d(); });
@@ -12499,6 +12523,7 @@ function bind(){
       if(c.every(Number.isFinite)) moveSliceCenterTo(kind, c);
     });
   }
+  $("avRes").addEventListener("change", () => setUi({mapQuality:"custom"}));
   for(const id of ["avRes","avScale","slabWidth","slabN"]){
     $(id).addEventListener("change", () => { setAvgVolInputs(); draw2d(); scheduleRender3d(); });
   }
