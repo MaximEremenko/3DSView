@@ -15,6 +15,10 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **Three linked views**: a 3-D rendering of the current slice plane, a 3-D isosurface of
   the whole volume (both Plotly), and a 2-D slice heatmap drawn on a canvas with live
   statistics.
+- **2-D zoom and pan**: zoom the map with the mouse wheel (about the cursor) or the +/−
+  buttons, and drag to pan; double-click or ↺ shows the whole slice again. Ticks follow
+  the visible region, skewed grids keep their shape, and each cell is centred on its
+  sample.
 - **Three slice modes**:
   - *Axis*: fix H, K or L and step through the volume with an index slider.
   - *Normal plane*: define an arbitrary plane by its normal and origin in HKL/Q space,

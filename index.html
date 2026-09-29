@@ -173,6 +173,7 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
 #heatmap{width:100%;height:100%;display:block;touch-action:none}
 .stats{min-height:28px;padding:6px 8px;background:var(--panelBg);color:var(--statsText);font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plotOverlay{position:absolute;inset:auto 10px 10px auto;display:flex;gap:6px;z-index:5}
+.mapOverlay{inset:auto auto 10px 10px}
 .iconBtn{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText)}
 .iconBtn:hover{background:rgba(26,122,173,.65)}
 .empty3d{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--subtle);font-family:Consolas,"Courier New",monospace;font-size:.9rem;pointer-events:none}
@@ -528,6 +529,11 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
     <div class="panelHead"><h3>2D Slice Map</h3></div>
     <div class="canvasWrap">
       <canvas id="heatmap"></canvas>
+      <div class="plotOverlay mapOverlay">
+        <button class="iconBtn" id="mapZoomIn" title="Zoom in (or scroll on the map)">+</button>
+        <button class="iconBtn" id="mapZoomOut" title="Zoom out">&minus;</button>
+        <button class="iconBtn" id="mapZoomReset" title="Show the whole slice (or double-click the map)">&#8634;</button>
+      </div>
     </div>
     <div id="sliceStats" class="stats">No data loaded.</div>
   </section>
@@ -607,6 +613,8 @@ const state = {
   cacheDbPromise:null,
   indexedWorkerUrl:null,
   cameras:{plane:null, iso:null},
+  view2d:null,
+  pan2d:null,
   globalHist:null,
   autoSigned:false,
   resizeTimer:0
@@ -5025,7 +5033,16 @@ function onHeatmapPointerDown(ev){
   const pt = canvasPoint(ev);
   if(!pt) return;
   const handle = pickColorBarHandle(pt.x, pt.y, b);
-  if(!handle) return;
+  if(!handle){
+    const layout = view2dArea();
+    if(layout && layout.view.zoom > 1 && pointInMapArea(pt)){
+      state.pan2d = {pointerId:ev.pointerId, x:pt.x, y:pt.y, panX:layout.view.panX, panY:layout.view.panY};
+      $("heatmap").style.cursor = "grabbing";
+      try{ $("heatmap").setPointerCapture(ev.pointerId); }catch(_){}
+      ev.preventDefault();
+    }
+    return;
+  }
   state.levelDrag = {active:true, pointerId:ev.pointerId, handle, moved:false};
   state.levelClickSuppress = true;
   $("heatmap").style.cursor = "ns-resize";
@@ -5043,9 +5060,17 @@ function onHeatmapPointerMove(ev){
     cv.style.cursor = "default";
     return;
   }
+  const pan = state.pan2d, layout = view2dArea();
+  if(pan && layout){
+    const v = layout.view;
+    state.view2d = clampView2d({key:v.key, zoom:v.zoom, panX:pan.panX + (pt.x - pan.x) / layout.area.w, panY:pan.panY + (pt.y - pan.y) / layout.area.h});
+    paint2d();
+    return;
+  }
   const drag = state.levelDrag;
   if(!drag || !drag.active){
-    cv.style.cursor = pickColorBarHandle(pt.x, pt.y, b) ? "ns-resize" : "default";
+    const zoomed = layout && layout.view.zoom > 1 && pointInMapArea(pt);
+    cv.style.cursor = pickColorBarHandle(pt.x, pt.y, b) ? "ns-resize" : zoomed ? "grab" : pointInMapArea(pt) ? "crosshair" : "default";
     return;
   }
   const picked = barValueFromY(pt.y, b);
@@ -5062,6 +5087,12 @@ function onHeatmapPointerMove(ev){
 function onHeatmapPointerUp(ev){
   const drag = state.levelDrag;
   const cv = $("heatmap");
+  if(state.pan2d){
+    try{ cv.releasePointerCapture(state.pan2d.pointerId); }catch(_){}
+    state.pan2d = null;
+    cv.style.cursor = "grab";
+    return;
+  }
   if(!drag || !drag.active){
     cv.style.cursor = "default";
     return;
@@ -5075,7 +5106,60 @@ function onHeatmapPointerUp(ev){
   if(moved) scheduleRender3d(0);
 }
 
-function draw2d(options={}){
+// Placement of a slice on the 2-D map: an affine map from slice coordinates
+// (xv along the columns, yv along the rows) to canvas pixels. The slice is
+// fitted to the map area - skewed when its axes are not orthogonal in the
+// plotted frame - and then zoomed and panned with state.view2d. Cells are
+// centred on their samples.
+function slice2dLayout(sl, cssW, cssH, view=state.view2d){
+  const area = {x:58, y:20, w:Math.max(1, cssW - 28 - 58 - 10), h:Math.max(1, cssH - 20 - 62)};
+  let L = [[1, 0], [0, 1]];
+  if((usePlotBasis(state.res) || isSkewedGrid(state.res)) && Array.isArray(sl.xVec) && Array.isArray(sl.yVec)){
+    const qx = plotVector(state.res, sl.xVec), qy = plotVector(state.res, sl.yVec);
+    const lx = normVec(qx), ly = normVec(qy);
+    if(lx > 1e-12 && ly > 1e-12){
+      const along = dot(qy, qx) / lx, perp = Math.sqrt(Math.max(0, ly * ly - along * along));
+      if(perp > 1e-12) L = [[lx, along], [0, perp]];
+    }
+  }
+  const stepX = sl.cols > 1 ? (sl.xMax - sl.xMin) / (sl.cols - 1) : 0;
+  const stepY = sl.rows > 1 ? (sl.yMax - sl.yMin) / (sl.rows - 1) : 0;
+  const cellX = stepX || stepY || 1, cellY = stepY || stepX || 1;
+  const ext = {x0:sl.xMin - cellX / 2, x1:sl.xMax + cellX / 2, y0:sl.yMin - cellY / 2, y1:sl.yMax + cellY / 2};
+  const extCorners = [[ext.x0, ext.y0], [ext.x1, ext.y0], [ext.x1, ext.y1], [ext.x0, ext.y1]];
+  const disp = extCorners.map(([xv, yv]) => [L[0][0] * xv + L[0][1] * yv, L[1][0] * xv + L[1][1] * yv]);
+  const Xmin = Math.min(...disp.map(d => d[0])), Xmax = Math.max(...disp.map(d => d[0]));
+  const Ymin = Math.min(...disp.map(d => d[1])), Ymax = Math.max(...disp.map(d => d[1]));
+  const spanX = Math.max(1e-12, Xmax - Xmin), spanY = Math.max(1e-12, Ymax - Ymin);
+  const s0 = 0.94 * Math.min(area.w / spanX, area.h / spanY);
+  const ox = area.x + (area.w - s0 * spanX) / 2, oy = area.y + (area.h - s0 * spanY) / 2;
+  const key = [sl.type, sl.xLabel, sl.yLabel, sl.xMin, sl.xMax, sl.yMin, sl.yMax, String(sl.xVec), String(sl.yVec), L.flat().join(","), state.res && state.res.file].join("|");
+  const v = view && view.key === key ? view : {key, zoom:1, panX:0, panY:0};
+  const z = v.zoom, cx = area.x + area.w / 2, cy = area.y + area.h / 2;
+  // M = view . fit . L, as X = a*xv + b*yv + e, Y = c*xv + d*yv + f.
+  const a = z * s0 * L[0][0], b = z * s0 * L[0][1], c = -z * s0 * L[1][0], d = -z * s0 * L[1][1];
+  const e = cx + z * (ox - s0 * Xmin - cx) + v.panX * area.w;
+  const f = cy + z * (oy + s0 * Ymax - cy) + v.panY * area.h;
+  const det = a * d - b * c;
+  const toCanvas = (xv, yv) => [a * xv + b * yv + e, c * xv + d * yv + f];
+  const toSlice = (X, Y) => [(d * (X - e) - b * (Y - f)) / det, (a * (Y - f) - c * (X - e)) / det];
+  const x0 = sl.xMin - cellX / 2, y0 = sl.yMin - cellY / 2;
+  const outline = extCorners.map(([xv, yv]) => toCanvas(xv, yv));
+  const imageBox = {
+    x0:Math.min(...outline.map(p => p[0])), x1:Math.max(...outline.map(p => p[0])),
+    y0:Math.min(...outline.map(p => p[1])), y1:Math.max(...outline.map(p => p[1]))
+  };
+  return {
+    area, view:v, ext, outline, imageBox, toCanvas, toSlice,
+    // xv where a row at yv meets the left edge of the map area.
+    toSliceXAtLeft:yv => (area.x - e - b * yv) / a,
+    // Canvas transform for the offscreen image: pixel (u, v) covers cell (u, v).
+    imageTransform:[a * cellX, c * cellX, b * cellY, d * cellY, a * x0 + b * y0 + e, c * x0 + d * y0 + f]
+  };
+}
+
+// Sizes the 2-D canvas for the device pixel ratio and clears it.
+function prepareHeatmapCanvas(){
   const cv = $("heatmap"), ctx = cv.getContext("2d");
   const rect = cv.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
@@ -5083,11 +5167,15 @@ function draw2d(options={}){
   const bkW = Math.round(cssW * dpr), bkH = Math.round(cssH * dpr);
   if(cv.width !== bkW || cv.height !== bkH){ cv.width = bkW; cv.height = bkH; }
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  const tcnv = themePlot();
-  ctx.fillStyle = tcnv.bg;
+  ctx.fillStyle = themePlot().bg;
   ctx.fillRect(0,0,cssW,cssH);
+  return {ctx, cssW, cssH};
+}
+
+function draw2d(options={}){
   if(!state.res){
-    ctx.fillStyle = tcnv.mutedText;
+    const {ctx} = prepareHeatmapCanvas();
+    ctx.fillStyle = themePlot().mutedText;
     ctx.font = "15px Consolas";
     ctx.fillText("No data loaded.", 18, 32);
     $("sliceStats").textContent = "No data loaded.";
@@ -5132,70 +5220,8 @@ function draw2d(options={}){
     }
   }
   octx.putImageData(img, 0, 0);
-
-  const barW = 18, marginL = 58, marginT = 20, marginB = 62, barX = cssW - 28;
-  const mapX = marginL, mapY = marginT, mapW = Math.max(1, barX - mapX - 10), mapH = Math.max(1, cssH - marginT - marginB);
-  ctx.imageSmoothingEnabled = false;
-  let drawX, drawY, drawW, drawH, mapXY = null;
-  if((usePlotBasis(state.res) || isSkewedGrid(state.res)) && Array.isArray(sl.xVec) && Array.isArray(sl.yVec)){
-    const qxVec = plotVector(state.res, sl.xVec), qyVec = plotVector(state.res, sl.yVec);
-    const qxLen = normVec(qxVec), qyLen = normVec(qyVec);
-    if(qxLen > 1e-12 && qyLen > 1e-12){
-      const ex = qxVec.map(v => v / qxLen);
-      const xyDot = dot(qyVec, ex);
-      const qyPerp = Math.sqrt(Math.max(0, qyLen*qyLen - xyDot*xyDot));
-      if(qyPerp > 1e-12){
-        const corners = [[sl.xMin,sl.yMin],[sl.xMax,sl.yMin],[sl.xMax,sl.yMax],[sl.xMin,sl.yMax]];
-        let Xmin=Infinity, Xmax=-Infinity, Ymin=Infinity, Ymax=-Infinity;
-        for(const [xv,yv] of corners){
-          const X = qxLen*xv + xyDot*yv, Y = qyPerp*yv;
-          if(X < Xmin) Xmin = X; if(X > Xmax) Xmax = X;
-          if(Y < Ymin) Ymin = Y; if(Y > Ymax) Ymax = Y;
-        }
-        const spanXm = Math.max(1e-12, Xmax-Xmin), spanYm = Math.max(1e-12, Ymax-Ymin);
-        const qScale = 0.94 * Math.min(mapW / spanXm, mapH / spanYm);
-        drawW = Math.max(1, Math.floor(spanXm * qScale));
-        drawH = Math.max(1, Math.floor(spanYm * qScale));
-        drawX = mapX + Math.floor((mapW - drawW) / 2);
-        drawY = mapY + Math.floor((mapH - drawH) / 2);
-        const denX = Math.max(1, sl.cols - 1), denY = Math.max(1, sl.rows - 1);
-        const xA = (sl.xMax - sl.xMin) / denX, yA = (sl.yMax - sl.yMin) / denY, x0 = sl.xMin, y0 = sl.yMin;
-        const A = qScale * qxLen * xA, B = 0, C = qScale * xyDot * yA, D = -qScale * qyPerp * yA;
-        const E = drawX - qScale * Xmin + qScale * (qxLen*x0 + xyDot*y0);
-        const F = drawY + qScale * Ymax - qScale * (qyPerp*y0);
-        ctx.save();
-        ctx.transform(A,B,C,D,E,F);
-        ctx.drawImage(off, 0, 0);
-        ctx.restore();
-        mapXY = (xv,yv) => [drawX + qScale * (qxLen*xv + xyDot*yv - Xmin), drawY + qScale * (Ymax - qyPerp*yv)];
-        const p0=mapXY(sl.xMin,sl.yMin), p1=mapXY(sl.xMax,sl.yMin), p2=mapXY(sl.xMax,sl.yMax), p3=mapXY(sl.xMin,sl.yMax);
-        ctx.strokeStyle = "rgba(148,163,184,.8)";
-        ctx.beginPath();
-        ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.lineTo(p3[0],p3[1]); ctx.closePath(); ctx.stroke();
-      }
-    }
-  }
-  if(!mapXY){
-    const spanX = Math.max(1e-12, Math.abs(sl.xMax - sl.xMin));
-    const spanY = Math.max(1e-12, Math.abs(sl.yMax - sl.yMin));
-    const scale = 0.94 * Math.min(mapW / spanX, mapH / spanY);
-    drawW = Math.max(1, Math.floor(spanX * scale));
-    drawH = Math.max(1, Math.floor(spanY * scale));
-    drawX = mapX + Math.floor((mapW - drawW) / 2);
-    drawY = mapY + Math.floor((mapH - drawH) / 2);
-    ctx.save();
-    ctx.translate(drawX, drawY + drawH);
-    ctx.scale(drawW / Math.max(1, sl.cols), -drawH / Math.max(1, sl.rows));
-    ctx.drawImage(off, 0, 0);
-    ctx.restore();
-    ctx.strokeStyle = "rgba(148,163,184,.8)";
-    ctx.strokeRect(drawX + .5, drawY + .5, drawW - 1, drawH - 1);
-    const xDen = sl.xMax - sl.xMin || 1, yDen = sl.yMax - sl.yMin || 1;
-    mapXY = (xv,yv) => [drawX + (xv - sl.xMin) / xDen * drawW, drawY + drawH - (yv - sl.yMin) / yDen * drawH];
-  }
-
-  drawAxes(ctx, sl, drawX, drawY, drawW, drawH, cssH, mapXY);
-  drawColorbar(ctx, stops, levels, stats, barX, 20, barW, cssH - 40);
+  state.lastSlice = {slice:sl, mode, transformed:stats, levels, stops};
+  paint2d();
 
   const validText = sl.type !== "axis" ? ` | valid=${sl.valid}/${sl.rows*sl.cols}` : "";
   const sampleText = sl.decimated ? ` | sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols} (${sl.strides.join("x")})` : "";
@@ -5209,7 +5235,84 @@ function draw2d(options={}){
     $("levelMax").value = fmt(levels.max, 7);
   }
   updateSliceValue(sl);
-  state.lastSlice = {slice:sl, mode, transformed:stats, levels};
+}
+
+// Draws the last computed slice image with the current zoom and pan; cheap
+// enough to run on every wheel or drag event.
+function paint2d(){
+  const {ctx, cssW, cssH} = prepareHeatmapCanvas();
+  const last = state.lastSlice;
+  if(!state.res || !last) return;
+  const {slice:sl, levels, transformed:stats, stops} = last;
+  const off = state.offscreen;
+  const layout = slice2dLayout(sl, cssW, cssH);
+  state.view2d = layout.view;
+  last.layout = layout;
+  const area = layout.area, t = layout.imageTransform;
+  ctx.imageSmoothingEnabled = false;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(area.x, area.y, area.w, area.h);
+  ctx.clip();
+  ctx.save();
+  ctx.transform(t[0], t[1], t[2], t[3], t[4], t[5]);
+  ctx.drawImage(off, 0, 0);
+  ctx.restore();
+  ctx.strokeStyle = "rgba(148,163,184,.8)";
+  ctx.beginPath();
+  layout.outline.forEach((pt, i) => i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1]));
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+
+  drawAxes(ctx, sl, layout, cssH);
+  drawColorbar(ctx, stops, levels, stats, cssW - 28, 20, 18, cssH - 40);
+}
+
+// ---- 2-D zoom and pan
+function view2dArea(){
+  const last = state.lastSlice;
+  return last && last.layout ? last.layout : null;
+}
+
+function clampView2d(v){
+  const lim = v.zoom / 2;
+  return {key:v.key, zoom:v.zoom, panX:clamp(v.panX, -lim, lim), panY:clamp(v.panY, -lim, lim)};
+}
+
+// Zooms by factor keeping the canvas point (X, Y) in place.
+function zoom2dAt(factor, X, Y){
+  const layout = view2dArea();
+  if(!layout) return;
+  const v = layout.view, area = layout.area;
+  const z = clamp(v.zoom * factor, 1, 64);
+  if(z === v.zoom) return;
+  if(z <= 1){
+    state.view2d = {key:v.key, zoom:1, panX:0, panY:0};
+  }else{
+    const cx = area.x + area.w / 2, cy = area.y + area.h / 2;
+    const bx = (X - cx - v.panX * area.w) / v.zoom, by = (Y - cy - v.panY * area.h) / v.zoom;
+    state.view2d = clampView2d({key:v.key, zoom:z, panX:(X - cx - z * bx) / area.w, panY:(Y - cy - z * by) / area.h});
+  }
+  paint2d();
+}
+
+function zoom2dCenter(factor){
+  const layout = view2dArea();
+  if(!layout) return;
+  zoom2dAt(factor, layout.area.x + layout.area.w / 2, layout.area.y + layout.area.h / 2);
+}
+
+function resetZoom2d(){
+  if(state.view2d) state.view2d = {key:state.view2d.key, zoom:1, panX:0, panY:0};
+  paint2d();
+}
+
+function pointInMapArea(pt){
+  const layout = view2dArea();
+  if(!layout || !pt) return false;
+  const a = layout.area;
+  return pt.x >= a.x && pt.x <= a.x + a.w && pt.y >= a.y && pt.y <= a.y + a.h;
 }
 
 // Distribution of the shown slice values over the colour-bar range, with the
@@ -5258,39 +5361,56 @@ function drawLevelHistogram(hist, levels){
   }
 }
 
-function drawAxes(ctx, sl, x, y, w, h, cssH, mapXY=null){
+function niceTicks(min, max, count=7){
+  const out = [];
+  if(!Number.isFinite(min) || !Number.isFinite(max)) return out;
+  const lo = Math.min(min,max), hi = Math.max(min,max), span = hi - lo || 1;
+  const raw = span / Math.max(1, count - 1);
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1,2,5,10].map(m => m * pow).find(s => raw <= s) || raw;
+  const start = Math.ceil(lo / step - 1e-9) * step;
+  for(let v=start; v<=hi + step*1e-9; v+=step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  return out;
+}
+
+// Tick positions and labels for the visible part of the slice: x ticks along
+// the lowest visible row, y ticks along the leftmost visible column.
+function slice2dTicks(sl, layout){
+  const {area, ext} = layout;
+  const corners = [[area.x, area.y], [area.x + area.w, area.y], [area.x, area.y + area.h], [area.x + area.w, area.y + area.h]].map(([X, Y]) => layout.toSlice(X, Y));
+  const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
+  const visX = [Math.max(sl.xMin, Math.min(...xs)), Math.min(sl.xMax, Math.max(...xs))];
+  const visY = [Math.max(sl.yMin, Math.min(...ys)), Math.min(sl.yMax, Math.max(...ys))];
+  const bottom = layout.toSlice(area.x + area.w / 2, area.y + area.h)[1];
+  const yEdge = clamp(Math.max(ext.y0, bottom), ext.y0, ext.y1);
+  const left = Math.max(...[visY[0], visY[1]].map(yv => layout.toSliceXAtLeft(yv)));
+  const xEdge = clamp(Math.max(ext.x0, left), ext.x0, ext.x1);
+  const inside = (p, tol=1) => p[0] >= area.x - tol && p[0] <= area.x + area.w + tol && p[1] >= area.y - tol && p[1] <= area.y + area.h + tol;
+  const x = niceTicks(visX[0], visX[1]).map(v => ({v, p:layout.toCanvas(v, yEdge)})).filter(t => inside(t.p));
+  const y = niceTicks(visY[0], visY[1]).map(v => ({v, p:layout.toCanvas(xEdge, v)})).filter(t => inside(t.p));
+  const box = layout.imageBox;
+  const bx0 = Math.max(area.x, box.x0), bx1 = Math.min(area.x + area.w, box.x1);
+  const by0 = Math.max(area.y, box.y0), by1 = Math.min(area.y + area.h, box.y1);
+  return {x, y, xLabelAt:[bx0 + Math.max(4, (bx1 - bx0) / 2 - 8), by1 + 38], yLabelAt:[Math.max(14, bx0 - 47), by0 + (by1 - by0) / 2 + 12]};
+}
+
+function drawAxes(ctx, sl, layout, cssH){
   const tax = themePlot();
   ctx.fillStyle = tax.canvasText;
   ctx.strokeStyle = tax.axisStroke;
   ctx.font = "11px Consolas";
-  function ticks(min, max, count=7){
-    const out = [];
-    if(!Number.isFinite(min) || !Number.isFinite(max)) return out;
-    const lo = Math.min(min,max), hi = Math.max(min,max), span = hi - lo || 1;
-    const raw = span / Math.max(1, count - 1);
-    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
-    const step = [1,2,5,10].map(m => m * pow).find(s => raw <= s) || raw;
-    const start = Math.ceil(lo / step) * step;
-    for(let v=start; v<=hi + step*0.25; v+=step) out.push(v);
-    return out;
+  const ticks = slice2dTicks(sl, layout);
+  for(const t of ticks.x){
+    ctx.beginPath(); ctx.moveTo(t.p[0], t.p[1]); ctx.lineTo(t.p[0], t.p[1]+5); ctx.stroke();
+    ctx.fillText(fmt(t.v,2), t.p[0] - 14, Math.min(cssH - 24, t.p[1]+18));
   }
-  const mapper = mapXY || ((xv,yv) => {
-    const xDen = sl.xMax - sl.xMin || 1, yDen = sl.yMax - sl.yMin || 1;
-    return [x + (xv - sl.xMin) / xDen * w, y + h - (yv - sl.yMin) / yDen * h];
-  });
-  for(const t of ticks(sl.xMin, sl.xMax)){
-    const p = mapper(t, sl.yMin);
-    ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0], p[1]+5); ctx.stroke();
-    ctx.fillText(fmt(t,2), p[0] - 14, Math.min(cssH - 24, p[1]+18));
+  for(const t of ticks.y){
+    ctx.beginPath(); ctx.moveTo(t.p[0]-5, t.p[1]); ctx.lineTo(t.p[0], t.p[1]); ctx.stroke();
+    ctx.fillText(fmt(t.v,2), Math.max(4, t.p[0] - 48), t.p[1] + 4);
   }
-  for(const t of ticks(sl.yMin, sl.yMax)){
-    const p = mapper(sl.xMin, t);
-    ctx.beginPath(); ctx.moveTo(p[0]-5, p[1]); ctx.lineTo(p[0], p[1]); ctx.stroke();
-    ctx.fillText(fmt(t,2), Math.max(4, p[0] - 48), p[1] + 4);
-  }
-  ctx.fillText(sl.xLabel, x + Math.max(4, Math.floor(w/2) - 8), Math.min(cssH - 8, y + h + 38));
+  ctx.fillText(sl.xLabel, ticks.xLabelAt[0], Math.min(cssH - 8, ticks.xLabelAt[1]));
   ctx.save();
-  ctx.translate(Math.max(14, x - 47), y + Math.floor(h/2) + 12);
+  ctx.translate(ticks.yLabelAt[0], ticks.yLabelAt[1]);
   ctx.rotate(-Math.PI/2);
   ctx.fillText(sl.yLabel, 0, 0);
   ctx.restore();
@@ -5328,13 +5448,22 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   ctx.lineWidth = 1;
   ctx.strokeStyle = tb.frame;
   ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
-  ctx.fillStyle = tb.canvasText;
   ctx.font = "11px Consolas";
-  ctx.fillText(b.rawMax.toExponential(2), x - 82, y + 10);
-  ctx.fillText(b.rawMin.toExponential(2), x - 82, y + h - 2);
+  // A zoomed map can reach under the labels, so each gets a backdrop.
+  const label = (text, lx, ly) => {
+    const w = ctx.measureText(text).width;
+    ctx.fillStyle = tb.bg;
+    ctx.globalAlpha = 0.8;
+    ctx.fillRect(lx - 2, ly - 10, w + 4, 13);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = tb.canvasText;
+    ctx.fillText(text, lx, ly);
+  };
+  label(b.rawMax.toExponential(2), x - 82, y + 10);
+  label(b.rawMin.toExponential(2), x - 82, y + h - 2);
   // Window labels only where they do not sit on the range labels.
-  if(yMax - y > 14) ctx.fillText(b.dispMax.toExponential(2), x - 118, Math.max(y + 20, yMax - 4));
-  if(y + h - yMin > 14) ctx.fillText(b.dispMin.toExponential(2), x - 118, Math.min(y + h - 4, yMin + 12));
+  if(yMax - y > 14) label(b.dispMax.toExponential(2), x - 118, Math.max(y + 20, yMax - 4));
+  if(y + h - yMin > 14) label(b.dispMin.toExponential(2), x - 118, Math.min(y + h - 4, yMin + 12));
   state.lastBar = b;
 }
 
@@ -6977,6 +7106,16 @@ function bind(){
   $("heatmap").addEventListener("pointermove", onHeatmapPointerMove);
   $("heatmap").addEventListener("pointerup", onHeatmapPointerUp);
   $("heatmap").addEventListener("pointercancel", onHeatmapPointerUp);
+  $("heatmap").addEventListener("wheel", ev => {
+    const pt = canvasPoint(ev);
+    if(!state.res || !pointInMapArea(pt)) return;
+    ev.preventDefault();
+    zoom2dAt(Math.pow(1.0015, -ev.deltaY), pt.x, pt.y);
+  }, {passive:false});
+  $("heatmap").addEventListener("dblclick", ev => { if(pointInMapArea(canvasPoint(ev))) resetZoom2d(); });
+  $("mapZoomIn").addEventListener("click", () => zoom2dCenter(1.4));
+  $("mapZoomOut").addEventListener("click", () => zoom2dCenter(1 / 1.4));
+  $("mapZoomReset").addEventListener("click", resetZoom2d);
   $("planeApply").addEventListener("click", () => { finishSliceMoveCameraLock(); applyPlaneInputs(); draw2d(); scheduleRender3d(); });
   $("planeReset").addEventListener("click", () => { finishSliceMoveCameraLock(); resetPlaneState(); draw2d(); scheduleRender3d(); });
   $("planeMove").addEventListener("input", () => {
