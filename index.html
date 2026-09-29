@@ -636,6 +636,10 @@ const state = {
   cacheDbPromise:null,
   indexedWorkerUrl:null,
   cameras:{plane:null, iso:null},
+  view:null,
+  cmp:null,
+  cmpAligned:null,
+  cmpFit:null,
   view2d:null,
   pan2d:null,
   paintTransparent:false,
@@ -731,7 +735,7 @@ function cacheBaseFromResult(res){
     "file","header","skipped","rows","filled","format","coordKind","shape",
     "h","k","l","I","rawMin","rawMax","dataKind","Bq","Bp","cellDeg","basisSource",
     "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous",
-    "projectionW","hklAxisLabels","maskedVoxels","gapPadding"
+    "projectionW","hklAxisLabels","maskedVoxels","gapPadding","sigma"
   ];
   const base = {};
   for(const key of keys){
@@ -756,6 +760,7 @@ function restoreCachedResult(record){
   base.h = toFloat64View(base.h);
   base.k = toFloat64View(base.k);
   base.l = toFloat64View(base.l);
+  if(base.sigma) base.sigma = toFloat64View(base.sigma);
   base.shape = Array.from(base.shape).map(v => Math.floor(Number(v))).filter(v => v > 0);
   if(base.shape.length < 3) return null;
   base.fromCache = true;
@@ -1082,6 +1087,7 @@ function dataKindForAxes(dataKind, coordKind, shape){
 }
 
 function valueLabel(res=state.res){
+  if(res && res.valueName) return res.valueName;
   const code = res && res.dataKind && res.dataKind.code;
   if(code === "delta_pdf") return "Delta-PDF";
   if(code === "scattering_density") return "Density";
@@ -1090,7 +1096,8 @@ function valueLabel(res=state.res){
 }
 
 function valueColumnName(res=state.res){
-  return valueLabel(res).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value";
+  const name = {"\u03c3":"sigma", "I/\u03c3":"i_over_sigma"}[valueLabel(res)] || valueLabel(res);
+  return name.toLowerCase().replace(/\u2212/g, "minus").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value";
 }
 
 function canonicalAxisLabel(name){
@@ -1625,6 +1632,11 @@ function looksLikeHklList(text){
 function hklListValue(nums){
   const n = nums.length;
   return n >= 5 && (n - 2) % 3 === 0 ? nums[n - 2] : nums[n - 1];
+}
+
+function hklListSigma(nums){
+  const n = nums.length;
+  return n >= 5 && (n - 2) % 3 === 0 ? nums[n - 1] : NaN;
 }
 
 function looksLikeIndexed3dRows(text){
@@ -2668,7 +2680,8 @@ async function buildStreamedPlainResult(file, sampleText, header, skipped, comme
   const lMap = new Map(lAxis.map((v,i) => [numKey(v), i]));
   const I = new Float64Array(total);
   I.fill(NaN);
-  let firstNumeric = true, filled = 0;
+  const sigma = options.hklList ? new Float64Array(total).fill(NaN) : null;
+  let firstNumeric = true, filled = 0, sigmaSeen = false;
   await forEachFileLine(file, line => {
     const s = line.trim();
     if(!s || s[0] === "#" || s[0] === "!" || s[0] === ";") return;
@@ -2687,9 +2700,14 @@ async function buildStreamedPlainResult(file, sampleText, header, skipped, comme
     const p = idx3([nH,nK,nL], a, b, c);
     if(!Number.isFinite(I[p])) filled++;
     I[p] = val;
+    if(sigma){
+      const e = hklListSigma(nums);
+      sigma[p] = e;
+      if(Number.isFinite(e)) sigmaSeen = true;
+    }
   }, {progress, phase:"Filling 4-column grid"});
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", options.hklList ? "hkl list" : "calculator dat");
-  return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:options.hklList ? "h k l I sigma list stream" : "4-column text stream", coordKind, shape:[nH,nK,nL], h:Float64Array.from(hAxis), k:Float64Array.from(kAxis), l:Float64Array.from(lAxis), I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta});
+  return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:options.hklList ? "h k l I sigma list stream" : "4-column text stream", coordKind, shape:[nH,nK,nL], h:Float64Array.from(hAxis), k:Float64Array.from(kAxis), l:Float64Array.from(lAxis), I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta, ...(sigmaSeen ? {sigma} : {})});
 }
 
 async function buildStreamedTriplet2dResult(file, sampleText, header, skipped, commentText, stats, meta, progress=null){
@@ -3333,6 +3351,11 @@ function parseCommonScatteringH5(h5file, name){
   shape = normalizeShape3(shape, rawFlat.length);
   shape = assertVolumeFits(shape, "DiffuseDevelopers unified HDF5 grid").dims;
   const values = cOrder ? rawFlat : reorderFortranCube(rawFlat, diskShape, shape);
+  // Optional uncertainties in the same layout; calculated files store zeros.
+  const sigmaObj = h5Lookup(h5file, "scattering/data/sigmas");
+  const sigmaRaw = sigmaObj ? flatNumericArray(h5Value(sigmaObj)) : null;
+  const sigma = sigmaRaw && sigmaRaw.length === rawFlat.length && sigmaRaw.some(v => v > 0)
+    ? (cOrder ? sigmaRaw : reorderFortranCube(sigmaRaw, diskShape, shape)) : null;
   const content = h5Text(h5AttrValue(dataGroup, "content"));
   const radiation = h5Text(h5AttrValue(dataGroup, "radiation"));
   const experiment = h5Text(h5AttrValue(dataGroup, "data_type_experiment"));
@@ -3373,7 +3396,7 @@ function parseCommonScatteringH5(h5file, name){
     coordKind,
     null,
     0,
-    {...meta, ...gridMeta, dataKind, ...(axisLabelsMeta ? {axisLabels:axisLabelsMeta} : {})}
+    {...meta, ...gridMeta, dataKind, ...(axisLabelsMeta ? {axisLabels:axisLabelsMeta} : {}), ...(sigma ? {sigma} : {})}
   );
   result.header = {points:values.length, sections:1, scale:null, offset:null};
   result.h5 = {space, content, radiation, experiment, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary, diskOrder:cOrder ? "[H,K,L]" : "[L,K,H]"};
@@ -3486,6 +3509,27 @@ function projectedBq(Bq, res){
   return validMatrix3(Bq) && validMatrix3(res && res.projectionW) ? res.projectionW.map(row => mul(row, Bq)) : Bq;
 }
 
+// Uncertainty next to a NeXus signal: Mantid's errors_squared or NXdata errors.
+function siblingSigma(h5file, signalPath, count){
+  const group = signalPath.includes("/") ? signalPath.slice(0, signalPath.lastIndexOf("/")) : "";
+  const at = name => h5Lookup(h5file, group ? `${group}/${name}` : name);
+  for(const [name, squared] of [["errors_squared", true], ["errors", false]]){
+    const obj = at(name);
+    if(!obj) continue;
+    const e = flatNumericArray(h5Value(obj));
+    if(e.length !== count) continue;
+    const sigma = new Float64Array(count);
+    let any = false;
+    for(let i=0;i<count;i++){
+      const v = squared ? Math.sqrt(e[i]) : Math.abs(e[i]);
+      sigma[i] = Number.isFinite(v) ? v : NaN;
+      if(sigma[i] > 0) any = true;
+    }
+    return any ? sigma : null;
+  }
+  return null;
+}
+
 // Mantid stores a mask next to the signal (nonzero = masked).
 function applySiblingMask(h5file, signalPath, values){
   const group = signalPath.includes("/") ? signalPath.slice(0, signalPath.lastIndexOf("/")) : "";
@@ -3546,15 +3590,19 @@ async function parseNexusFile(file){
     const signalValue = h5Value(signalObj);
     let values = flatNumericArray(signalValue);
     const diskShape = normalizeShape3(h5Shape(signalObj, signalValue), values.length);
+    const meta0 = {};
     const axesAttr = h5Text(h5AttrValue(signalObj, "axes"));
     const diskAxes = axesAttr.split(/[:\s,]+/).map(s => s.trim()).filter(Boolean);
     const maskedVoxels = applySiblingMask(h5file, signalPath, values);
+    let sigma = siblingSigma(h5file, signalPath, values.length);
     let shape = diskShape, axesNames = diskAxes;
     const perm = nexusDimensionOrder(diskAxes);
     if(perm){
       ({values, shape} = permuteCube(values, diskShape, perm));
+      if(sigma) sigma = permuteCube(sigma, diskShape, perm).values;
       axesNames = perm.map(d => diskAxes[d]).filter(Boolean);
     }
+    if(sigma) meta0.sigma = sigma;
     shape = assertVolumeFits(shape, "NeXus signal grid").dims;
     const [nH,nK,nL] = shape;
     const axisPaths = [0,1,2].map(i => nexusAxisCandidates(i, axesNames));
@@ -3567,7 +3615,7 @@ async function parseNexusFile(file){
       coordHint.push(h5Text(h5AttrValue(axisObj, "frame")), h5Text(h5AttrValue(axisObj, "units")), h5Text(h5AttrValue(axisObj, "long_name")));
     }
     const coordKind = inferCoordKind(file.name, coordHint.join(" "), "nexus");
-    const meta = readH5Basis(h5file);
+    const meta = Object.assign(readH5Basis(h5file), meta0);
     const projection = coordKind === "hkl" ? mantidProjection(axisObjs.map(obj => h5Text(h5AttrValue(obj, "long_name")))) : null;
     if(projection){
       meta.projectionW = projection.W;
@@ -3642,7 +3690,7 @@ async function parseFile(file, progress=null){
 function parse3dsDat(name, text, options={}){
   const lines = text.split(/\r?\n/);
   const pi=[], pj=[], pk=[], hs=[], ks=[], ls=[], vals=[];
-  const ph=[], plainK=[], plainL=[], plainVals=[];
+  const ph=[], plainK=[], plainL=[], plainVals=[], plainSig=[];
   const tx=[], ty=[], tv=[];
   const comments = [];
   let header = null, firstNumeric = true, skipped = 0, indexedRows = 0, plainRows = 0, amplitude = false;
@@ -3685,7 +3733,7 @@ function parse3dsDat(name, text, options={}){
     }else if(nums.length >= 4){
       const inten = hklListValue(nums);
       if(!Number.isFinite(inten)){ skipped++; continue; }
-      ph.push(nums[0]); plainK.push(nums[1]); plainL.push(nums[2]); plainVals.push(inten);
+      ph.push(nums[0]); plainK.push(nums[1]); plainL.push(nums[2]); plainVals.push(inten); plainSig.push(hklListSigma(nums));
       if(inten < rawMinPlain) rawMinPlain = inten; if(inten > rawMaxPlain) rawMaxPlain = inten;
       plainRows++;
     }else if(nums.length === 3){
@@ -3706,7 +3754,7 @@ function parse3dsDat(name, text, options={}){
   }
   if(plainRows > 0){
     const coordKind = inferCoordKind(name, commentText, options.hklList ? "hkl list" : "calculator dat");
-    return buildPlainResult(name, header, skipped, ph, plainK, plainL, plainVals, rawMinPlain, rawMaxPlain, coordKind, options.hklList ? "h k l I sigma list" : "4-column text", meta);
+    return buildPlainResult(name, header, skipped, ph, plainK, plainL, plainVals, rawMinPlain, rawMaxPlain, coordKind, options.hklList ? "h k l I sigma list" : "4-column text", meta, plainSig);
   }
   if(tv.length > 0){
     const coordKind = inferCoordKind(name, commentText, "3-column text");
@@ -3886,19 +3934,23 @@ function embedBlockGaps(base){
   const from = base.shape.slice();
   const shape = from.map((n, a) => embeds[a] ? embeds[a].full : n);
   const {total} = assertVolumeFits(shape, "Gap-padded grid");
-  const I = new Float64Array(total);
-  I.fill(NaN);
   const pos = embeds.map(e => e && e.positions);
-  for(let i=0;i<from[0];i++){
-    const pi = pos[0] ? pos[0][i] : i;
-    for(let j=0;j<from[1];j++){
-      const pj = pos[1] ? pos[1][j] : j;
-      const src = (i * from[1] + j) * from[2], dst = (pi * shape[1] + pj) * shape[2];
-      if(pos[2]) for(let k=0;k<from[2];k++) I[dst + pos[2][k]] = base.I[src + k];
-      else I.set(base.I.subarray(src, src + from[2]), dst);
+  const pad = source => {
+    const out = new Float64Array(total);
+    out.fill(NaN);
+    for(let i=0;i<from[0];i++){
+      const pi = pos[0] ? pos[0][i] : i;
+      for(let j=0;j<from[1];j++){
+        const pj = pos[1] ? pos[1][j] : j;
+        const src = (i * from[1] + j) * from[2], dst = (pi * shape[1] + pj) * shape[2];
+        if(pos[2]) for(let k=0;k<from[2];k++) out[dst + pos[2][k]] = source[src + k];
+        else out.set(source.subarray(src, src + from[2]), dst);
+      }
     }
-  }
-  base.I = I;
+    return out;
+  };
+  base.I = pad(base.I);
+  if(base.sigma) base.sigma = pad(base.sigma);
   base.shape = shape;
   ["h", "k", "l"].forEach((name, a) => {
     if(embeds[a]) base[name] = regularAxis(embeds[a].full, embeds[a].start, embeds[a].step);
@@ -3953,6 +4005,43 @@ function sourceValues(res){
   return out;
 }
 
+// The volume on display: the data itself, or a view derived from it -
+// uncertainty, signal to noise, or a comparison with a second dataset.
+function viewRes(){
+  return state.view || state.res;
+}
+
+const VIEW_NAMES = {
+  sigma:"\u03c3", snr:"I/\u03c3",
+  cmp:"Comparison", diff:"Data \u2212 comparison", ratio:"Data / comparison", resid:"(Data \u2212 comparison)/\u03c3"
+};
+const SIGNED_VIEWS = new Set(["diff", "resid"]);
+
+// Builds the volume for a Show mode on the data grid; null for the data itself.
+function buildView(mode, res=state.res){
+  if(!res || !mode || mode === "data") return null;
+  const n = res.I.length, I = res.I, sig = res.sigma;
+  const cmp = state.cmpAligned, fit = state.cmpFit || {scale:1, offset:0};
+  const needs = {sigma:sig, snr:sig, cmp, diff:cmp, ratio:cmp, resid:cmp && sig};
+  if(!needs[mode]) return null;
+  const out = new Float64Array(n);
+  const model = i => fit.scale * cmp[i] + fit.offset;
+  for(let i=0;i<n;i++){
+    let v;
+    if(mode === "sigma") v = sig[i];
+    else if(mode === "snr") v = sig[i] > 0 ? I[i] / sig[i] : NaN;
+    else if(mode === "cmp") v = model(i);
+    else if(mode === "diff") v = I[i] - model(i);
+    else if(mode === "ratio"){ const m = model(i); v = m !== 0 ? I[i] / m : NaN; }
+    else v = sig[i] > 0 ? (I[i] - model(i)) / sig[i] : NaN;
+    out[i] = Number.isFinite(v) ? v : NaN;
+  }
+  const b = finiteBounds(out);
+  const view = {...res, I:out, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma:null, valueName:VIEW_NAMES[mode], viewMode:mode};
+  view.global = computeGlobalDisplayBounds(view);
+  return view;
+}
+
 // Reinterprets the value order between the first and last axes, for files
 // whose disk layout could not be detected. Axis coordinates stay in place.
 function transposeFirstAndLastAxes(res){
@@ -3960,13 +4049,16 @@ function transposeFirstAndLastAxes(res){
   if(n0 !== n2) throw new Error("Swapping the data order needs equal first and last axis sizes.");
   const out = new Float64Array(res.I.length);
   const mask = res.zeroMask ? new Uint8Array(res.I.length) : null;
+  const sigma = res.sigma ? new Float64Array(res.I.length) : null;
   for(let i=0;i<n0;i++) for(let j=0;j<n1;j++) for(let k=0;k<n2;k++){
     const to = idx3(res.shape, k, j, i), from = idx3(res.shape, i, j, k);
     out[to] = res.I[from];
     if(mask) mask[to] = res.zeroMask[from];
+    if(sigma) sigma[to] = res.sigma[from];
   }
   res.I = out;
   if(mask) res.zeroMask = mask;
+  if(sigma) res.sigma = sigma;
   res.axisOrderSwapped = !res.axisOrderSwapped;
   return res;
 }
@@ -4212,7 +4304,7 @@ function uniqueSorted(values){
   return Array.from(map.values()).sort((a,b) => a - b);
 }
 
-function buildPlainResult(name, header, skipped, hs, ks, ls, vals, rawMin, rawMax, coordKind="hkl", format="4-column text", meta={}){
+function buildPlainResult(name, header, skipped, hs, ks, ls, vals, rawMin, rawMax, coordKind="hkl", format="4-column text", meta={}, sigmas=null){
   const hAxis = uniqueSorted(hs), kAxis = uniqueSorted(ks), lAxis = uniqueSorted(ls);
   const nH = hAxis.length, nK = kAxis.length, nL = lAxis.length;
   const {total} = assertVolumeFits([nH,nK,nL], "4-column grid");
@@ -4221,6 +4313,8 @@ function buildPlainResult(name, header, skipped, hs, ks, ls, vals, rawMin, rawMa
   const lMap = new Map(lAxis.map((v,i) => [numKey(v), i]));
   const I = new Float64Array(total);
   I.fill(NaN);
+  const hasSigma = sigmas && sigmas.some(Number.isFinite);
+  const sigma = hasSigma ? new Float64Array(total).fill(NaN) : null;
   let filled = 0;
   for(let n=0;n<vals.length;n++){
     const a = hMap.get(numKey(hs[n])), b = kMap.get(numKey(ks[n])), c = lMap.get(numKey(ls[n]));
@@ -4228,8 +4322,9 @@ function buildPlainResult(name, header, skipped, hs, ks, ls, vals, rawMin, rawMa
     const p = idx3([nH,nK,nL], a, b, c);
     if(!Number.isFinite(I[p])) filled++;
     I[p] = vals[n];
+    if(sigma) sigma[p] = sigmas[n];
   }
-  return finalizeResult({file:name, header, skipped, rows:vals.length, filled, format, coordKind, shape:[nH,nK,nL], h:Float64Array.from(hAxis), k:Float64Array.from(kAxis), l:Float64Array.from(lAxis), I, rawMin, rawMax, ...meta});
+  return finalizeResult({file:name, header, skipped, rows:vals.length, filled, format, coordKind, shape:[nH,nK,nL], h:Float64Array.from(hAxis), k:Float64Array.from(kAxis), l:Float64Array.from(lAxis), I, rawMin, rawMax, ...meta, ...(sigma ? {sigma} : {})});
 }
 
 function buildTriplet2dResult(name, header, skipped, xs, ys, vals, rawMin, rawMax, coordKind="q", meta={}){
