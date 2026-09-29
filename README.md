@@ -40,6 +40,9 @@ and slab-average slicing with linked 2-D and 3-D views.
   old text, Scatty VTK, unified files with Q axes) the cell converts the Cartesian Q
   grid to HKL, using the RMCProfile/Scatty frame (a along x, b in the xy-plane); Q stays
   available through the reciprocal basis, and **Restore File Cell** undoes the conversion.
+  **Cell from structure file** takes the parent cell from an `.rmc6f` configuration (the
+  supercell cell divided by the supercell dimensions) or from a unified structure `.h5`,
+  and applies it.
 - **Shown-volume limits**: crop the displayed volume per axis with dual-range sliders.
 - **Display controls**:
   - **Scales:** log10(value+1), log10, linear and signed-sqrt.

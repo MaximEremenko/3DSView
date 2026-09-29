@@ -88,3 +88,12 @@ realTest("PMN (halves) block grid is padded onto its regular lattice", PMN_HALVE
   // Between the first two H blocks there is no data.
   assert.ok(Number.isNaN(valueAt(res, closest(res.h, -4.8), 10, 10)));
 });
+
+const PMN_RMC6F = "E:/Projects/3DSCalculator/Examples/PMN_300k.rmc6f";
+
+realTest("PMN .rmc6f gives the parent cell (supercell / 40)", PMN_RMC6F, async file => {
+  const app = loadApp();
+  const {cell, supercell} = await app.context.structureFileCell(file);
+  assert.deepEqual(Array.from(supercell), [40, 40, 40]);
+  [4.052137, 4.052137, 4.052137, 90, 90, 90].forEach((v, i) => assertClose(cell[i], v, 1e-6, `cell ${i}`));
+});

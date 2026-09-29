@@ -257,6 +257,10 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
               <button id="cellApply" disabled>Apply Cell</button>
               <button id="cellRestore" class="alt" disabled>Restore File Cell</button>
             </div>
+            <div class="btns">
+              <button id="cellFromStructure" class="alt" disabled title="Parent cell from an .rmc6f configuration (supercell / dimensions) or a unified structure .h5">Cell from structure file</button>
+              <input id="structureFile" type="file" accept=".rmc6f,.h5,.hdf5" hidden>
+            </div>
             <div class="fine" id="cellInfo">Load reciprocal-space data to inspect or enter its unit cell.</div>
           </div>
         </details>
@@ -5824,6 +5828,7 @@ function syncControls(){
   $("swapAxes").disabled = !swappable;
   for(const id of CELL_INPUT_IDS) $(id).disabled = !cellAllowed;
   $("cellApply").disabled = !cellAllowed;
+  $("cellFromStructure").disabled = !cellAllowed;
   $("cellRestore").disabled = !cellAllowed;
   for(const id of ["axis","idx"]){
     $(id).disabled = !has || !axisMode;
@@ -5959,6 +5964,41 @@ function convertQGridToHkl(res, cellDeg){
   return res;
 }
 
+// Parent cell from an .rmc6f header: the supercell cell (or its lattice
+// vectors) divided by the supercell dimensions, as 3DSConvert reads it.
+function parseRmc6fCell(text){
+  let unitCells = null, cell = null, latticeRows = null;
+  const lines = String(text || "").split(/\r?\n/);
+  for(let n=0;n<lines.length;n++){
+    const line = lines[n];
+    if(/^\s*Supercell dimensions:/i.test(line)) unitCells = parseNumberList(line.split(":")[1]);
+    else if(/^\s*Cell \(Ang\/deg\):/i.test(line)) cell = parseNumberList(line.split(":")[1]);
+    else if(/^\s*Lattice vectors \(Ang\):/i.test(line)) latticeRows = [lines[n + 1], lines[n + 2], lines[n + 3]].map(parseNumberList);
+    else if(/^\s*Atoms/i.test(line)) break;
+  }
+  if((!cell || cell.length < 6) && latticeRows && latticeRows.every(r => r.length >= 3)){
+    const [a, b, c] = latticeRows.map(r => r.slice(0, 3));
+    const angle = (u, v) => Math.acos(clamp(dot(u, v) / (normVec(u) * normVec(v)), -1, 1)) * 180 / Math.PI;
+    cell = [normVec(a), normVec(b), normVec(c), angle(b, c), angle(a, c), angle(a, b)];
+  }
+  if(!cell || cell.length < 6) throw new Error('the .rmc6f header has no "Cell (Ang/deg)" or "Lattice vectors" lines.');
+  if(!unitCells || unitCells.length < 3 || unitCells.slice(0, 3).some(v => !(v > 0))) throw new Error('the .rmc6f header has no valid "Supercell dimensions" line.');
+  return {cell:[cell[0] / unitCells[0], cell[1] / unitCells[1], cell[2] / unitCells[2], cell[3], cell[4], cell[5]], supercell:unitCells.slice(0, 3)};
+}
+
+// Parent cell from a structure file: .rmc6f text, or a unified structure
+// HDF5 whose unit_cell_lengths already hold the parent cell.
+async function structureFileCell(file){
+  if(/\.rmc6f$/i.test(file.name) || !(await hasHdf5Signature(file))){
+    // The header sits at the top; large configurations need not be read.
+    return parseRmc6fCell(await file.slice(0, 65536).text());
+  }
+  if(!window.UnifiedH5 || typeof window.UnifiedH5.readStructure !== "function") throw new Error("the unified HDF5 helper is unavailable.");
+  const h5 = await ensureH5wasm();
+  const structure = window.UnifiedH5.readStructure(h5, new Uint8Array(await file.arrayBuffer()), file.name);
+  return {cell:[...structure.cellLengths.slice(0, 3), ...structure.cellAngles.slice(0, 3)].map(Number), supercell:Array.from(structure.unitCells)};
+}
+
 function populateCellInputs(cell){
   const vals = Array.isArray(cell) && cell.length >= 6 ? cell : ["","","","","",""];
   for(let i=0;i<CELL_INPUT_IDS.length;i++) $(CELL_INPUT_IDS[i]).value = vals[i] === "" ? "" : fmt(Number(vals[i]), 8);
@@ -5993,7 +6033,7 @@ function refreshAfterBasisChange(message){
   scheduleRender3d(0, true);
 }
 
-function applyManualCell(){
+function applyManualCell(source="manual unit cell"){
   if(!state.res) throw new Error("Load a data file before applying a unit cell.");
   if(isRealSpaceData(state.res) || !["hkl", "q"].includes(state.res.coordKind)) throw new Error("A reciprocal unit cell can only be applied to reciprocal-space data.");
   const raw = CELL_INPUT_IDS.map(id => String($(id).value).trim());
@@ -6005,9 +6045,10 @@ function applyManualCell(){
   if(state.res.coordKind === "q"){
     if($("coordMode").value !== "hkl"){
       convertQGridToHkl(state.res, vals);
+      state.res.basisSource = `${source}; Q converted to HKL, a along x`;
       populateCellInputs(state.res.cellDeg);
       $("coordMode").value = "auto";
-      refreshAfterBasisChange("Converted the Q grid to HKL with the entered cell (Cartesian Q with a along x, as written by RMCProfile and Scatty).");
+      refreshAfterBasisChange(`Converted the Q grid to HKL with the ${source} (Cartesian Q with a along x, as written by RMCProfile and Scatty).`);
       return;
     }
     // "Use HKL" declared the stored coordinates to be HKL already.
@@ -6018,9 +6059,9 @@ function applyManualCell(){
   state.res.Bq = projectedBq(basis.Bq, state.res);
   state.res.Bp = basis.Bp;
   state.res.cellDeg = basis.cellDeg;
-  state.res.basisSource = "manual unit cell";
+  state.res.basisSource = source;
   populateCellInputs(basis.cellDeg);
-  refreshAfterBasisChange("Applied manual unit cell and rebuilt reciprocal Q axes.");
+  refreshAfterBasisChange(`Applied the ${source} and rebuilt reciprocal Q axes.`);
 }
 
 function restoreFileCell(){
@@ -7136,6 +7177,20 @@ function bind(){
         : `Restored the assumed ${labels[0]}/${labels[2]} data order.`, "ok");
     }catch(err){
       status(`Axis swap failed: ${err.message}`, "err");
+    }
+  });
+  $("cellFromStructure").addEventListener("click", () => $("structureFile").click());
+  $("structureFile").addEventListener("change", async ev => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if(!file || !state.res) return;
+    try{
+      const {cell, supercell} = await structureFileCell(file);
+      populateCellInputs(cell);
+      const cells = supercell ? `, supercell ${supercell.join(" x ")}` : "";
+      applyManualCell(`parent cell of ${file.name}${cells}`);
+    }catch(err){
+      status(`Structure file ${file.name}: ${err.message}`, "err");
     }
   });
   $("cellRestore").addEventListener("click", () => {

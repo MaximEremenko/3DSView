@@ -356,3 +356,40 @@ test("shown-volume limits read back from 9-decimal fields keep the end points", 
   const shown = [axis[0], axis[40]].map(v => Number(v.toFixed(9)));
   assert.deepEqual(Array.from(app.context.gridRangeForLimits(axis, shown[0], shown[1])), [0, 40]);
 });
+
+test("parent cell from an .rmc6f header is the supercell over its dimensions", async () => {
+  const app = loadApp();
+  const header = [
+    "(Version 6f format configuration file)",
+    "Number of atoms:                     320000",
+    "Supercell dimensions:                40  40  20",
+    "Cell (Ang/deg):   162.085480  162.085480  121.4   90.000000   90.000000   120.000000",
+    "Lattice vectors (Ang):",
+    "  162.085480 0 0", "  0 162.085480 0", "  0 0 121.4",
+    "Atoms:"
+  ].join("\n");
+  const got = await app.context.structureFileCell(new File([header], "PMN_300k.rmc6f"));
+  [4.052137, 4.052137, 6.07, 90, 90, 120].forEach((v, i) => assertClose(got.cell[i], v, 1e-9, `cell ${i}`));
+  assert.deepEqual(Array.from(got.supercell), [40, 40, 20]);
+  // Without a Cell line the lattice vectors are used.
+  const vectorsOnly = header.replace(/^Cell .*$/m, "");
+  const again = await app.context.structureFileCell(new File([vectorsOnly], "vectors.rmc6f"));
+  [4.052137, 4.052137, 6.07, 90, 90, 90].forEach((v, i) => assertClose(again.cell[i], v, 1e-6, `cell from vectors ${i}`));
+});
+
+test("parent cell from a unified structure file is used directly", async () => {
+  const app = loadApp();
+  const file = await h5File(app, "structure.h5", f => {
+    const d = f.create_group("entry").create_group("data");
+    d.create_dataset({name:"number_of_atoms", data:[2], shape:[1], dtype:"<i"});
+    d.create_dataset({name:"unit_cell_lengths", data:[5.64, 5.64, 5.64], shape:[3], dtype:"<d"});
+    d.create_dataset({name:"unit_cell_angles", data:[90, 90, 90], shape:[3], dtype:"<d"});
+    d.create_dataset({name:"unit_cells", data:[2, 2, 2], shape:[3], dtype:"<i"});
+    d.create_dataset({name:"atom_position", data:new Float64Array(6), shape:[2, 3], dtype:"<d"});
+    d.create_dataset({name:"atom_type", data:[1, 2], shape:[2], dtype:"<i"});
+    d.create_dataset({name:"types_names", data:"Na;Cl"});
+  });
+  const got = await app.context.structureFileCell(file);
+  [5.64, 5.64, 5.64, 90, 90, 90].forEach((v, i) => assertClose(got.cell[i], v, 1e-12, `cell ${i}`));
+  assert.deepEqual(Array.from(got.supercell), [2, 2, 2]);
+});
