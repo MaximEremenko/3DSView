@@ -62,6 +62,10 @@ and slab-average slicing with linked 2-D and 3-D views.
   - **Views:** Show offers the scaled comparison, data − comparison, data / comparison and
     (data − comparison)/σ. The scaled comparison shares the data's colour levels, and
     <kbd>C</kbd> flips between the two.
+  - **Split view:** *Data | comparison, split* draws the data below the diagonal of the
+    view and the scaled comparison above it, on one colour scale. The cut follows the
+    view, so it stays across the screen when zoomed. The readout gives both values, and
+    profiles include the comparison.
   - **Run folders:** an experimental file `X.dat` is paired with `X_calc.dat`, and
     RMCProfile's amplitude files are listed alongside. An input grid that holds one value
     everywhere (a calculation-only run) gives way to the calculation, and an `.rmc6f`

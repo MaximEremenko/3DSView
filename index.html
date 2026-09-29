@@ -749,6 +749,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <select id="showMode" disabled title="Values shown: the data, or a volume derived from it">
           <option value="data" selected>Data</option>
           <option value="cmp">Comparison (scaled)</option>
+          <option value="split">Data | comparison, split</option>
           <option value="diff">Data &minus; comparison</option>
           <option value="ratio">Data / comparison</option>
           <option value="resid">(Data &minus; comparison)/&sigma;</option>
@@ -6558,7 +6559,7 @@ function buildAvgVolSlice(res, resOverride=null, include3d=true, options={}){
 
 function currentSlice(resOverride=null, axisCellCap=MAX_AXIS_SLICE_CELLS, include3d=true, options={}){
   if(!state.res) return null;
-  const res = viewRes();
+  const res = options.res || viewRes();
   if($("sliceMode").value === "plane") return buildNormalPlaneSlice(res, resOverride, include3d);
   if($("sliceMode").value === "avgvol") return buildAvgVolSlice(res, resOverride, include3d, options);
   return buildAxisSlice(res, $("axis").value, Number($("idx").value), axisCellCap, include3d);
@@ -7147,6 +7148,16 @@ function draw2d(options={}){
   }
   octx.putImageData(img, 0, 0);
   state.lastSlice = {slice:sl, mode, transformed:stats, levels, stops};
+  state.splitImage = null;
+  if(splitOn() && !triOn()){
+    const cv = splitCmpView();
+    const csl = cv ? currentSlice(resOverride, axisCap, false, {fast, res:cv}) : null;
+    if(csl && csl.rows === sl.rows && csl.cols === sl.cols){
+      const rec = state.splitRec || (state.splitRec = {off:document.createElement("canvas")});
+      fillSliceImage(rec, csl, sliceTransformed(csl, mode).values, levels, lut, empty);
+      state.splitImage = {off:rec.off, slice:csl};
+    }
+  }
   if(triOn()) buildTriPanels(sl, mode, levels, lut, empty, fast);
   paint2d();
   if(!fast){
@@ -7196,21 +7207,83 @@ function paint2dOn(ctx, cssW, cssH){
   ctx.beginPath();
   ctx.rect(area.x, area.y, area.w, area.h);
   ctx.clip();
-  ctx.save();
-  ctx.transform(t[0], t[1], t[2], t[3], t[4], t[5]);
-  ctx.drawImage(off, 0, 0);
-  ctx.restore();
+  if(splitOn() && state.splitImage) paintSplitHalves(ctx, layout, off, state.splitImage.off);
+  else{
+    ctx.save();
+    ctx.transform(t[0], t[1], t[2], t[3], t[4], t[5]);
+    ctx.drawImage(off, 0, 0);
+    ctx.restore();
+  }
   ctx.strokeStyle = "rgba(148,163,184,.8)";
   ctx.beginPath();
   layout.outline.forEach((pt, i) => i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1]));
   ctx.closePath();
   ctx.stroke();
   ctx.restore();
+  if(splitOn() && state.splitImage) paintSplitTags(ctx, layout.area);
 
   drawAxes(ctx, sl, layout, cssH);
   drawVectorOverlay(ctx, layout, sl);
   drawCutOverlay(ctx, layout, sl);
   drawColorbar(ctx, stops, levels, stats, cssW - 28, 20, 18, cssH - 40);
+}
+
+// ---- Split view: the data below the diagonal of the view, the scaled
+// comparison above it, on one colour scale. The cut follows the view, so it
+// stays across the screen when zoomed.
+
+function splitOn(){
+  return state.showMode === "split" && comparisonReady();
+}
+
+// The scaled comparison as a volume on the data grid, kept while the fit
+// and the alignment stay the same.
+function splitCmpView(){
+  if(!comparisonReady()) return null;
+  const c = state.splitCmp;
+  if(c && c.res === state.res && c.aligned === state.cmpAligned && c.fit === state.cmpFit) return c.view;
+  const view = buildView("cmp");
+  state.splitCmp = {res:state.res, aligned:state.cmpAligned, fit:state.cmpFit, view};
+  return view;
+}
+
+function paintSplitHalves(ctx, layout, dataImage, cmpImage){
+  const a = layout.area, t = layout.imageTransform;
+  const TL = [a.x, a.y], TR = [a.x + a.w, a.y], BR = [a.x + a.w, a.y + a.h], BL = [a.x, a.y + a.h];
+  for(const [corners, image] of [[[TL, BL, BR], dataImage], [[TL, TR, BR], cmpImage]]){
+    ctx.save();
+    ctx.beginPath();
+    corners.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+    ctx.closePath();
+    ctx.clip();
+    ctx.transform(t[0], t[1], t[2], t[3], t[4], t[5]);
+    ctx.drawImage(image, 0, 0);
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(TL[0], TL[1]);
+  ctx.lineTo(BR[0], BR[1]);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = themePlot().bg;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function paintSplitTags(ctx, a){
+  const tc = themePlot();
+  const tag = (text, x, y, alignRight) => {
+    ctx.font = "11px Consolas";
+    const w = ctx.measureText(text).width + 10;
+    const left = alignRight ? x - w : x;
+    ctx.fillStyle = isLightTheme() ? "rgba(248,250,252,.88)" : "rgba(15,23,42,.8)";
+    ctx.fillRect(left, y - 12, w, 17);
+    ctx.fillStyle = tc.canvasText;
+    ctx.fillText(text, left + 5, y);
+  };
+  tag("data", a.x + 6, a.y + a.h - 8, false);
+  // Below the top of the colour bar, whose labels reach over the map's edge.
+  tag("comparison (scaled)", a.x + a.w - 6, a.y + 40, true);
 }
 
 // ---- Three linked slices: HK, HL and KL through one point
@@ -7578,6 +7651,10 @@ function sliceReadout(pt, last=state.lastSlice){
       : res.I[idx3(res.shape, idx[0], idx[1], idx[2])];
     if(sl.thickness) out.pooled = [thickCount(res, sl.fixedAxis, sl.fixedIndex, idx[others[0]], idx[others[1]], range[0], range[1], sl.thickness),
       Math.min(range[1], sl.fixedIndex + sl.thickness) - Math.max(range[0], sl.fixedIndex - sl.thickness) + 1];
+    const cv = last === state.lastSlice && splitOn() ? splitCmpView() : null;
+    if(cv) out.cmpValue = sl.thickness
+      ? thickMean(cv, sl.fixedAxis, sl.fixedIndex, idx[others[0]], idx[others[1]], range[0], range[1], sl.thickness)
+      : cv.I[idx3(res.shape, idx[0], idx[1], idx[2])];
   }else{
     const p = sl.type === "plane" ? state.plane : state.avgvol;
     if(!p) return null;
@@ -7586,6 +7663,8 @@ function sliceReadout(pt, last=state.lastSlice){
     const c = Math.round((xv - sl.xMin) / ((sl.xMax - sl.xMin) || 1) * (sl.cols - 1));
     const r = Math.round((yv - sl.yMin) / ((sl.yMax - sl.yMin) || 1) * (sl.rows - 1));
     out.value = r >= 0 && r < sl.rows && c >= 0 && c < sl.cols ? sl.d[r * sl.cols + c] : NaN;
+    const s2 = last === state.lastSlice && splitOn() && state.splitImage ? state.splitImage.slice : null;
+    if(s2) out.cmpValue = r >= 0 && r < s2.rows && c >= 0 && c < s2.cols ? s2.d[r * s2.cols + c] : NaN;
   }
   if(useBasisToQ(res)) out.q = hklToQ(out.native[0], out.native[1], out.native[2], res.Bq);
   else if(res.coordKind === "q" && !isRealSpaceData(res)) out.q = out.native.slice();
@@ -7608,6 +7687,7 @@ function readoutText(o){
     lines.push(`${vec}|Q| ${readoutNumber(qn)} \u00c5\u207b\u00b9   d ${qn > 0 ? readoutNumber(2 * Math.PI / qn) : "-"} \u00c5`);
   }
   lines.push(`${valueLabel(res)} ${Number.isFinite(o.value) ? readoutNumber(o.value) : "no data"}`);
+  if(o.cmpValue !== undefined) lines.push(`Comparison ${Number.isFinite(o.cmpValue) ? readoutNumber(o.cmpValue) : "no data"}`);
   if(o.pooled) lines.push(`mean of ${o.pooled[0]} of ${o.pooled[1]} voxels`);
   return lines.join("\n");
 }
@@ -11139,6 +11219,7 @@ const SHOW_NEEDS = {
   sigma:res => !!(res && res.sigma),
   snr:res => !!(res && res.sigma),
   cmp:res => comparisonReady(res),
+  split:res => comparisonReady(res),
   diff:res => comparisonReady(res),
   ratio:res => comparisonReady(res),
   resid:res => comparisonReady(res) && !!res.sigma
@@ -11183,14 +11264,17 @@ function applyViewDisplay(prev, next){
 
 function setShowMode(mode){
   const prev = state.showMode || "data";
-  const view = mode === "data" ? null : buildView(mode);
-  const next = view ? mode : "data";
+  // The split view shows the data and the comparison side by side; the data
+  // stay the view of record (levels, readout, exports).
+  const split = mode === "split" && comparisonReady();
+  const view = mode === "data" || split ? null : buildView(mode);
+  const next = split ? "split" : view ? mode : "data";
   state.showMode = next;
   state.view = view;
   applyViewDisplay(prev, next);
   // Levels start from auto for new kinds of values; the data, the
   // symmetrized data and the comparison share them.
-  const family = mode => (["data", "sym", "cmp"].includes(mode) ? "intensity" : mode);
+  const family = mode => (["data", "sym", "cmp", "split"].includes(mode) ? "intensity" : mode);
   if(family(prev) !== family(next)){
     state.manualLevelBounds = null;
     if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
@@ -11209,8 +11293,8 @@ function dataChanged(){
   // The comparison stays on the grid (values and relabels keep voxel order); its fit follows the data.
   if(comparisonReady()) refitComparison();
   const mode = state.showMode || "data";
-  state.view = mode === "data" ? null : buildView(mode);
-  if(mode !== "data" && !state.view){
+  state.view = mode === "data" || mode === "split" ? null : buildView(mode);
+  if(mode !== "data" && mode !== "split" && !state.view){
     applyViewDisplay(mode, "data");
     state.showMode = "data";
   }
@@ -11545,7 +11629,7 @@ function computeProfile(){
   const base = state.res, res = viewRes(), last = state.lastSlice;
   if(!base || !last) return null;
   const bins = Number($("profileBins").value) || null;
-  const model = state.showMode === "data" ? comparisonModel(base) : null;
+  const model = state.showMode === "data" || state.showMode === "split" ? comparisonModel(base) : null;
   if(state.ui.profileKind === "q"){
     const ranges = displayIndexRanges(base), fit = state.cmpFit;
     const key = [res.viewMode || "data", JSON.stringify(ranges), bins, model ? `${fit.scale},${fit.offset}` : "", activeCoordKind()].join("|");
