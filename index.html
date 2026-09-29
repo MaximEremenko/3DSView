@@ -109,6 +109,9 @@ label{display:grid;gap:4px;font-size:.8rem;color:var(--muted)}
 input,select{min-width:0;width:100%;border:1px solid var(--inputBorder);border-radius:6px;background:var(--inputBg);color:var(--ink);padding:6px 7px}
 input[readonly]{background:var(--roBg);color:var(--roText)}
 input[type=range]{padding:0;border:0;accent-color:var(--brand)}
+label.check{display:flex;align-items:center;gap:7px;align-self:end;min-height:34px}
+label.check input{width:auto;margin:0;accent-color:var(--brand)}
+.levelHist{width:100%;height:54px;display:block;border-radius:6px;background:var(--side2)}
 .dualRange{position:relative;height:30px;--range-low:0%;--range-high:100%;touch-action:none;cursor:pointer}
 .dualRange:before{content:"";position:absolute;left:7px;right:7px;top:13px;height:5px;border-radius:5px;background:linear-gradient(to right,var(--track) 0 var(--range-low),var(--brand) var(--range-low) var(--range-high),var(--track) var(--range-high) 100%)}
 .dualThumb,.dualThumb:hover{position:absolute;top:6px;width:17px;height:17px;min-width:0;padding:0;transform:translateX(-50%);border:2px solid var(--thumbRing);border-radius:50%;background:var(--brand);cursor:grab;z-index:2}
@@ -394,11 +397,19 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
           <div class="row2">
             <label>Color map
               <select id="colorMap" disabled>
-                <option value="viridis" selected>Viridis</option>
-                <option value="turbo">Turbo</option>
-                <option value="inferno">Inferno</option>
-                <option value="magma">Magma</option>
-                <option value="gray">Gray</option>
+                <optgroup label="Sequential">
+                  <option value="viridis" selected>Viridis</option>
+                  <option value="plasma">Plasma</option>
+                  <option value="inferno">Inferno</option>
+                  <option value="magma">Magma</option>
+                  <option value="cividis">Cividis</option>
+                  <option value="turbo">Turbo</option>
+                  <option value="gray">Gray</option>
+                </optgroup>
+                <optgroup label="Diverging (signed data)">
+                  <option value="rdbu">RdBu</option>
+                  <option value="coolwarm">Coolwarm</option>
+                </optgroup>
               </select>
             </label>
             <label>Levels
@@ -409,11 +420,34 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
               </select>
             </label>
           </div>
+          <div class="row2">
+            <label>Auto range
+              <select id="levelClip" disabled>
+                <option value="p995" selected>0.5 - 99.5 %</option>
+                <option value="p99">1 - 99 %</option>
+                <option value="p98">2 - 98 %</option>
+                <option value="minmax">Min - max</option>
+              </select>
+            </label>
+            <label class="check"><input id="levelSymmetric" type="checkbox" disabled>Symmetric about 0</label>
+          </div>
+          <div class="row2">
+            <label class="check"><input id="colorReverse" type="checkbox" disabled>Reverse colors</label>
+            <label>Empty voxels
+              <select id="nanColor" disabled>
+                <option value="transparent" selected>Transparent</option>
+                <option value="gray">Gray</option>
+                <option value="white">White</option>
+                <option value="black">Black</option>
+              </select>
+            </label>
+          </div>
           <div class="row3">
             <label>Min<input id="levelMin" type="number" step="any" disabled></label>
             <label>Max<input id="levelMax" type="number" step="any" disabled></label>
             <button id="resetLevels" class="alt" disabled>Reset</button>
           </div>
+          <canvas id="levelHist" class="levelHist" title="Distribution of the shown slice values; the bright band is the display window"></canvas>
           <div id="levelInfo" class="mono fine">Display levels: -</div>
         </div>
       </details>
@@ -569,6 +603,8 @@ const state = {
   cacheDbPromise:null,
   indexedWorkerUrl:null,
   cameras:{plane:null, iso:null},
+  globalHist:null,
+  autoSigned:false,
   resizeTimer:0
 };
 
@@ -577,8 +613,22 @@ const COLOR_MAPS = {
   turbo:[[0,[48,18,59]],[0.12,[55,86,169]],[0.25,[35,144,197]],[0.38,[50,190,161]],[0.5,[132,217,87]],[0.63,[213,219,54]],[0.75,[252,167,52]],[0.88,[230,73,46]],[1,[122,4,3]]],
   inferno:[[0,[0,0,4]],[0.14,[31,12,72]],[0.28,[85,15,109]],[0.42,[136,34,106]],[0.57,[186,54,85]],[0.71,[227,89,51]],[0.86,[249,140,10]],[1,[252,255,164]]],
   magma:[[0,[0,0,4]],[0.14,[28,16,68]],[0.28,[79,18,123]],[0.42,[129,37,129]],[0.57,[181,54,122]],[0.71,[229,80,100]],[0.86,[251,135,97]],[1,[252,253,191]]],
-  gray:[[0,[0,0,0]],[1,[255,255,255]]]
+  gray:[[0,[0,0,0]],[1,[255,255,255]]],
+  // Sampled from matplotlib at 17 points.
+  plasma:[[0,[13,8,135]],[0.0625,[49,5,151]],[0.125,[76,2,161]],[0.1875,[102,0,167]],[0.25,[126,3,168]],[0.3125,[149,17,161]],[0.375,[170,35,149]],[0.4375,[188,53,135]],[0.5,[204,71,120]],[0.5625,[218,90,106]],[0.625,[230,108,92]],[0.6875,[240,128,78]],[0.75,[248,149,64]],[0.8125,[253,172,51]],[0.875,[253,197,39]],[0.9375,[248,223,37]],[1,[240,249,33]]],
+  cividis:[[0,[0,34,78]],[0.0625,[0,46,106]],[0.125,[26,56,111]],[0.1875,[50,67,109]],[0.25,[67,78,108]],[0.3125,[83,90,109]],[0.375,[97,101,111]],[0.4375,[111,112,115]],[0.5,[125,124,120]],[0.5625,[140,136,120]],[0.625,[155,148,118]],[0.6875,[171,160,114]],[0.75,[188,174,108]],[0.8125,[205,187,99]],[0.875,[222,201,88]],[0.9375,[240,216,70]],[1,[254,232,56]]],
+  // Diverging maps for signed data (delta-PDF, differences): blue < 0 < red.
+  rdbu:[[0,[5,48,97]],[0.0625,[23,82,144]],[0.125,[42,113,178]],[0.1875,[63,142,192]],[0.25,[107,172,209]],[0.3125,[155,201,224]],[0.375,[194,221,236]],[0.4375,[224,236,243]],[0.5,[247,246,246]],[0.5625,[251,229,216]],[0.625,[251,204,180]],[0.6875,[245,170,137]],[0.75,[228,128,102]],[0.8125,[208,85,72]],[0.875,[186,40,50]],[0.9375,[147,14,38]],[1,[103,0,31]]],
+  coolwarm:[[0,[59,76,192]],[0.0625,[78,104,216]],[0.125,[98,130,234]],[0.1875,[119,154,247]],[0.25,[141,176,254]],[0.3125,[163,194,254]],[0.375,[185,208,249]],[0.4375,[204,217,237]],[0.5,[221,220,220]],[0.5625,[236,211,197]],[0.625,[245,196,172]],[0.6875,[247,176,147]],[0.75,[244,152,122]],[0.8125,[235,125,98]],[0.875,[221,95,75]],[0.9375,[202,59,55]],[1,[180,4,38]]]
 };
+const DIVERGING_MAPS = new Set(["rdbu", "coolwarm"]);
+const EMPTY_VOXEL_RGB = {gray:[128,128,128], white:[255,255,255], black:[0,0,0]};
+
+function activeColorStops(){
+  const stops = COLOR_MAPS[$("colorMap") ? $("colorMap").value : "viridis"] || COLOR_MAPS.viridis;
+  const reverse = $("colorReverse") && $("colorReverse").checked;
+  return reverse ? stops.map(([t, rgb]) => [1 - t, rgb]).reverse() : stops;
+}
 
 function status(msg, kind=""){
   const e = $("status");
@@ -4689,7 +4739,7 @@ function colorLutFromStops(stops, n=256){
 }
 
 function plotlyColorscale(){
-  const stops = COLOR_MAPS[$("colorMap").value] || COLOR_MAPS.viridis;
+  const stops = activeColorStops();
   return stops.map(s => [s[0], `rgb(${s[1][0]},${s[1][1]},${s[1][2]})`]);
 }
 
@@ -4705,8 +4755,51 @@ function sliceTransformed(sl, mode){
   }
   if(!Number.isFinite(mn) || !Number.isFinite(mx)){ mn = 0; mx = 1; }
   if(Math.abs(mx - mn) < 1e-30) mx = mn + 1;
-  return {values:t, min:mn, max:mx};
+  return {values:t, min:mn, max:mx, hist:valueHistogram(t, mn, mx)};
 }
+
+// Histogram of the finite values over [min, max]; quantiles are read from it.
+function valueHistogram(values, min, max, bins=2048, transform=null){
+  const counts = new Float64Array(bins);
+  let total = 0;
+  const span = max - min;
+  if(span > 0){
+    const scale = bins / span;
+    for(let i=0;i<values.length;i++){
+      const v = transform ? transform(values[i]) : values[i];
+      if(!Number.isFinite(v)) continue;
+      let b = Math.floor((v - min) * scale);
+      if(b < 0) b = 0; else if(b >= bins) b = bins - 1;
+      counts[b]++;
+      total++;
+    }
+  }
+  return {counts, min, max, total};
+}
+
+function histogramQuantile(hist, q){
+  if(!hist || !hist.total) return NaN;
+  const target = q * hist.total, n = hist.counts.length, width = (hist.max - hist.min) / n;
+  let acc = 0;
+  for(let b=0;b<n;b++){
+    const c = hist.counts[b];
+    if(c > 0 && acc + c >= target) return hist.min + (b + (target - acc) / c) * width;
+    acc += c;
+  }
+  return hist.max;
+}
+
+// Histogram of the whole volume in the given display scale, built on first use.
+function globalHistogram(mode){
+  const res = state.res;
+  if(!res || !res.global || !res.global[mode]) return null;
+  if(!state.globalHist || state.globalHist.res !== res) state.globalHist = {res, byMode:{}};
+  const cache = state.globalHist.byMode;
+  if(!cache[mode]) cache[mode] = valueHistogram(res.I, res.global[mode].min, res.global[mode].max, 2048, v => transformedValue(v, mode));
+  return cache[mode];
+}
+
+const AUTO_RANGES = {p995:[0.005, 0.995], p99:[0.01, 0.99], p98:[0.02, 0.98], minmax:[0, 1]};
 
 function levelBoundsForMode(slStats, mode, levelMode){
   if(levelMode === "global" && state.res && state.res.global[mode]) return state.res.global[mode];
@@ -4721,8 +4814,8 @@ function levelBoundsForMode(slStats, mode, levelMode){
 function displayLevels(slStats, mode){
   const levelMode = $("levelMode").value;
   const bounds = levelBoundsForMode(slStats, mode, levelMode);
-  const rawMin = Number.isFinite(bounds.min) ? bounds.min : slStats.min;
-  const rawMax = Number.isFinite(bounds.max) && bounds.max > rawMin ? bounds.max : rawMin + 1;
+  let rawMin = Number.isFinite(bounds.min) ? bounds.min : slStats.min;
+  let rawMax = Number.isFinite(bounds.max) && bounds.max > rawMin ? bounds.max : rawMin + 1;
   if(levelMode === "manual"){
     let mn = Number($("levelMin").value), mx = Number($("levelMax").value);
     if(!Number.isFinite(mn)) mn = rawMin;
@@ -4735,7 +4828,23 @@ function displayLevels(slStats, mode){
     }
     return {min:mn, max:mx, rawMin, rawMax, source:"manual"};
   }
-  return {min:rawMin, max:rawMax, rawMin, rawMax, source:levelMode === "global" ? "global" : "slice"};
+  // Auto window: a percentile range of the slice or of the whole volume.
+  const clipKey = $("levelClip") ? $("levelClip").value : "minmax";
+  const clip = AUTO_RANGES[clipKey] || AUTO_RANGES.minmax;
+  let mn = rawMin, mx = rawMax;
+  if(clip[0] > 0 || clip[1] < 1){
+    const hist = levelMode === "global" ? globalHistogram(mode) : slStats.hist;
+    const lo = histogramQuantile(hist, clip[0]), hi = histogramQuantile(hist, clip[1]);
+    if(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo){ mn = lo; mx = hi; }
+  }
+  if($("levelSymmetric") && $("levelSymmetric").checked){
+    const m = Math.max(Math.abs(mn), Math.abs(mx)) || 1;
+    mn = -m;
+    mx = m;
+    rawMin = Math.min(rawMin, -m);
+    rawMax = Math.max(rawMax, m);
+  }
+  return {min:mn, max:mx, rawMin, rawMax, source:levelMode === "global" ? "global" : "slice", clip:clipKey};
 }
 
 function setDisplayLevelsFromBounds(min, max, bounds){
@@ -4837,9 +4946,17 @@ function onHeatmapClick(ev){
   let nmin = b.dispMin, nmax = b.dispMax;
   if(Math.abs(picked - nmin) <= Math.abs(picked - nmax)) nmin = Math.min(picked, nmax - 1e-12);
   else nmax = Math.max(picked, nmin + 1e-12);
+  [nmin, nmax] = symmetricPick(nmin, nmax, picked);
   setDisplayLevelsFromBounds(nmin, nmax, b);
   draw2d();
   scheduleRender3d(0);
+}
+
+// With "Symmetric about 0" a picked level moves both handles to -|v|, +|v|.
+function symmetricPick(nmin, nmax, picked){
+  if(!$("levelSymmetric") || !$("levelSymmetric").checked) return [nmin, nmax];
+  const m = Math.abs(picked) || 1e-12;
+  return [-m, m];
 }
 
 function onHeatmapPointerDown(ev){
@@ -4875,6 +4992,7 @@ function onHeatmapPointerMove(ev){
   let nmin = b.dispMin, nmax = b.dispMax;
   if(drag.handle === "min") nmin = Math.min(picked, nmax - 1e-12);
   else nmax = Math.max(picked, nmin + 1e-12);
+  [nmin, nmax] = symmetricPick(nmin, nmax, picked);
   setDisplayLevelsFromBounds(nmin, nmax, b);
   drag.moved = true;
   state.levelClickSuppress = true;
@@ -4926,8 +5044,9 @@ function draw2d(options={}){
   const mode = $("scale").value;
   const stats = sliceTransformed(sl, mode);
   const levels = displayLevels(stats, mode);
-  const stops = COLOR_MAPS[$("colorMap").value] || COLOR_MAPS.viridis;
+  const stops = activeColorStops();
   const lut = colorLutFromStops(stops, 256);
+  const empty = EMPTY_VOXEL_RGB[$("nanColor") ? $("nanColor").value : "transparent"] || null;
   const den = levels.max - levels.min || 1;
   if(!state.offscreen) state.offscreen = document.createElement("canvas");
   const off = state.offscreen;
@@ -4946,6 +5065,8 @@ function draw2d(options={}){
     if(Number.isFinite(v)){
       const li = Math.max(0, Math.min(255, Math.round((v - levels.min) / den * 255))) * 3;
       img.data[q] = lut[li]; img.data[q+1] = lut[li+1]; img.data[q+2] = lut[li+2]; img.data[q+3] = 255;
+    }else if(empty){
+      img.data[q] = empty[0]; img.data[q+1] = empty[1]; img.data[q+2] = empty[2]; img.data[q+3] = 255;
     }else{
       img.data[q] = 0; img.data[q+1] = 0; img.data[q+2] = 0; img.data[q+3] = 0;
     }
@@ -5020,13 +5141,61 @@ function draw2d(options={}){
   const sampleText = sl.decimated ? ` | sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols} (${sl.strides.join("x")})` : "";
   const shown = `[${levels.min.toExponential(3)}, ${levels.max.toExponential(3)}]`;
   $("sliceStats").textContent = `${sl.plane} | display=${mode} | slice min=${stats.min.toExponential(4)} max=${stats.max.toExponential(4)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`;
-  $("levelInfo").textContent = `${levels.source} levels ${shown} | range [${levels.rawMin.toExponential(3)}, ${levels.rawMax.toExponential(3)}]`;
+  const clipText = levels.clip && levels.clip !== "minmax" ? ` ${$("levelClip").selectedOptions[0].textContent.replace(/\s+/g, "")}` : "";
+  $("levelInfo").textContent = `${levels.source}${clipText} levels ${shown} | range [${levels.rawMin.toExponential(3)}, ${levels.rawMax.toExponential(3)}]`;
+  drawLevelHistogram(stats.hist, levels);
   if($("levelMode").value !== "manual"){
     $("levelMin").value = fmt(levels.min, 7);
     $("levelMax").value = fmt(levels.max, 7);
   }
   updateSliceValue(sl);
   state.lastSlice = {slice:sl, mode, transformed:stats, levels};
+}
+
+// Distribution of the shown slice values over the colour-bar range, with the
+// display window highlighted.
+function drawLevelHistogram(hist, levels){
+  const cv = $("levelHist");
+  if(!cv) return;
+  const rect = cv.getBoundingClientRect();
+  if(!rect.width || !rect.height) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(rect.width), h = Math.round(rect.height);
+  if(cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){ cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if(!hist || !hist.total || !(levels.rawMax > levels.rawMin)) return;
+  const bins = Math.max(16, Math.min(160, Math.floor(w / 2)));
+  const counts = new Float64Array(bins);
+  const span = levels.rawMax - levels.rawMin, width = (hist.max - hist.min) / hist.counts.length;
+  for(let b=0;b<hist.counts.length;b++){
+    if(!hist.counts[b]) continue;
+    const v = hist.min + (b + 0.5) * width;
+    const d = Math.floor((v - levels.rawMin) / span * bins);
+    if(d >= 0 && d < bins) counts[d] += hist.counts[b];
+  }
+  let peak = 0;
+  for(const c of counts) peak = Math.max(peak, Math.log1p(c));
+  const th = themePlot();
+  const x0 = (levels.min - levels.rawMin) / span * w, x1 = (levels.max - levels.rawMin) / span * w;
+  ctx.fillStyle = th.shade;
+  ctx.fillRect(0, 0, Math.max(0, x0), h);
+  ctx.fillRect(Math.min(w, x1), 0, w - Math.min(w, x1), h);
+  const barW = w / bins;
+  for(let d=0;d<bins;d++){
+    if(!counts[d]) continue;
+    const v = levels.rawMin + (d + 0.5) / bins * span;
+    const bh = Math.max(1, (h - 4) * Math.log1p(counts[d]) / (peak || 1));
+    ctx.fillStyle = v >= levels.min && v <= levels.max ? "rgba(26,122,173,.95)" : "rgba(132,151,173,.55)";
+    ctx.fillRect(d * barW, h - bh, Math.max(1, barW - 0.5), bh);
+  }
+  ctx.strokeStyle = th.handle;
+  ctx.lineWidth = 1.5;
+  for(const x of [x0, x1]){
+    if(x < 0 || x > w) continue;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
 }
 
 function drawAxes(ctx, sl, x, y, w, h, cssH, mapXY=null){
@@ -5103,8 +5272,9 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   ctx.font = "11px Consolas";
   ctx.fillText(b.rawMax.toExponential(2), x - 82, y + 10);
   ctx.fillText(b.rawMin.toExponential(2), x - 82, y + h - 2);
-  ctx.fillText(b.dispMax.toExponential(2), x - 118, Math.max(y + 20, yMax - 4));
-  ctx.fillText(b.dispMin.toExponential(2), x - 118, Math.min(y + h - 4, yMin + 12));
+  // Window labels only where they do not sit on the range labels.
+  if(yMax - y > 14) ctx.fillText(b.dispMax.toExponential(2), x - 118, Math.max(y + 20, yMax - 4));
+  if(y + h - yMin > 14) ctx.fillText(b.dispMin.toExponential(2), x - 118, Math.min(y + h - 4, yMin + 12));
   state.lastBar = b;
 }
 
@@ -5375,7 +5545,7 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","sliceMode","scale","colorMap","levelMode","resetLevels","render3d","savePng","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","savePng","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -6571,6 +6741,25 @@ async function savePlotHtml(plotId, tag, title){
   }
 }
 
+// Real-space volumes (delta-PDF, Patterson, density) are signed: show them on
+// a linear scale with a diverging map and levels symmetric about zero. The
+// choice is undone for the next unsigned file only if it was made here.
+function applySignedDefaults(res){
+  const signed = isRealSpaceData(res);
+  if(signed){
+    $("scale").value = "linear";
+    $("colorMap").value = "rdbu";
+    $("levelSymmetric").checked = true;
+    state.autoSigned = true;
+  }else if(state.autoSigned){
+    $("scale").value = "log1p";
+    $("colorMap").value = "viridis";
+    $("levelSymmetric").checked = false;
+    state.autoSigned = false;
+  }
+  return signed;
+}
+
 async function nextFrame(){
   await new Promise(resolve => requestAnimationFrame(resolve));
 }
@@ -6600,6 +6789,7 @@ async function onFile(file){
   $("axis").value = "l";
   $("idx").value = String(Math.floor((parsed.shape[2] - 1) / 2));
   $("levelMode").value = "slice";
+  const signed = applySignedDefaults(parsed);
   populateCellInputs(parsed.cellDeg);
   updateAxisOptionText();
   updateShownVolumeInputs();
@@ -6611,9 +6801,10 @@ async function onFile(file){
   const orderNote = parsed.axisOrderAmbiguous
     ? ` The file does not record its axis order; assumed the 3DSConvert/Fortran layout [${labels[2]},${labels[1]},${labels[0]}]. Use "Swap ${labels[0]}/${labels[2]} data order" if the map looks mirrored.`
     : "";
+  const signedNote = signed ? " Signed data: linear scale, RdBu colors and levels symmetric about 0." : "";
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
   const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${maskNote}${gapNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${maskNote}${gapNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
@@ -6687,6 +6878,11 @@ function bind(){
   $("idx").addEventListener("change", () => { finalizeSliceMoveCameraLock(); });
   $("scale").addEventListener("change", () => { resetDisplayLevels(false); draw2d(); scheduleRender3d(); });
   $("colorMap").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
+  $("colorReverse").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
+  $("nanColor").addEventListener("change", () => draw2d());
+  for(const id of ["levelClip", "levelSymmetric"]){
+    $(id).addEventListener("change", () => { draw2d(); scheduleRender3d(); });
+  }
   $("levelMode").addEventListener("change", () => {
     if($("levelMode").value !== "manual") state.manualLevelBounds = null;
     syncControls();
