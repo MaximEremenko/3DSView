@@ -434,6 +434,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="group" id="axisHelp">
         <h3>Axis slices</h3>
         <p class="fine">Choose the fixed axis above the map and step through the slices with the slider, the &lsaquo; &rsaquo; buttons or the <kbd>&larr;</kbd> <kbd>&rarr;</kbd> keys. Switch the mode there to cut a normal plane or average a slab.</p>
+        <label>Average over &plusmn; neighbouring slices<input id="sliceThick" type="number" min="0" max="100" step="1" value="0" disabled></label>
+        <div id="sliceThickInfo" class="fine"></div>
       </div>
       <div id="planeControls" class="group hidden">
         <h3>Normal plane</h3>
@@ -995,7 +997,8 @@ const state = {
   cutDrag:null,
   profileData:null,
   profileRaf:0,
-  profileCache:null
+  profileCache:null,
+  sliceHalf:0
 };
 
 const COLOR_MAPS = {
@@ -4926,14 +4929,17 @@ function axisSliceVoxels(res, sl){
   if(!res || !sl || sl.type !== "axis") return null;
   const ranges = displayIndexRanges(res), [, n1, n2] = res.shape;
   const axes = [0, 1, 2].filter(a => a !== sl.fixedAxis);
+  const half = sl.thickness || 0, fr = ranges[sl.fixedAxis];
   return visit => {
     const idx = [0, 0, 0];
-    idx[sl.fixedAxis] = sl.fixedIndex;
-    for(let a=ranges[axes[0]][0];a<=ranges[axes[0]][1];a++){
-      idx[axes[0]] = a;
-      for(let b=ranges[axes[1]][0];b<=ranges[axes[1]][1];b++){
-        idx[axes[1]] = b;
-        visit((idx[0] * n1 + idx[1]) * n2 + idx[2]);
+    for(let f=Math.max(fr[0], sl.fixedIndex - half);f<=Math.min(fr[1], sl.fixedIndex + half);f++){
+      idx[sl.fixedAxis] = f;
+      for(let a=ranges[axes[0]][0];a<=ranges[axes[0]][1];a++){
+        idx[axes[0]] = a;
+        for(let b=ranges[axes[1]][0];b<=ranges[axes[1]][1];b++){
+          idx[axes[1]] = b;
+          visit((idx[0] * n1 + idx[1]) * n2 + idx[2]);
+        }
       }
     }
   };
@@ -5961,11 +5967,25 @@ function sampledAxisIndex(pos, count, fullCount){
   return Math.min(fullCount - 1, Math.round(pos * (fullCount - 1) / (count - 1)));
 }
 
-function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, include3d=true){
+// Mean over the fixed axis within ±half slices of fixed, inside lo..hi;
+// empty voxels stay out. a and b index the other two axes in order.
+function thickMean(res, fixedAxis, fixed, a, b, lo, hi, half){
+  const [, n1, n2] = res.shape, I = res.I;
+  let s = 0, n = 0;
+  for(let f=Math.max(lo, fixed - half), end=Math.min(hi, fixed + half); f<=end; f++){
+    const v = fixedAxis === 0 ? I[(f * n1 + a) * n2 + b] : fixedAxis === 1 ? I[(a * n1 + f) * n2 + b] : I[(a * n1 + b) * n2 + f];
+    if(v === v){ s += v; n++; }
+  }
+  return n ? s / n : NaN;
+}
+
+function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, include3d=true, half=state.sliceHalf || 0){
   const [nH,nK,nL] = res.shape;
   const labels = nativeAxisLabels(res);
   const ranges = displayIndexRanges(res);
   fixed = Math.round(fixed);
+  half = Math.max(0, Math.floor(half) || 0);
+  const thick = half ? ` (\u00b1${half} slice${half > 1 ? "s" : ""})` : "";
   const sampled = (fullRows, fullCols) => {
     const strides = chooseSliceStrides(fullRows, fullCols, maxCells);
     return {
@@ -5988,14 +6008,14 @@ function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, inc
       if(include3d){ x3[r] = new Array(cols); y3[r] = new Array(cols); z3[r] = new Array(cols); }
       for(let c=0;c<cols;c++){
         const cc = ranges[2][0] + sampledAxisIndex(c, cols, fullL);
-        d[r*cols+c] = res.I[idx3(res.shape, fixed, rr, cc)];
+        d[r*cols+c] = half ? thickMean(res, 0, fixed, rr, cc, ranges[0][0], ranges[0][1], half) : res.I[idx3(res.shape, fixed, rr, cc)];
         if(include3d){
           const p = pointAtIndex(res, fixed, rr, cc);
           x3[r][c] = p[0]; y3[r][c] = p[1]; z3[r][c] = p[2];
         }
       }
     }
-    return {type:"axis", fixedAxis:0, fixedIndex:fixed, rowAxis:1, colAxis:2, rows, cols, d, x3, y3, z3, plane:`${labels[0]}[${fixed}] = ${fmt(res.h[fixed])}`, xLabel:labels[2], yLabel:labels[1], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.k[ranges[1][0]], yMax:res.k[ranges[1][1]], xVec:gridVector(res,2), yVec:gridVector(res,1), ...smp};
+    return {type:"axis", fixedAxis:0, fixedIndex:fixed, rowAxis:1, colAxis:2, rows, cols, d, x3, y3, z3, plane:`${labels[0]}[${fixed}] = ${fmt(res.h[fixed])}${thick}`, thickness:half, xLabel:labels[2], yLabel:labels[1], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.k[ranges[1][0]], yMax:res.k[ranges[1][1]], xVec:gridVector(res,2), yVec:gridVector(res,1), ...smp};
   }
   if(axisName === "k"){
     fixed = clamp(fixed, ranges[1][0], ranges[1][1]);
@@ -6008,14 +6028,14 @@ function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, inc
       if(include3d){ x3[r] = new Array(cols); y3[r] = new Array(cols); z3[r] = new Array(cols); }
       for(let c=0;c<cols;c++){
         const cc = ranges[2][0] + sampledAxisIndex(c, cols, fullL);
-        d[r*cols+c] = res.I[idx3(res.shape, rr, fixed, cc)];
+        d[r*cols+c] = half ? thickMean(res, 1, fixed, rr, cc, ranges[1][0], ranges[1][1], half) : res.I[idx3(res.shape, rr, fixed, cc)];
         if(include3d){
           const p = pointAtIndex(res, rr, fixed, cc);
           x3[r][c] = p[0]; y3[r][c] = p[1]; z3[r][c] = p[2];
         }
       }
     }
-    return {type:"axis", fixedAxis:1, fixedIndex:fixed, rowAxis:0, colAxis:2, rows, cols, d, x3, y3, z3, plane:`${labels[1]}[${fixed}] = ${fmt(res.k[fixed])}`, xLabel:labels[2], yLabel:labels[0], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,2), yVec:gridVector(res,0), ...smp};
+    return {type:"axis", fixedAxis:1, fixedIndex:fixed, rowAxis:0, colAxis:2, rows, cols, d, x3, y3, z3, plane:`${labels[1]}[${fixed}] = ${fmt(res.k[fixed])}${thick}`, thickness:half, xLabel:labels[2], yLabel:labels[0], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,2), yVec:gridVector(res,0), ...smp};
   }
   fixed = clamp(fixed, ranges[2][0], ranges[2][1]);
   const fullH = ranges[0][1] - ranges[0][0] + 1, fullK = ranges[1][1] - ranges[1][0] + 1;
@@ -6027,14 +6047,14 @@ function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, inc
       if(include3d){ x3[r] = new Array(cols); y3[r] = new Array(cols); z3[r] = new Array(cols); }
       for(let c=0;c<cols;c++){
         const cc = ranges[1][0] + sampledAxisIndex(c, cols, fullK);
-        d[r*cols+c] = res.I[idx3(res.shape, rr, cc, fixed)];
+        d[r*cols+c] = half ? thickMean(res, 2, fixed, rr, cc, ranges[2][0], ranges[2][1], half) : res.I[idx3(res.shape, rr, cc, fixed)];
         if(include3d){
           const p = pointAtIndex(res, rr, cc, fixed);
           x3[r][c] = p[0]; y3[r][c] = p[1]; z3[r][c] = p[2];
         }
       }
     }
-  return {type:"axis", fixedAxis:2, fixedIndex:fixed, rowAxis:0, colAxis:1, rows, cols, d, x3, y3, z3, plane:`${labels[2]}[${fixed}] = ${fmt(res.l[fixed])}`, xLabel:labels[1], yLabel:labels[0], xMin:res.k[ranges[1][0]], xMax:res.k[ranges[1][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,1), yVec:gridVector(res,0), ...smp};
+  return {type:"axis", fixedAxis:2, fixedIndex:fixed, rowAxis:0, colAxis:1, rows, cols, d, x3, y3, z3, plane:`${labels[2]}[${fixed}] = ${fmt(res.l[fixed])}${thick}`, thickness:half, xLabel:labels[1], yLabel:labels[0], xMin:res.k[ranges[1][0]], xMax:res.k[ranges[1][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,1), yVec:gridVector(res,0), ...smp};
 }
 
 function buildNormalPlaneSlice(res, resOverride=null, include3d=true){
@@ -6757,7 +6777,10 @@ function sliceReadout(pt){
     if(idx.some((v, a) => !(v >= 0 && v < res.shape[a]))) return null;
     out.index = idx;
     out.native = pointAtIndex(res, idx[0], idx[1], idx[2]);
-    out.value = res.I[idx3(res.shape, idx[0], idx[1], idx[2])];
+    const others = [0, 1, 2].filter(a => a !== sl.fixedAxis), range = displayIndexRanges(res)[sl.fixedAxis];
+    out.value = sl.thickness
+      ? thickMean(res, sl.fixedAxis, sl.fixedIndex, idx[others[0]], idx[others[1]], range[0], range[1], sl.thickness)
+      : res.I[idx3(res.shape, idx[0], idx[1], idx[2])];
   }else{
     const p = sl.type === "plane" ? state.plane : state.avgvol;
     if(!p) return null;
@@ -7087,6 +7110,15 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   state.lastBar = b;
 }
 
+function updateSliceThickInfo(){
+  const out = $("sliceThickInfo"), res = state.res, half = state.sliceHalf || 0;
+  if(!out) return;
+  if(!res || !half){ out.textContent = half ? "" : "Each map shows one slice."; return; }
+  const axis = {h:0, k:1, l:2}[$("axis").value], values = [res.h, res.k, res.l][axis], idx = Number($("idx").value);
+  const range = displayIndexRanges(res)[axis], lo = Math.max(range[0], idx - half), hi = Math.min(range[1], idx + half);
+  out.textContent = `Each map is the mean of ${hi - lo + 1} slices, ${nativeAxisLabels(res)[axis]} from ${fmt(values[lo])} to ${fmt(values[hi])}; empty voxels stay out.`;
+}
+
 function updateSliceValue(sl){
   const out = $("sliceVal");
   if(!out) return;
@@ -7100,6 +7132,7 @@ function updateSliceValue(sl){
   out.textContent = m ? `${m[1]} = ${m[2]}` : sl.plane;
   out.append(of);
   out.title = `${sl.plane}, slice ${sl.fixedIndex + 1} of ${n}`;
+  updateSliceThickInfo();
 }
 
 function gridRangeForLimits(axis, requestedMin, requestedMax){
@@ -7388,6 +7421,8 @@ function syncControls(){
   $("planeControls").classList.toggle("hidden", !planeMode);
   $("avgControls").classList.toggle("hidden", !avgMode);
   $("axisHelp").classList.toggle("hidden", !axisMode);
+  $("sliceThick").disabled = !has || !axisMode;
+  updateSliceThickInfo();
   $("axisPick").classList.toggle("hidden", !axisMode);
   $("planeMoveGroup").classList.toggle("hidden", !planeMode);
   $("avgMoveGroup").classList.toggle("hidden", !avgMode);
@@ -9051,6 +9086,9 @@ async function onFile(file){
   $("sliceMode").value = "axis";
   $("axis").value = "l";
   state.axisIndex = {};
+  // Thick slices depend on the grid, so each file starts with single slices.
+  state.sliceHalf = 0;
+  $("sliceThick").value = "0";
   // Widen the slider first: a range input clamps a value above its old max.
   $("idx").min = "0";
   $("idx").max = String(Math.max(0, parsed.shape[2] - 1));
@@ -9868,7 +9906,7 @@ function computeProfile(){
   normal = nl > 0 ? normal.map(v => v / nl) : null;
   // By default the cut is two steps wide and one slice thick.
   const autoWidth = 2 * pf.step;
-  const autoThick = sl.type === "axis" && normal ? Math.abs(dot(pf.Gq[sl.fixedAxis], normal)) || pf.step : pf.step;
+  const autoThick = sl.type === "axis" && normal ? (Math.abs(dot(pf.Gq[sl.fixedAxis], normal)) || pf.step) * (2 * (sl.thickness || 0) + 1) : pf.step;
   $("cutWidth").placeholder = fmt(autoWidth, 4);
   $("cutThick").placeholder = fmt(autoThick, 4);
   const width = Number($("cutWidth").value) > 0 ? Number($("cutWidth").value) : autoWidth;
@@ -10191,6 +10229,13 @@ function bind(){
   $("levelMin").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("levelMax").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("resetLevels").addEventListener("click", () => resetDisplayLevels(true));
+  $("sliceThick").addEventListener("change", () => {
+    state.sliceHalf = clamp(Math.floor(Number($("sliceThick").value) || 0), 0, 100);
+    $("sliceThick").value = String(state.sliceHalf);
+    updateSliceThickInfo();
+    draw2d();
+    scheduleRender3d();
+  });
   $("showMode").addEventListener("change", () => setShowMode($("showMode").value));
   $("cutTool").addEventListener("click", () => setCutMode(!state.cutMode));
   $("profileToggle").addEventListener("click", () => setProfileOpen(!profileOpen()));

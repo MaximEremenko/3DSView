@@ -90,3 +90,21 @@ test("native coordinates between grid points", () => {
   assertClose(p[1], 0.25, 1e-12, "regular axis");
   assertClose(p[2], 2, 1e-12, "last point");
 });
+
+test("thick axis slices average the neighbouring slices, leaving empty voxels out", () => {
+  const app = loadApp();
+  const ax = axis(5, -1, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax, value:lin});
+  res.I[(2 * 5 + 2) * 5 + 1] = NaN;   // (0, 0, -0.5) is empty
+  const thin = app.context.buildAxisSlice(res, "l", 2, 1e6, false, 0);
+  const thick = app.context.buildAxisSlice(res, "l", 2, 1e6, false, 1);
+  assert.equal(thick.thickness, 1);
+  assert.match(thick.plane, /±1 slice/);
+  const cell = (sl, i, j) => sl.d[i * sl.cols + j];
+  assertClose(cell(thin, 3, 4), lin(0.5, 1, 0), 1e-12, "single slice");
+  assertClose(cell(thick, 3, 4), lin(0.5, 1, 0), 1e-12, "mean of l = -0.5, 0, 0.5 of a linear function");
+  assertClose(cell(thick, 2, 2), (lin(0, 0, 0) + lin(0, 0, 0.5)) / 2, 1e-12, "the empty voxel stays out");
+  let n = 0;
+  app.context.axisSliceVoxels(res, thick)(() => n++);
+  assert.equal(n, 3 * 25, "the agreement covers the three slices");
+});
