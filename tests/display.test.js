@@ -282,3 +282,40 @@ test("files named in the page address", () => {
   assert.equal(want.structure, null, "an empty value is no file");
   assert.equal(app.context.urlParamFiles("").url, null);
 });
+
+test("typed levels stay as typed, also beyond the data; dragged ones stay on the bar", () => {
+  const app = loadApp();
+  const ax = [0, 1, 2];
+  const res = app.context.makeVolumeResult("levels.h5", [3, 3, 3], ax, ax, ax, Float64Array.from({length:27}, (_, i) => i / 26 * 10), "test", "hkl");   // 0 .. 10
+  app.state.res = res;
+  for(const [id, value] of [["levelMode", "global"], ["levelMin", "-5"], ["levelMax", "50"], ["scale", "linear"]]) app.setControl(id, {value});
+  const fields = app.context.document.elements;
+  const typed = app.context.setDisplayLevelsFromBounds(-5, 50, {rawMin:0, rawMax:10}, {exact:true});
+  assert.deepEqual([typed.min, typed.max], [-5, 50]);
+  assert.equal(fields.levelMode.value, "manual");
+  assert.deepEqual([fields.levelMin.value, fields.levelMax.value], ["-5", "50"], "the fields keep what was typed");
+  const shown = app.context.displayLevels({min:0, max:10}, "linear");
+  assert.deepEqual([shown.min, shown.max, shown.rawMin, shown.rawMax], [-5, 50, -5, 50], "the bar's range grows to hold them");
+  fields.levelMax.value = "7.123456789";
+  assert.equal(app.context.displayLevels({min:0, max:10}, "linear").max, 7.123456789, "no rounding of typed values");
+  const dragged = app.context.setDisplayLevelsFromBounds(-5, 50, {rawMin:0, rawMax:10});
+  assert.deepEqual([dragged.min, dragged.max], [0, 10], "a drag stays within the bar");
+});
+
+test("level fields are data values on every display scale", () => {
+  const app = loadApp();
+  const ax = [0, 1, 2];
+  const res = app.context.makeVolumeResult("wide.h5", [3, 3, 3], ax, ax, ax, Float64Array.from({length:27}, (_, i) => i * 12), "test", "hkl");   // 0 .. 312
+  app.state.res = res;
+  for(const [id, value] of [["levelMode", "manual"], ["levelMin", "0"], ["levelMax", "300"], ["scale", "log1p"]]) app.setControl(id, {value});
+  const shown = app.context.displayLevels({min:0, max:2.5}, "log1p");
+  assertClose(shown.max, Math.log10(301), 1e-12, "a typed intensity of 300 is log10(301) on the map");
+  for(const mode of ["linear", "sqrt", "log", "log1p", "asinh"]){
+    const v = 42.5;
+    assertClose(app.context.levelToData(app.context.transformedValue(v, mode), mode), v, 1e-9, `${mode} round trip`);
+  }
+  app.setControl("levelMode", {value:"global"});
+  const dragged = app.context.setDisplayLevelsFromBounds(Math.log10(11), Math.log10(101), {rawMin:0, rawMax:3});
+  assertClose(dragged.max, Math.log10(101), 1e-12);
+  assert.equal(app.context.document.elements.levelMax.value, "100", "a dragged level is written as an intensity");
+});

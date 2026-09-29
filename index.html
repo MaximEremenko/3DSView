@@ -597,8 +597,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           </label>
         </div>
         <div class="row3">
-          <label>Min<input id="levelMin" type="number" step="any" disabled></label>
-          <label>Max<input id="levelMax" type="number" step="any" disabled></label>
+          <label><span id="levelMinName">Min</span><input id="levelMin" type="number" step="any" title="In data units (intensity), whatever the display scale; typing sets manual levels" disabled></label>
+          <label><span id="levelMaxName">Max</span><input id="levelMax" type="number" step="any" title="In data units (intensity), whatever the display scale; typing sets manual levels" disabled></label>
           <button id="resetLevels" class="alt" disabled>Reset</button>
         </div>
         <canvas id="levelHist" class="levelHist" title="Distribution of the shown slice values; the bright band is the display window. Drag a limit or the band, or click to move the nearer limit; double-click for auto levels."></canvas>
@@ -6211,6 +6211,22 @@ function buildTriplet2dResult(name, header, skipped, xs, ys, vals, rawMin, rawMa
 // logarithmic well above it, for either sign.
 const ASINH = {s:1};
 
+// A display-scale value back as a data value: the level fields and the
+// colour bar speak in data units (intensity) whatever the scale.
+function levelToData(v, mode){
+  if(!Number.isFinite(v)) return NaN;
+  if(mode === "linear") return v;
+  if(mode === "sqrt") return v >= 0 ? v * v : -v * v;
+  if(mode === "log") return Math.pow(10, v);
+  if(mode === "asinh") return ASINH.s * Math.sinh(v);
+  return Math.pow(10, v) - 1;
+}
+
+function levelText(v, digits=2, mode=$("scale").value){
+  const d = levelToData(v, mode);
+  return Number.isFinite(d) ? d.toExponential(digits) : "-";
+}
+
 function transformedValue(v, mode){
   if(!Number.isFinite(v)) return NaN;
   if(mode === "linear") return v;
@@ -6997,16 +7013,16 @@ function displayLevels(slStats, mode){
   let rawMin = Number.isFinite(bounds.min) ? bounds.min : slStats.min;
   let rawMax = Number.isFinite(bounds.max) && bounds.max > rawMin ? bounds.max : rawMin + 1;
   if(levelMode === "manual"){
-    let mn = Number($("levelMin").value), mx = Number($("levelMax").value);
+    // Manual levels stay as set, also beyond the data (a common scale for
+    // several datasets); the colour bar's full range grows to hold them.
+    let mn = transformedValue(Number($("levelMin").value), mode), mx = transformedValue(Number($("levelMax").value), mode);
     if(!Number.isFinite(mn)) mn = rawMin;
     if(!Number.isFinite(mx)) mx = rawMax;
-    mn = clamp(mn, rawMin, rawMax);
-    mx = clamp(mx, rawMin, rawMax);
     if(!(mx > mn)){
       mn = rawMin;
       mx = rawMax;
     }
-    return {min:mn, max:mx, rawMin, rawMax, source:"manual"};
+    return {min:mn, max:mx, rawMin:Math.min(rawMin, mn), rawMax:Math.max(rawMax, mx), source:"manual"};
   }
   // Auto window: a percentile range of the slice or of the whole volume.
   const clipKey = $("levelClip") ? $("levelClip").value : "minmax";
@@ -7031,27 +7047,37 @@ function displayLevels(slStats, mode){
   return {min:mn, max:mx, rawMin, rawMax, source:levelMode === "global" ? "global" : "slice", clip:clipKey};
 }
 
-function setDisplayLevelsFromBounds(min, max, bounds){
+// Switches to manual levels min..max. Dragged levels stay within bounds (the
+// colour bar or histogram range); typed ones (exact) are kept as typed, even
+// beyond the data, and their fields are left as the user wrote them.
+function setDisplayLevelsFromBounds(min, max, bounds, {exact=false}={}){
   let bmin = Number(bounds && bounds.rawMin), bmax = Number(bounds && bounds.rawMax);
   if(!(Number.isFinite(bmin) && Number.isFinite(bmax) && bmax > bmin)){
     bmin = 0;
     bmax = 1;
   }
   let nmin = Number(min), nmax = Number(max);
+  // Valid typed levels keep their fields as written.
+  const keep = exact && Number.isFinite(nmin) && Number.isFinite(nmax) && nmax > nmin;
   if(!Number.isFinite(nmin)) nmin = bmin;
   if(!Number.isFinite(nmax)) nmax = bmax;
-  nmin = clamp(nmin, bmin, bmax);
-  nmax = clamp(nmax, bmin, bmax);
+  if(!exact){
+    nmin = clamp(nmin, bmin, bmax);
+    nmax = clamp(nmax, bmin, bmax);
+  }
   if(!(nmax > nmin)){
     nmin = bmin;
     nmax = bmax;
   }
-  state.manualLevelBounds = {min:bmin, max:bmax, mode:$("scale").value};
+  const mode = $("scale").value;
+  state.manualLevelBounds = {min:bmin, max:bmax, mode};
   $("levelMode").value = "manual";
   $("levelMin").disabled = false;
   $("levelMax").disabled = false;
-  $("levelMin").value = fmtLevel(nmin);
-  $("levelMax").value = fmtLevel(nmax);
+  if(!keep){
+    $("levelMin").value = fmtLevel(levelToData(nmin, mode));
+    $("levelMax").value = fmtLevel(levelToData(nmax, mode));
+  }
   return {min:nmin, max:nmax};
 }
 
@@ -7412,17 +7438,20 @@ function draw2d(options={}){
 
   const validText = sl.type !== "axis" ? ` | valid=${sl.valid}/${sl.rows*sl.cols}` : "";
   const sampleText = sl.decimated ? ` | sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols} (${sl.strides.join("x")})` : "";
-  const shown = `[${levels.min.toExponential(3)}, ${levels.max.toExponential(3)}]`;
-  setTextWithTitle("sliceStats", `${sl.plane} | ${sl.cols}x${sl.rows} points, \u0394 ${fmtStep(sliceSampling(sl).dx)} | display=${mode} | slice min=${stats.min.toExponential(4)} max=${stats.max.toExponential(4)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`);
+  const shown = `[${levelText(levels.min, 3, mode)}, ${levelText(levels.max, 3, mode)}]`;
+  setTextWithTitle("sliceStats", `${sl.plane} | ${sl.cols}x${sl.rows} points, \u0394 ${fmtStep(sliceSampling(sl).dx)} | display=${mode} | slice min=${levelText(stats.min, 4, mode)} max=${levelText(stats.max, 4, mode)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`);
   const clipText = levels.clip && levels.clip !== "minmax" ? ` ${$("levelClip").selectedOptions[0].textContent.replace(/\s+/g, "")}` : "";
-  $("levelInfo").textContent = `${levels.source}${clipText} levels ${shown} | range [${levels.rawMin.toExponential(3)}, ${levels.rawMax.toExponential(3)}]`;
+  const valueName = valueLabel(viewRes());
+  $("levelInfo").textContent = `${levels.source}${clipText} levels ${shown} | range [${levelText(levels.rawMin, 3, mode)}, ${levelText(levels.rawMax, 3, mode)}] (${valueName.toLowerCase()})`;
+  $("levelMinName").textContent = `${valueName} min`;
+  $("levelMaxName").textContent = `${valueName} max`;
   const agree = sliceAgreement();
   if(agree) setTextWithTitle("sliceStats", `${$("sliceStats").textContent} | slice R=${fmt(agree.R, 4)} wR=${fmt(agree.wR, 4)}`);
   updateSliceAgreement();
   drawLevelHistogram(stats.hist, levels);
   if($("levelMode").value !== "manual"){
-    setFieldUnlessEditing("levelMin", fmtLevel(levels.min));
-    setFieldUnlessEditing("levelMax", fmtLevel(levels.max));
+    setFieldUnlessEditing("levelMin", fmtLevel(levelToData(levels.min, mode)));
+    setFieldUnlessEditing("levelMax", fmtLevel(levelToData(levels.max, mode)));
   }
   updateSliceValue(sl);
   if(state.readoutPt) showReadout(state.readoutPt);
@@ -8101,8 +8130,8 @@ function drawLevelHistogram(hist, levels){
       ctx.fillStyle = th.mutedText;
       ctx.fillText(text, x, 11);
     };
-    tag(lo.toExponential(1), 3, "left");
-    tag(hi.toExponential(1), w - 3, "right");
+    tag(levelText(lo, 1), 3, "left");
+    tag(levelText(hi, 1), w - 3, "right");
     ctx.textAlign = "left";
   }
 }
@@ -8232,11 +8261,11 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
     ctx.fillStyle = tb.canvasText;
     ctx.fillText(text, lx, ly);
   };
-  label(b.rawMax.toExponential(2), x - 82, y + 10);
-  label(b.rawMin.toExponential(2), x - 82, y + h - 2);
+  label(levelText(b.rawMax), x - 82, y + 10);
+  label(levelText(b.rawMin), x - 82, y + h - 2);
   // Window labels only where they do not sit on the range labels.
-  if(yMax - y > 14) label(b.dispMax.toExponential(2), x - 118, Math.max(y + 20, yMax - 4));
-  if(y + h - yMin > 14) label(b.dispMin.toExponential(2), x - 118, Math.min(y + h - 4, yMin + 12));
+  if(yMax - y > 14) label(levelText(b.dispMax), x - 118, Math.max(y + 20, yMax - 4));
+  if(y + h - yMin > 14) label(levelText(b.dispMin), x - 118, Math.min(y + h - 4, yMin + 12));
   state.lastBar = b;
 }
 
@@ -12332,8 +12361,8 @@ function bind(){
   // Typed levels switch to manual levels.
   const typedLevels = () => {
     if($("levelMode").value !== "manual"){
-      const b = state.lastBar;
-      setDisplayLevelsFromBounds(Number($("levelMin").value), Number($("levelMax").value), b ? {rawMin:b.fullMin, rawMax:b.fullMax} : null);
+      const mode = $("scale").value, data = levelBoundsForMode({min:NaN, max:NaN}, mode, "global");
+      setDisplayLevelsFromBounds(transformedValue(Number($("levelMin").value), mode), transformedValue(Number($("levelMax").value), mode), {rawMin:data.min, rawMax:data.max}, {exact:true});
     }
     draw2d();
     scheduleRender3d();
