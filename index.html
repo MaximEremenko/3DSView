@@ -664,6 +664,36 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <div id="symInfo" class="mono fine"></div>
         <p class="fine">Each voxel is averaged with its symmetry equivalents that hold data; empty voxels stay out of the average. <b>Fill empty voxels only</b> keeps the measured values and fills the gaps; with &minus;1 it completes Friedel pairs. Then pick <b>Data &minus; symmetrized</b> above the map to see where the data break the symmetry, or <b>Equivalents found</b> for the coverage. Exports save the values on show.</p>
       </div>
+      <div class="group">
+        <h3>3D-&Delta;PDF</h3>
+        <div class="row2">
+          <label title="Lattice centring: the reflections it allows are removed">Centring
+            <select id="pdfCentring" disabled>
+              <option value="P" selected>P (all)</option><option value="I">I</option><option value="F">F</option>
+              <option value="C">C</option><option value="A">A</option><option value="B">B</option><option value="R">R (obverse)</option>
+            </select>
+          </label>
+          <label title="Radius of the sphere searched around each reflection">Peak radius <span id="pdfRadiusUnit" class="fine"></span><input id="pdfRadius" type="number" step="any" min="0" value="0.15" disabled></label>
+        </div>
+        <div class="row2">
+          <label title="Voxels above Q3 + f&middot;IQR in each sphere are removed; 0 removes the whole sphere">Fence f<input id="pdfFence" type="number" step="any" min="0" value="1.5" disabled></label>
+          <label title="Voxels closer than this to Q = 0 are removed too">Inner |Q| <span id="pdfInnerUnit" class="fine"></span><input id="pdfInner" type="number" step="any" min="0" value="0" disabled></label>
+        </div>
+        <button id="pdfPunch" disabled>Remove Bragg peaks</button>
+        <div class="row2">
+          <label title="Width of the Gaussian that fills empty voxels from their neighbours">Fill width &sigma; <span id="pdfSigmaUnit" class="fine"></span><input id="pdfSigma" type="number" step="any" min="0" value="0.05" disabled></label>
+          <button id="pdfFill" class="alt" disabled>Fill gaps</button>
+        </div>
+        <div class="row2">
+          <label>Window
+            <select id="pdfWindow" disabled><option value="lorch" selected>Lorch</option><option value="hann">Hann</option><option value="none">None</option></select>
+          </label>
+          <button id="pdfTransform" disabled>Transform to &Delta;PDF</button>
+        </div>
+        <button id="pdfBack" class="alt hidden">Back to the diffuse data</button>
+        <div id="pdfInfo" class="mono fine"></div>
+        <p class="fine">The transform takes the latest step: gaps filled, else Bragg removed, else the data. Empty voxels count as 0, and a half-space grid gives the Friedel-symmetric &Delta;PDF. Show <b>Bragg removed</b> or <b>Gaps filled</b> above the map to check a step first.</p>
+      </div>
     </section>
 
     <section class="page" data-page="export">
@@ -715,6 +745,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <option value="sym">Symmetrized</option>
           <option value="symdev">Data &minus; symmetrized</option>
           <option value="symcount">Equivalents found</option>
+          <option value="punched">Bragg removed</option>
+          <option value="filled">Gaps filled</option>
           <option value="sigma">&sigma;</option>
           <option value="snr">I/&sigma;</option>
         </select>
@@ -1037,7 +1069,10 @@ const state = {
   profileData:null,
   profileRaf:0,
   profileCache:null,
-  sliceHalf:0
+  sliceHalf:0,
+  dpdf:null,
+  dpdfBack:null,
+  pdfBusy:false
 };
 
 const COLOR_MAPS = {
@@ -4437,6 +4472,17 @@ function setZeroMask(res, on){
   return res.zeroMasked || 0;
 }
 
+// Index along an axis whose coordinate is nearest to 0, or the middle when
+// the axis does not reach 0. Grids with an even number of points put 0 one
+// step off the middle.
+function indexNearestZero(res, axis){
+  const values = [res.h, res.k, res.l][axis], n = values.length;
+  if(!(Math.min(values[0], values[n - 1]) <= 0 && Math.max(values[0], values[n - 1]) >= 0)) return Math.floor((n - 1) / 2);
+  let best = 0;
+  for(let i=1;i<n;i++) if(Math.abs(values[i]) < Math.abs(values[best])) best = i;
+  return best;
+}
+
 // The index nearest to target along an axis whose slice holds data, so a
 // block grid does not open on one of its empty gaps.
 function nearestSliceWithData(res, axis, target, range=[0, res.shape[axis] - 1]){
@@ -4496,6 +4542,16 @@ const SIGNED_VIEWS = new Set(["diff", "resid", "symdev"]);
 function buildView(mode, res=state.res){
   if(!res || !mode || mode === "data") return null;
   if(mode === "sym" || mode === "symdev" || mode === "symcount") return buildSymView(mode, res);
+  if(mode === "punched" || mode === "filled"){
+    const stage = dpdfStage(res), step = stage && stage[mode];
+    if(!step) return null;
+    const b = finiteBounds(step.I);
+    const view = {...res, I:step.I, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma:null,
+      valueName:`${valueLabel(res)}, ${mode === "punched" ? "Bragg removed" : "gaps filled"}`, columnName:`${valueColumnName(res)}_${mode}`,
+      fileTag:`_${mode}`, viewMode:mode, levelsFrom:res};
+    view.global = computeGlobalDisplayBounds(view);
+    return view;
+  }
   const n = res.I.length, I = res.I, sig = res.sigma;
   const cmp = state.cmpAligned, fit = state.cmpFit || {scale:1, offset:0};
   const needs = {sigma:sig, snr:sig, cmp, diff:cmp, ratio:cmp, resid:cmp && sig};
@@ -5358,6 +5414,241 @@ function nudgeCamera(key, kind, degrees){
     eye = rotateAbout(eye, axis, t);
   }
   applyCamera(key, {eye:{x:eye[0] + c[0], y:eye[1] + c[1], z:eye[2] + c[2]}, up:{x:up[0], y:up[1], z:up[2]}, center:cam.center});
+}
+
+
+// ---- 3D-ΔPDF: Bragg removal, gap filling and the transform to real space
+
+const imod = (a, n) => ((a % n) + n) % n;
+
+// Reflections a lattice centring allows (integer-indexed general conditions).
+const CENTRING_RULES = {
+  P:() => true,
+  I:(h, k, l) => imod(h + k + l, 2) === 0,
+  F:(h, k, l) => imod(h, 2) === imod(k, 2) && imod(k, 2) === imod(l, 2),
+  C:(h, k, l) => imod(h + k, 2) === 0,
+  A:(h, k, l) => imod(k + l, 2) === 0,
+  B:(h, k, l) => imod(h + l, 2) === 0,
+  R:(h, k, l) => imod(-h + k + l, 3) === 0
+};
+
+function centringAllows(centring, h, k, l){
+  return (CENTRING_RULES[centring] || CENTRING_RULES.P)(h, k, l);
+}
+
+// Crystal Miller indices of native coordinates, hkl = p·T; null when the
+// data have no reciprocal frame (real space, or Q without a cell).
+function crystalFrame(res){
+  if(isRealSpaceData(res)) return null;
+  const kind = String(res.coordKind || "").toLowerCase();
+  if(kind === "hkl") return validMatrix3(res.projectionW) ? res.projectionW : [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  if(validMatrix3(res.Bq)) return inv3(res.Bq);
+  return null;
+}
+
+// Native positions of the allowed reflections inside the grid.
+function braggPositions(res, centring="P"){
+  const T = crystalFrame(res);
+  if(!T) throw new Error("Bragg positions need HKL data, or Q data with a unit cell.");
+  const Ti = inv3(T), frame = gridFrame(res);
+  const [n0, n1, n2] = res.shape, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for(const i of [0, n0 - 1]) for(const j of [0, n1 - 1]) for(const k of [0, n2 - 1]){
+    const hkl = mul(pointAtIndex(res, i, j, k), T);
+    for(let a=0;a<3;a++){ lo[a] = Math.min(lo[a], hkl[a]); hi[a] = Math.max(hi[a], hkl[a]); }
+  }
+  const out = [];
+  for(let h=Math.floor(lo[0]);h<=Math.ceil(hi[0]);h++) for(let k=Math.floor(lo[1]);k<=Math.ceil(hi[1]);k++) for(let l=Math.floor(lo[2]);l<=Math.ceil(hi[2]);l++){
+    if(!centringAllows(centring, h, k, l)) continue;
+    const p = mul([h, k, l], Ti), f = mul(p.map((v, c) => v - frame.o[c]), frame.Gi);
+    if(f.every((v, a) => v >= -0.5 && v <= res.shape[a] - 0.5)) out.push({hkl:[h, k, l], p});
+  }
+  return out;
+}
+
+// Value at quantile q of a small array (sorted in place).
+function quantileOf(values, q){
+  values.sort((a, b) => a - b);
+  const pos = q * (values.length - 1), lo = Math.floor(pos), hi = Math.ceil(pos);
+  return values[lo] + (values[hi] - values[lo]) * (pos - lo);
+}
+
+// Removes Bragg peaks: in a sphere of the given radius (plot frame) around
+// each allowed reflection, voxels above the local fence Q3 + fence·IQR become
+// empty, which keeps the diffuse signal under the peak; fence 0 empties the
+// whole sphere. Voxels within inner of Q = 0 are emptied too.
+function removeBragg(res, I, {centring="P", radius=0.15, fence=1.5, inner=0}={}){
+  const pf = plotGridFrame(res), out = Float64Array.from(I), [n0, n1, n2] = res.shape, G = pf.Gq;
+  const peaks = braggPositions(res, centring), full = [[0, n0 - 1], [0, n1 - 1], [0, n2 - 1]];
+  let removed = 0;
+  for(const peak of peaks){
+    const q0 = plotPoint(res, peak.p[0], peak.p[1], peak.p[2]);
+    const corners = [];
+    for(const sx of [-1, 1]) for(const sy of [-1, 1]) for(const sz of [-1, 1]) corners.push([q0[0] + sx * radius, q0[1] + sy * radius, q0[2] + sz * radius]);
+    const [ri, rj, rk] = indexBoxAround(pf, corners, full);
+    const inside = [], values = [];
+    for(let i=ri[0];i<=ri[1];i++) for(let j=rj[0];j<=rj[1];j++) for(let k=rk[0];k<=rk[1];k++){
+      const d0 = pf.oq[0] + i * G[0][0] + j * G[1][0] + k * G[2][0] - q0[0];
+      const d1 = pf.oq[1] + i * G[0][1] + j * G[1][1] + k * G[2][1] - q0[1];
+      const d2 = pf.oq[2] + i * G[0][2] + j * G[1][2] + k * G[2][2] - q0[2];
+      if(d0 * d0 + d1 * d1 + d2 * d2 > radius * radius) continue;
+      const v = (i * n1 + j) * n2 + k;
+      if(out[v] !== out[v]) continue;
+      inside.push(v);
+      values.push(out[v]);
+    }
+    if(!inside.length) continue;
+    let limit = -Infinity;
+    if(fence > 0 && values.length >= 4){
+      const q1 = quantileOf(values, 0.25), q3 = quantileOf(values, 0.75);
+      limit = q3 + fence * (q3 - q1);
+    }
+    for(const v of inside){
+      if(fence > 0 && values.length >= 4 && !(out[v] > limit)) continue;
+      out[v] = NaN;
+      removed++;
+    }
+  }
+  if(inner > 0){
+    for(let i=0;i<n0;i++) for(let j=0;j<n1;j++) for(let k=0;k<n2;k++){
+      const x = pf.oq[0] + i * G[0][0] + j * G[1][0] + k * G[2][0], y = pf.oq[1] + i * G[0][1] + j * G[1][1] + k * G[2][1], z = pf.oq[2] + i * G[0][2] + j * G[1][2] + k * G[2][2];
+      const v = (i * n1 + j) * n2 + k;
+      if(x * x + y * y + z * z < inner * inner && out[v] === out[v]){ out[v] = NaN; removed++; }
+    }
+  }
+  return {I:out, removed, reflections:peaks.length};
+}
+
+// Fills empty voxels from their neighbours with a Gaussian of width sigma
+// (plot frame), normalized by the weight of the voxels that hold data; voxels
+// with data keep their values, and gaps too wide to bridge stay empty.
+function fillGaps(res, I, {sigma=0.05}={}){
+  const pf = plotGridFrame(res), shape = res.shape, N = I.length;
+  const num = new Float64Array(N), den = new Float64Array(N);
+  for(let v=0;v<N;v++){ const x = I[v]; if(x === x){ num[v] = x; den[v] = 1; } }
+  const strides = [shape[1] * shape[2], shape[2], 1];
+  for(let a=0;a<3;a++){
+    const s = sigma / normVec(pf.Gq[a]);
+    if(!(s >= 0.3) || shape[a] < 2) continue;
+    const r = Math.min(shape[a] - 1, Math.ceil(3 * s)), kernel = new Float64Array(2 * r + 1);
+    for(let d=-r;d<=r;d++) kernel[d + r] = Math.exp(-0.5 * (d / s) ** 2);
+    const n = shape[a], stride = strides[a], lineN = new Float64Array(n), lineD = new Float64Array(n);
+    const others = [0, 1, 2].filter(b => b !== a);
+    for(let p=0;p<shape[others[0]];p++) for(let q=0;q<shape[others[1]];q++){
+      const base = p * strides[others[0]] + q * strides[others[1]];
+      for(let t=0;t<n;t++){ lineN[t] = num[base + t * stride]; lineD[t] = den[base + t * stride]; }
+      for(let t=0;t<n;t++){
+        let sn = 0, sd = 0;
+        for(let d=Math.max(-r, -t), end=Math.min(r, n - 1 - t); d<=end; d++){ const w = kernel[d + r]; sn += w * lineN[t + d]; sd += w * lineD[t + d]; }
+        num[base + t * stride] = sn;
+        den[base + t * stride] = sd;
+      }
+    }
+  }
+  const out = new Float64Array(N);
+  let filled = 0;
+  for(let v=0;v<N;v++){
+    const x = I[v];
+    if(x === x){ out[v] = x; continue; }
+    if(den[v] > 0.05){ out[v] = num[v] / den[v]; filled++; }
+    else out[v] = NaN;
+  }
+  return {I:out, filled};
+}
+
+const nextPow2 = n => { let p = 1; while(p < n) p <<= 1; return p; };
+
+// In-place radix-2 complex FFT of every line of re/im along one axis.
+function fftAxis(re, im, dims, axis){
+  const n = dims[axis];
+  if(n < 2) return;
+  const strides = [dims[1] * dims[2], dims[2], 1], stride = strides[axis];
+  const bits = Math.round(Math.log2(n)), rev = new Uint32Array(n);
+  for(let i=0;i<n;i++){ let r = 0; for(let b=0;b<bits;b++) r |= ((i >> b) & 1) << (bits - 1 - b); rev[i] = r; }
+  const cos = new Float64Array(n / 2), sin = new Float64Array(n / 2);
+  for(let i=0;i<n/2;i++){ cos[i] = Math.cos(2 * Math.PI * i / n); sin[i] = -Math.sin(2 * Math.PI * i / n); }
+  const lr = new Float64Array(n), li = new Float64Array(n);
+  const others = [0, 1, 2].filter(b => b !== axis);
+  for(let p=0;p<dims[others[0]];p++) for(let q=0;q<dims[others[1]];q++){
+    const base = p * strides[others[0]] + q * strides[others[1]];
+    for(let t=0;t<n;t++){ const s = base + rev[t] * stride; lr[t] = re[s]; li[t] = im[s]; }
+    for(let size=2;size<=n;size<<=1){
+      const half = size >> 1, step = n / size;
+      for(let start=0;start<n;start+=size){
+        for(let j=0;j<half;j++){
+          const wr = cos[j * step], wi = sin[j * step], a = start + j, b = a + half;
+          const tr = wr * lr[b] - wi * li[b], ti = wr * li[b] + wi * lr[b];
+          lr[b] = lr[a] - tr; li[b] = li[a] - ti;
+          lr[a] += tr; li[a] += ti;
+        }
+      }
+    }
+    for(let t=0;t<n;t++){ const s = base + t * stride; re[s] = lr[t]; im[s] = li[t]; }
+  }
+}
+
+const PDF_WINDOWS = {
+  none:() => 1,
+  lorch:x => (x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x)),
+  hann:x => 0.5 * (1 + Math.cos(Math.PI * x))
+};
+
+// The 3D-ΔPDF of a reciprocal volume: values (empty voxels as 0) times a
+// separable window go on a zero-padded power-of-two grid centred on Q = 0,
+// and the real part of the Fourier transform comes back on the dual grid,
+// centred on r = 0. HKL data give fractional direct coordinates (with the
+// direct metric when a cell is known); Q data give Cartesian Å.
+async function deltaPdfVolume(res, I, {window="lorch", onStep=null}={}){
+  if(isRealSpaceData(res)) throw new Error("The data are in real space already.");
+  const frame = gridFrame(res), shape = res.shape;
+  const zero = mul(frame.o.map(v => -v), frame.Gi);
+  if(zero.some((z, a) => shape[a] > 1 && Math.abs(z - Math.round(z)) > 1e-3)) throw new Error("The transform needs Q = 0 on the grid along each axis.");
+  const z = zero.map(Math.round);
+  const dims = shape.map((n, a) => (n < 2 ? 1 : nextPow2(2 * Math.max(z[a], n - 1 - z[a]) + 1)));
+  const total = dims[0] * dims[1] * dims[2];
+  if(total > 32 * 1024 * 1024) throw new Error(`The padded grid (${dims.join(" x ")}) is too large; crop the shown volume first.`);
+  const re = new Float32Array(total), im = new Float32Array(total), w = PDF_WINDOWS[window] || PDF_WINDOWS.none;
+  const reach = shape.map((n, a) => Math.max(1, z[a], n - 1 - z[a]));
+  const wAxis = shape.map((n, a) => Float64Array.from({length:n}, (_, i) => w((i - z[a]) / reach[a])));
+  const [n0, n1, n2] = shape;
+  let used = 0;
+  for(let i=0;i<n0;i++) for(let j=0;j<n1;j++) for(let k=0;k<n2;k++){
+    const x = I[(i * n1 + j) * n2 + k];
+    if(x !== x) continue;
+    // Q = 0 goes to index 0; negative Q wraps to the end.
+    const a = imod(i - z[0], dims[0]), b = imod(j - z[1], dims[1]), c = imod(k - z[2], dims[2]);
+    re[(a * dims[1] + b) * dims[2] + c] = x * wAxis[0][i] * wAxis[1][j] * wAxis[2][k];
+    used++;
+  }
+  for(let a=0;a<3;a++){
+    fftAxis(re, im, dims, a);
+    if(onStep) await onStep(a + 1, 3);
+  }
+  // Centre r = 0 and keep the real part.
+  const out = new Float64Array(total), scale = 1 / Math.max(1, used);
+  for(let a=0;a<dims[0];a++) for(let b=0;b<dims[1];b++) for(let c=0;c<dims[2];c++){
+    const src = (imod(a + (dims[0] >> 1), dims[0]) * dims[1] + imod(b + (dims[1] >> 1), dims[1])) * dims[2] + imod(c + (dims[2] >> 1), dims[2]);
+    out[(a * dims[1] + b) * dims[2] + c] = re[src] * scale;
+  }
+  // The dual grid: q(n)·r(m) = Σ n_a m_a / N_a, with a factor 2π for Cartesian Q.
+  const qData = String(res.coordKind || "").toLowerCase() !== "hkl";
+  const Gi = frame.Gi, D = [0, 1, 2].map(b => [0, 1, 2].map(c => (qData ? 2 * Math.PI : 1) * Gi[c][b] / dims[b]));
+  const origin = [0, 1, 2].map(c => -D.reduce((s, row, b) => s + (dims[b] >> 1) * row[c], 0));
+  return {values:out, dims, D, origin, window, coordKind:qData ? "xyz" : "uvw"};
+}
+
+// A ΔPDF result as a dataset of its own.
+function deltaPdfResult(source, pdf){
+  const {dims, D, origin} = pdf;
+  const gridVectors = [0, 1, 2].map(c => [D[0][c], D[1][c], D[2][c]]);
+  const meta = {gridOrigin:origin, gridVectors, gridVectorSource:"dual of the reciprocal grid",
+    dataKind:{code:"delta_pdf", label:"3D-ΔPDF", source:"transform"}};
+  if(pdf.coordKind === "uvw" && validMatrix3(source.Bq)) meta.Bp = transpose3(inv3(source.Bq)).map(row => row.map(v => v * 2 * Math.PI));
+  if(Array.isArray(source.cellDeg)) meta.cellDeg = source.cellDeg.slice();
+  const name = source.file.replace(/\.[^.]+$/, "") + "_dpdf";
+  const res = makeVolumeResult(name, dims, regularAxis(dims[0], origin[0], D[0][0]), regularAxis(dims[1], origin[1], D[1][1]), regularAxis(dims[2], origin[2], D[2][2]),
+    pdf.values, `3D-ΔPDF of ${source.file} (${pdf.window} window)`, pdf.coordKind, null, 0, meta);
+  if(!isSkewedGrid(res)){ delete res.gridOrigin; delete res.gridVectors; delete res.gridVectorSource; delete res.gridInv; }
+  return res;
 }
 
 // The comparison and its fit, for profiles of the data it was aligned to.
@@ -7672,6 +7963,7 @@ function syncControls(){
   syncSymControls();
   syncShowOptions();
   updateSymInfo();
+  syncPdfControls();
 }
 
 function updateAxisIndexBounds(){
@@ -9322,7 +9614,14 @@ async function onFile(file){
   const parsed = await parseFile(file, progress);
   status(`Finalizing ${file.name} ...`);
   await nextFrame();
+  state.dpdfBack = null;
+  showDataset(parsed, {name:file.name});
+}
+
+// Makes a parsed or computed volume the data on show.
+function showDataset(parsed, {name=parsed.file, note=""}={}){
   state.res = parsed;
+  state.dpdf = null;
   state.sourceBasis = snapshotCellBasis(parsed);
   state.sourceGeometry = snapshotGeometry(parsed);
   state.displayRanges = fullDisplayRanges(parsed);
@@ -9343,7 +9642,7 @@ async function onFile(file){
   // Widen the slider first: a range input clamps a value above its old max.
   $("idx").min = "0";
   $("idx").max = String(Math.max(0, parsed.shape[2] - 1));
-  $("idx").value = String(nearestSliceWithData(parsed, 2, Math.floor((parsed.shape[2] - 1) / 2)));
+  $("idx").value = String(nearestSliceWithData(parsed, 2, indexNearestZero(parsed, 2)));
   // Levels stay global while slicing unless per-slice levels were chosen.
   $("levelMode").value = autoLevelMode();
   resetViewsForNewData(parsed);
@@ -9369,7 +9668,7 @@ async function onFile(file){
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
   const geometryNote = parsed.geometryNote ? ` ${parsed.geometryNote}` : "";
   const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  status(`Loaded${cacheText} ${name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${orderNote}${note}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
@@ -9749,7 +10048,9 @@ const SHOW_NEEDS = {
   cmp:res => comparisonReady(res),
   diff:res => comparisonReady(res),
   ratio:res => comparisonReady(res),
-  resid:res => comparisonReady(res) && !!res.sigma
+  resid:res => comparisonReady(res) && !!res.sigma,
+  punched:res => !!(dpdfStage(res) && dpdfStage(res).punched),
+  filled:res => !!(dpdfStage(res) && dpdfStage(res).filled)
 };
 
 function syncShowOptions(){
@@ -9798,7 +10099,7 @@ function setShowMode(mode){
   applyViewDisplay(prev, next);
   // Levels start from auto for new kinds of values; the data, the
   // symmetrized data and the comparison share them.
-  const family = mode => (["data", "sym", "cmp"].includes(mode) ? "intensity" : mode);
+  const family = mode => (["data", "sym", "cmp", "punched", "filled"].includes(mode) ? "intensity" : mode);
   if(family(prev) !== family(next)){
     state.manualLevelBounds = null;
     if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
@@ -10359,6 +10660,93 @@ function endCutDrag(ev){
   scheduleProfile();
 }
 
+// ---- The 3D-ΔPDF steps on the Process page
+
+function dpdfStage(res=state.res){
+  return state.dpdf && state.dpdf.res === res ? state.dpdf : null;
+}
+
+function syncPdfControls(){
+  const res = state.res, busy = !!state.pdfBusy, stage = dpdfStage(res);
+  const reciprocal = !!res && !isRealSpaceData(res);
+  for(const id of ["pdfCentring", "pdfRadius", "pdfFence", "pdfInner", "pdfSigma", "pdfWindow"]) $(id).disabled = !reciprocal || busy;
+  $("pdfPunch").disabled = !reciprocal || busy;
+  $("pdfFill").disabled = !reciprocal || busy;
+  $("pdfTransform").disabled = !reciprocal || busy;
+  $("pdfBack").classList.toggle("hidden", !state.dpdfBack);
+  $("pdfBack").disabled = busy;
+  const unit = plotUnit(res);
+  for(const id of ["pdfRadiusUnit", "pdfInnerUnit", "pdfSigmaUnit"]) $(id).textContent = unit;
+  if(!res) $("pdfInfo").textContent = "";
+  else if(!reciprocal) $("pdfInfo").textContent = state.dpdfBack ? `ΔPDF of ${state.dpdfBack.res.file}.` : "The data are in real space.";
+  else if(!stage) $("pdfInfo").textContent = "";
+}
+
+async function runPdfStep(kind){
+  const res = state.res;
+  if(!res || state.pdfBusy) return;
+  state.pdfBusy = true;
+  syncPdfControls();
+  const t0 = performance.now();
+  try{
+    let stage = dpdfStage(res);
+    if(!stage) stage = state.dpdf = {res, punched:null, filled:null};
+    if(kind === "punch"){
+      status("Removing Bragg peaks ...");
+      await nextFrame();
+      const out = removeBragg(res, res.I, {
+        centring:$("pdfCentring").value,
+        radius:Math.max(0, Number($("pdfRadius").value) || 0),
+        fence:Math.max(0, Number($("pdfFence").value) || 0),
+        inner:Math.max(0, Number($("pdfInner").value) || 0)
+      });
+      stage.punched = out;
+      stage.filled = null;
+      setShowMode("punched");
+      $("pdfInfo").textContent = `Bragg removed: ${out.removed.toLocaleString()} voxels around ${out.reflections.toLocaleString()} reflections.`;
+      status(`Removed ${out.removed.toLocaleString()} voxels around ${out.reflections.toLocaleString()} allowed reflections in ${fmt((performance.now() - t0) / 1000, 2)} s.`, "ok");
+    }else if(kind === "fill"){
+      status("Filling gaps ...");
+      await nextFrame();
+      const source = stage.punched ? stage.punched.I : res.I;
+      const out = fillGaps(res, source, {sigma:Math.max(0, Number($("pdfSigma").value) || 0)});
+      stage.filled = out;
+      setShowMode("filled");
+      $("pdfInfo").textContent = `Gaps filled: ${out.filled.toLocaleString()} voxels${stage.punched ? " after the Bragg removal" : ""}.`;
+      status(`Filled ${out.filled.toLocaleString()} empty voxels in ${fmt((performance.now() - t0) / 1000, 2)} s.`, "ok");
+    }else{
+      const source = stage.filled ? stage.filled.I : stage.punched ? stage.punched.I : res.I;
+      const from = stage.filled ? "gaps filled" : stage.punched ? "Bragg removed" : "the data";
+      status(`Transforming (${from}) ...`);
+      await nextFrame();
+      const pdf = await deltaPdfVolume(res, source, {window:$("pdfWindow").value, onStep:async (done, total) => {
+        status(`Transforming: axis ${done} of ${total} ...`);
+        await nextFrame();
+      }});
+      const result = deltaPdfResult(res, pdf);
+      const back = {res, dpdf:stage};
+      showDataset(result, {note:` Transformed from ${from} with a ${pdf.window} window on a ${pdf.dims.join(" x ")} grid in ${fmt((performance.now() - t0) / 1000, 2)} s.`});
+      state.dpdfBack = back;
+      syncPdfControls();
+    }
+  }catch(err){
+    status(`ΔPDF step failed: ${err.message}`, "err");
+  }finally{
+    state.pdfBusy = false;
+    syncPdfControls();
+  }
+}
+
+function pdfGoBack(){
+  const back = state.dpdfBack;
+  if(!back) return;
+  state.dpdfBack = null;
+  showDataset(back.res, {note:" Back from the ΔPDF."});
+  state.dpdf = back.dpdf;
+  syncShowOptions();
+  syncPdfControls();
+}
+
 function bind(){
   $("file").addEventListener("change", e => {
     const files = Array.from(e.target.files || []);
@@ -10459,7 +10847,7 @@ function bind(){
     updateAxisIndexBounds();
     const idx = $("idx"), lo = Number(idx.min), hi = Number(idx.max);
     const saved = state.axisIndex[$("axis").value], fixed = {h:0, k:1, l:2}[$("axis").value];
-    idx.value = String(Number.isFinite(saved) ? clamp(saved, lo, hi) : nearestSliceWithData(state.res, fixed, Math.round((lo + hi) / 2), [lo, hi]));
+    idx.value = String(Number.isFinite(saved) ? clamp(saved, lo, hi) : nearestSliceWithData(state.res, fixed, clamp(indexNearestZero(state.res, fixed), lo, hi), [lo, hi]));
     draw2d();
     scheduleRender3d();
   });
@@ -10541,6 +10929,10 @@ function bind(){
   $("laueClass").addEventListener("change", () => updateSymInfo());
   $("symApply").addEventListener("click", runSymmetry);
   $("symClear").addEventListener("click", clearSymmetry);
+  $("pdfPunch").addEventListener("click", () => runPdfStep("punch"));
+  $("pdfFill").addEventListener("click", () => runPdfStep("fill"));
+  $("pdfTransform").addEventListener("click", () => runPdfStep("transform"));
+  $("pdfBack").addEventListener("click", pdfGoBack);
   $("heatmap").addEventListener("click", onHeatmapClick);
   $("heatmap").addEventListener("pointerdown", onHeatmapPointerDown);
   $("heatmap").addEventListener("pointermove", onHeatmapPointerMove);

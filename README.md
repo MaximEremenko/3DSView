@@ -27,8 +27,9 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **Files**: drop a file anywhere in the window, or use **Open**. The status bar shows the
   latest message and the slice statistics; click the message to see recent messages.
   Several files can be opened or dropped together, or a whole run folder opened (see
-  *Compare*). A file opens on the middle slice, or on the nearest slice holding data
-  when the middle falls in a gap of a block grid.
+  *Compare*). A file opens on the slice nearest to 0 (or the middle slice when the axis
+  does not reach 0), moved to the nearest slice holding data when that falls in a gap of
+  a block grid.
 - **Profiles** (the strip under the map, <kbd>P</kbd>):
   - **Line cuts:** turn on the cut tool (<kbd>L</kbd>) and drag across the map. Drag an
     end to adjust the cut, drag the line to move it, or click to clear it. The cut
@@ -144,6 +145,19 @@ and slab-average slicing with linked 2-D and 3-D views.
   K, m−3m keeps only its 4/mmm part. The class is suggested from the file name (e.g.
   `_m-3m`) or from the cell metric. *Data − symmetrized* shows where the data break the
   symmetry, and *Equivalents found* shows the coverage.
+- **3D-ΔPDF** (Process page), in three steps:
+  - **Remove Bragg peaks.** Within a sphere of chosen radius around each reflection the
+    lattice centring allows (P, I, F, C, A, B or R), the voxels above the local fence
+    Q3 + f·IQR are removed, which keeps the diffuse signal under the peak; f = 0 empties
+    the whole sphere. The region near Q = 0 can be removed too.
+  - **Fill the gaps.** Empty voxels are filled from their neighbours with a NaN-aware
+    Gaussian.
+  - **Transform.** The latest step's values are windowed (Lorch, Hann or none), placed on
+    a zero-padded power-of-two grid centred on Q = 0 and Fourier transformed. The real
+    part opens as a ΔPDF dataset on the dual grid: lattice units u, v, w with the direct
+    metric, or Å for Q data. A half-space grid gives the Friedel-symmetric ΔPDF.
+  - **Checking and returning.** Show offers *Bragg removed* and *Gaps filled* to check
+    each step, and *Back to the diffuse data* returns to the source.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
   isosurfaces. That covers NaN values, a Mantid `mask`, and I = 0 in RMCProfile text,
   which RMCProfile uses for "no data". The zero mask switches on automatically when at
