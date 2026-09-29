@@ -6787,6 +6787,9 @@ async function onFile(file){
   resetAvgVolState();
   $("sliceMode").value = "axis";
   $("axis").value = "l";
+  // Widen the slider first: a range input clamps a value above its old max.
+  $("idx").min = "0";
+  $("idx").max = String(Math.max(0, parsed.shape[2] - 1));
   $("idx").value = String(Math.floor((parsed.shape[2] - 1) / 2));
   $("levelMode").value = "slice";
   const signed = applySignedDefaults(parsed);
