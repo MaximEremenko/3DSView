@@ -145,7 +145,8 @@
             let atomUnitCell = matrixRows(file, 'entry/data/atom_unit_cell', atomCount, 3, false);
             if (!atomUnitCell) atomUnitCell = Array.from({ length: atomCount }, () => [1, 1, 1]);
             const atomType = numericDataset(file, 'entry/data/atom_type', true).slice(0, atomCount).map(Math.round);
-            const typeNames = textDataset(file, 'entry/data/types_names').split(/\s+/).filter(Boolean);
+            // Fortran writers separate the names with ';' ("O;H;N;H").
+            const typeNames = textDataset(file, 'entry/data/types_names').split(/[\s;]+/).filter(Boolean);
             if (atomType.length !== atomCount || !typeNames.length) {
                 throw new Error('unified structure: invalid atom types');
             }

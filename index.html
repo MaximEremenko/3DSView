@@ -3079,6 +3079,7 @@ function parseFortranUnifiedH5(h5file, name){
   if(!axesNames.some(Boolean)) axesNames = defaultNames;
   const content = readH5Text(h5file, ["entry/data/data_type_content"]);
   const radiation = readH5Text(h5file, ["entry/data/data_radiation"]);
+  const experiment = readH5Text(h5file, ["entry/data/data_type_experiment"]);
   const coordKind = unifiedCoordKind(contract.axesType);
   const dataKind = dataKindForAxes(
     classifyDataKind({content, space, name, format:"RMCProfile/DiffuseCode unified HDF5", shape}),
@@ -3111,7 +3112,7 @@ function parseFortranUnifiedH5(h5file, name){
     {...meta, ...gridMeta, dataKind, ...(axisLabelsMeta ? {axisLabels:axisLabelsMeta} : {})}
   );
   result.header = {points:values.length, sections:1, scale:null, offset:null};
-  result.h5 = {space, content, radiation, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary};
+  result.h5 = {space, content, radiation, experiment, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary};
   return result;
 }
 
@@ -3232,6 +3233,7 @@ function parseCommonScatteringH5(h5file, name){
   const values = cOrder ? rawFlat : reorderFortranCube(rawFlat, diskShape, shape);
   const content = h5Text(h5AttrValue(dataGroup, "content"));
   const radiation = h5Text(h5AttrValue(dataGroup, "radiation"));
+  const experiment = h5Text(h5AttrValue(dataGroup, "data_type_experiment"));
   const coordKind = unifiedCoordKind(contract.axesType);
   const dataKind = dataKindForAxes(
     classifyDataKind({content, space, name, format:"DiffuseDevelopers unified HDF5", shape}),
@@ -3272,7 +3274,7 @@ function parseCommonScatteringH5(h5file, name){
     {...meta, ...gridMeta, dataKind, ...(axisLabelsMeta ? {axisLabels:axisLabelsMeta} : {})}
   );
   result.header = {points:values.length, sections:1, scale:null, offset:null};
-  result.h5 = {space, content, radiation, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary, diskOrder:cOrder ? "[H,K,L]" : "[L,K,H]"};
+  result.h5 = {space, content, radiation, experiment, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary, diskOrder:cOrder ? "[H,K,L]" : "[L,K,H]"};
   result.axisOrderAmbiguous = !detectedOrder && diskShape.length >= 2 && diskShape[0] === diskShape[diskShape.length - 1];
   return result;
 }
@@ -5357,7 +5359,7 @@ function applyShownVolume(){
   updateMeta();
   draw2d();
   scheduleRender3d(0);
-  status("Applied shown-volume limits; source data and unified export remain unchanged.", "ok");
+  status("Applied shown-volume limits; the source data is unchanged and the unified export saves the shown region.", "ok");
 }
 
 function syncControls(){
@@ -6347,7 +6349,7 @@ function saveText(name, text, mime){
 }
 
 function baseName(){
-  return state.res ? state.res.file.replace(/\.[^.]+$/, "") : "3ds_plotter";
+  return state.res ? state.res.file.replace(/\.[^.]+$/, "") : "3dsview";
 }
 
 function savePng(){
@@ -6409,6 +6411,50 @@ function unifiedGridForResult(res){
   return {corner, vectors};
 }
 
+// Cell lengths and angles from a reciprocal basis (rows 2pi a*, 2pi b*, 2pi c*).
+function cellFromBq(Bq){
+  if(!validMatrix3(Bq)) return null;
+  try{
+    const A = inv3(Bq).map(row => row.map(v => v * 2 * Math.PI));
+    const [a, b, c] = [0, 1, 2].map(j => [A[0][j], A[1][j], A[2][j]]);
+    const angle = (u, v) => Math.acos(clamp(dot(u, v) / (normVec(u) * normVec(v)), -1, 1)) * 180 / Math.PI;
+    return [normVec(a), normVec(b), normVec(c), angle(b, c), angle(a, c), angle(a, b)];
+  }catch(_){
+    return null;
+  }
+}
+
+function unifiedExperimentType(res){
+  if(res.h5 && res.h5.experiment) return res.h5.experiment;
+  if(/^NeXus signal/.test(res.format || "")) return "experimental";
+  if(/_calc(?:[._-]|$)/i.test(String(res.file || "").replace(/\.[^.]+$/, ""))) return "calculated";
+  return "unknown";
+}
+
+// Unified HDF5 writer input for the shown (cropped) part of the volume.
+function unifiedExportSpec(res, ranges=displayIndexRanges(res)){
+  const grid = unifiedGridForResult(res);
+  const dims = ranges.map(r => r[1] - r[0] + 1);
+  const values = new Float64Array(dims[0] * dims[1] * dims[2]);
+  let p = 0;
+  for(let i=ranges[0][0];i<=ranges[0][1];i++) for(let j=ranges[1][0];j<=ranges[1][1];j++){
+    const src = idx3(res.shape, i, j, ranges[2][0]);
+    values.set(res.I.subarray(src, src + dims[2]), p);
+    p += dims[2];
+  }
+  const start = ranges.map(r => r[0]);
+  const corner = [0, 1, 2].map(c => grid.corner[c] + start[0] * grid.vectors[0][c] + start[1] * grid.vectors[1][c] + start[2] * grid.vectors[2][c]);
+  const cell = Array.isArray(res.cellDeg) && res.cellDeg.length >= 6 ? res.cellDeg.slice(0, 6) : cellFromBq(res.Bq) || [1,1,1,90,90,90];
+  return {
+    dims, corner, vectors:grid.vectors, values, cell,
+    axesType:unifiedAxesTypeForResult(res),
+    content:res.h5 && res.h5.content || valueColumnName(res),
+    radiation:res.h5 && res.h5.radiation || "unknown",
+    experiment:unifiedExperimentType(res),
+    creationMethod:"3DSView unified data export"
+  };
+}
+
 async function saveUnified(){
   if(!state.res) return;
   if(!window.UnifiedH5 || typeof window.UnifiedH5.writeData !== "function"){
@@ -6421,21 +6467,8 @@ async function saveUnified(){
     status("Writing unified HDF5 data ...");
     const h5 = await ensureH5wasm();
     const res = state.res;
-    const grid = unifiedGridForResult(res);
-    const cell = Array.isArray(res.cellDeg) && res.cellDeg.length >= 6
-      ? res.cellDeg.slice(0, 6) : [1,1,1,90,90,90];
-    const bytes = window.UnifiedH5.writeData(h5, {
-      dims:res.shape,
-      corner:grid.corner,
-      vectors:grid.vectors,
-      values:res.I,
-      cell,
-      axesType:unifiedAxesTypeForResult(res),
-      content:res.h5 && res.h5.content || valueColumnName(res),
-      radiation:res.h5 && res.h5.radiation || "unknown",
-      experiment:"calculated",
-      creationMethod:"RMCDiffuse3DSlice unified data export"
-    });
+    const spec = unifiedExportSpec(res);
+    const bytes = window.UnifiedH5.writeData(h5, spec);
     const blob = new Blob([bytes], {type:"application/x-hdf5"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -6445,7 +6478,8 @@ async function saveUnified(){
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    status("Saved unified HDF5 volume.", "ok");
+    const cropped = spec.dims.some((n, axis) => n < res.shape[axis]);
+    status(cropped ? `Saved the shown ${spec.dims.join(" x ")} region of the ${res.shape.join(" x ")} volume as unified HDF5.` : "Saved unified HDF5 volume.", "ok");
   }catch(err){
     status(`Unified HDF5 export failed: ${err.message}`, "err");
   }finally{

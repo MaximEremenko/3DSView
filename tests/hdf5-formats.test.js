@@ -278,3 +278,56 @@ test("Mantid UB without cell parameters gives Bq = 2 pi UB^T", async () => {
   const q001 = app.hklToQ(0, 0, 1, res.Bq);
   assertClose(Math.hypot(...q001), t / 6, 1e-12, "|Q(0,0,1)|");
 });
+
+test("unified export saves the shown region with a shifted corner", async () => {
+  const app = loadApp();
+  const shape = [6, 5, 4];
+  const source = await unifiedExportFile(app, "full_unified.h5", {
+    dims:shape, corner:[-1, -1, 0], vectors:DIAGONAL,
+    values:cOrderValues(shape), cell:[4, 4, 6, 90, 90, 90], axesType:"hkl"
+  });
+  const res = await app.parseFile(source);
+  const ranges = [[1, 4], [2, 3], [0, 2]];
+  const spec = app.unifiedExportSpec(res, ranges);
+  assert.deepEqual(Array.from(spec.dims), [4, 2, 3]);
+  const h5 = await app.ensureH5wasm();
+  const bytes = app.context.UnifiedH5.writeData(h5, spec);
+  const back = await app.parseFile(new File([bytes], "cropped_unified.h5", {lastModified:0}));
+  assertValues(back, [4, 2, 3], (i, j, k) => code(i + 1, j + 2, k));
+  assert.deepEqual(Array.from(back.h), [-0.5, 0, 0.5, 1]);
+  assert.deepEqual(Array.from(back.k), [0, 0.5]);
+  assert.equal(spec.creationMethod, "3DSView unified data export");
+});
+
+test("unified export keeps the source experiment type and derives a missing cell", async () => {
+  const app = loadApp();
+  const shape = [3, 3, 3];
+  const res = await app.parseFile(await unifiedExportFile(app, "measured_unified.h5", {
+    dims:shape, corner:[0, 0, 0], vectors:DIAGONAL, values:cOrderValues(shape),
+    cell:[4, 4, 6, 90, 90, 90], axesType:"hkl", experiment:"experimental"
+  }));
+  assert.equal(app.unifiedExportSpec(res).experiment, "experimental");
+  const mantid = await app.parseFile(await mantidFile(app, "mdhisto.nxs", {shape:[3, 2, 2]}));
+  assert.equal(app.unifiedExportSpec(mantid).experiment, "experimental");
+  // A basis without cell parameters (e.g. a calculator JSON) still yields the real cell.
+  delete mantid.cellDeg;
+  const cell = app.unifiedExportSpec(mantid).cell;
+  [4, 4, 6, 90, 90, 90].forEach((v, i) => assertClose(cell[i], v, 1e-9, `cell ${i}`));
+});
+
+test("unified structure types_names separated by ';' are read", async () => {
+  const app = loadApp();
+  const file = await h5File(app, "structure.h5", f => {
+    const d = f.create_group("entry").create_group("data");
+    d.create_dataset({name:"number_of_atoms", data:[4], shape:[1], dtype:"<i"});
+    d.create_dataset({name:"unit_cell_lengths", data:[5, 5, 5], shape:[3], dtype:"<d"});
+    d.create_dataset({name:"unit_cell_angles", data:[90, 90, 90], shape:[3], dtype:"<d"});
+    d.create_dataset({name:"unit_cells", data:[1, 1, 1], shape:[3], dtype:"<i"});
+    d.create_dataset({name:"atom_position", data:new Float64Array(12), shape:[4, 3], dtype:"<d"});
+    d.create_dataset({name:"atom_type", data:[1, 2, 3, 4], shape:[4], dtype:"<i"});
+    d.create_dataset({name:"types_names", data:"O;H;N;H"});
+  });
+  const h5 = await app.ensureH5wasm();
+  const structure = app.context.UnifiedH5.readStructure(h5, new Uint8Array(await file.arrayBuffer()), file.name);
+  assert.deepEqual(Array.from(structure.elements), ["O", "H", "N", "H"]);
+});
