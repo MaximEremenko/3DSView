@@ -642,7 +642,8 @@ function cacheBaseFromResult(res){
   const keys = [
     "file","header","skipped","rows","filled","format","coordKind","shape",
     "h","k","l","I","rawMin","rawMax","dataKind","Bq","Bp","cellDeg","basisSource",
-    "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous"
+    "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous",
+    "projectionW","hklAxisLabels","maskedVoxels"
   ];
   const base = {};
   for(const key of keys){
@@ -901,7 +902,7 @@ function activeCoordKind(){
 
 function axisLabels(kind=activeCoordKind(), res=state.res){
   if(res && isRealSpaceData(res) && Array.isArray(res.axisLabels) && res.axisLabels.length >= 3) return res.axisLabels;
-  if(kind === "hkl") return ["H","K","L"];
+  if(kind === "hkl") return res && Array.isArray(res.hklAxisLabels) && res.hklAxisLabels.length >= 3 ? res.hklAxisLabels : ["H","K","L"];
   if(kind === "xyz") return ["X","Y","Z"];
   if(kind === "uvw") return ["U","V","W"];
   return ["Qx","Qy","Qz"];
@@ -3220,6 +3221,93 @@ function nexusAxisCandidates(i, axesNames=[]){
   return out;
 }
 
+// NeXus lists the axis names of a signal in dataset order, and Mantid writes
+// MDHisto signals as [D2][D1][D0] (axes "D2:D1:D0"). Returns perm with
+// perm[c] = dataset dimension of canonical axis c, or null if the names are
+// unknown or already in order.
+function nexusDimensionOrder(names){
+  const rank = names.length;
+  if(rank < 2 || rank > 3) return null;
+  const lower = names.map(s => String(s).toLowerCase());
+  let idx;
+  if(lower.every(s => /^d\d$/.test(s))){
+    idx = lower.map(s => Number(s.slice(1)));
+  }else{
+    const family = [["h","k","l"], ["qx","qy","qz"], ["x","y","z"], ["u","v","w"]].find(set => lower.every(s => set.includes(s)));
+    if(!family) return null;
+    idx = lower.map(s => family.indexOf(s));
+  }
+  if(idx.some(i => i < 0 || i >= rank) || new Set(idx).size !== rank) return null;
+  if(idx.every((c, d) => c === d)) return null;
+  const perm = [0, 1, 2];
+  idx.forEach((c, d) => { perm[c] = d; });
+  return perm;
+}
+
+// Reorders a C-order cube so that canonical axis c is dataset dimension perm[c].
+function permuteCube(flat, diskShape, perm){
+  const ds = diskShape;
+  const shape = [ds[perm[0]], ds[perm[1]], ds[perm[2]]];
+  const strides = [ds[1] * ds[2], ds[2], 1];
+  const s0 = strides[perm[0]], s1 = strides[perm[1]], s2 = strides[perm[2]];
+  const out = new Float64Array(shape[0] * shape[1] * shape[2]);
+  let p = 0;
+  for(let i=0;i<shape[0];i++) for(let j=0;j<shape[1];j++){
+    let q = i * s0 + j * s1;
+    for(let k=0;k<shape[2];k++, q += s2) out[p++] = flat[q];
+  }
+  return {values:out, shape};
+}
+
+// Mantid names HKL projection axes like "[H,0,0]" or "[H,H,0]": the letter
+// is the axis variable and each entry its coefficient on h, k and l. Returns
+// the projection rows (hkl = x.W) unless they are the identity.
+function mantidProjection(longNames){
+  const rows = [];
+  for(const name of longNames){
+    const m = /^\[([^\]]+)\]$/.exec(String(name || "").trim());
+    if(!m) return null;
+    const parts = m[1].split(",").map(s => s.trim());
+    if(parts.length !== 3) return null;
+    const row = [];
+    for(const part of parts){
+      const t = /^([+-]?(?:\d+\.?\d*|\.\d+)?)\s*\*?\s*([A-Za-z]?)$/.exec(part);
+      if(!t) return null;
+      if(!t[2]){
+        if(Number(t[1]) !== 0) return null;
+        row.push(0);
+      }else{
+        const c = t[1] === "" || t[1] === "+" ? 1 : t[1] === "-" ? -1 : Number(t[1]);
+        if(!Number.isFinite(c)) return null;
+        row.push(c);
+      }
+    }
+    rows.push(row);
+  }
+  const identity = rows.every((row, i) => row.every((v, j) => v === (i === j ? 1 : 0)));
+  if(identity || !validMatrix3(rows)) return null;
+  try{ inv3(rows); }catch(_){ return null; }
+  return {W:rows, labels:longNames.map(s => String(s).trim())};
+}
+
+function projectedBq(Bq, res){
+  return validMatrix3(Bq) && validMatrix3(res && res.projectionW) ? res.projectionW.map(row => mul(row, Bq)) : Bq;
+}
+
+// Mantid stores a mask next to the signal (nonzero = masked).
+function applySiblingMask(h5file, signalPath, values){
+  const group = signalPath.includes("/") ? signalPath.slice(0, signalPath.lastIndexOf("/")) : "";
+  const obj = h5Lookup(h5file, group ? `${group}/mask` : "mask");
+  if(!obj) return 0;
+  const mask = flatNumericArray(h5Value(obj));
+  if(mask.length !== values.length) return 0;
+  let masked = 0;
+  for(let i=0;i<mask.length;i++){
+    if(mask[i] && Number.isFinite(values[i])){ values[i] = NaN; masked++; }
+  }
+  return masked;
+}
+
 async function parseNexusFile(file){
   const h5 = await ensureH5wasm().catch(err => {
     throw new Error(`HDF5 support needs ${H5WASM_LOCAL} next to index.html. ${err.message || err}`);
@@ -3262,26 +3350,39 @@ async function parseNexusFile(file){
     const shapeMeta = h5Shape(signalObj, null);
     if(shapeMeta.length) assertVolumeFits(normalizeShape3(shapeMeta), "NeXus signal grid");
     const signalValue = h5Value(signalObj);
-    const values = flatNumericArray(signalValue);
-    let shape = h5Shape(signalObj, signalValue);
-    shape = normalizeShape3(shape, values.length);
+    let values = flatNumericArray(signalValue);
+    const diskShape = normalizeShape3(h5Shape(signalObj, signalValue), values.length);
+    const axesAttr = h5Text(h5AttrValue(signalObj, "axes"));
+    const diskAxes = axesAttr.split(/[:\s,]+/).map(s => s.trim()).filter(Boolean);
+    const maskedVoxels = applySiblingMask(h5file, signalPath, values);
+    let shape = diskShape, axesNames = diskAxes;
+    const perm = nexusDimensionOrder(diskAxes);
+    if(perm){
+      ({values, shape} = permuteCube(values, diskShape, perm));
+      axesNames = perm.map(d => diskAxes[d]).filter(Boolean);
+    }
     shape = assertVolumeFits(shape, "NeXus signal grid").dims;
     const [nH,nK,nL] = shape;
-    const axesAttr = h5Text(h5AttrValue(signalObj, "axes"));
-    const axesNames = axesAttr.split(/[:\s,]+/).map(s => s.trim()).filter(Boolean);
     const axisPaths = [0,1,2].map(i => nexusAxisCandidates(i, axesNames));
     const hAxis = readH5Axis(h5file, nH, axisPaths[0]);
     const kAxis = readH5Axis(h5file, nK, axisPaths[1]);
     const lAxis = readH5Axis(h5file, nL, axisPaths[2]);
+    const axisObjs = axisPaths.map(paths => h5Lookup(h5file, paths[0]));
     const coordHint = [axesAttr, h5Text(h5AttrValue(signalObj, "frame")), h5Text(h5AttrValue(signalObj, "units"))];
-    for(const paths of axisPaths){
-      const axisObj = h5Lookup(h5file, paths[0]);
+    for(const axisObj of axisObjs){
       coordHint.push(h5Text(h5AttrValue(axisObj, "frame")), h5Text(h5AttrValue(axisObj, "units")), h5Text(h5AttrValue(axisObj, "long_name")));
     }
     const coordKind = inferCoordKind(file.name, coordHint.join(" "), "nexus");
     const meta = readH5Basis(h5file);
+    const projection = coordKind === "hkl" ? mantidProjection(axisObjs.map(obj => h5Text(h5AttrValue(obj, "long_name")))) : null;
+    if(projection){
+      meta.projectionW = projection.W;
+      meta.hklAxisLabels = projection.labels;
+      meta.Bq = projectedBq(meta.Bq, meta);
+    }
     const result = makeVolumeResult(file.name, shape, hAxis, kAxis, lAxis, values, `NeXus signal (${signalPath})`, coordKind, null, 0, meta);
     result.header = {points:values.length, sections:1, scale:null, offset:null};
+    if(maskedVoxels) result.maskedVoxels = maskedVoxels;
     return result;
   }catch(err){
     if(isLikelyMemoryError(err)){
@@ -5156,7 +5257,7 @@ function applyManualCell(){
   if(vals.slice(3).some(v => !(v > 0 && v < 180))) throw new Error("Cell angles must be between 0 and 180 degrees.");
   const basis = basisFromCell(vals, true);
   if(!basis) throw new Error("The supplied unit cell is singular or geometrically invalid.");
-  state.res.Bq = basis.Bq;
+  state.res.Bq = projectedBq(basis.Bq, state.res);
   state.res.Bp = basis.Bp;
   state.res.cellDeg = basis.cellDeg;
   state.res.basisSource = "manual unit cell";
@@ -6153,7 +6254,8 @@ async function onFile(file){
   const orderNote = parsed.axisOrderAmbiguous
     ? ` The file does not record its axis order; assumed the 3DSConvert/Fortran layout [${labels[2]},${labels[1]},${labels[0]}]. Use "Swap ${labels[0]}/${labels[2]} data order" if the map looks mirrored.`
     : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${maskNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 

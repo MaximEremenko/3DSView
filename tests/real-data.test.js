@@ -38,3 +38,22 @@ realTest("CuAu challenge .nx5 loads as C-order [H,K,L]", CUAU, async file => {
   ];
   for(const [[i, j, k], v] of expected) assertClose(valueAt(res, i, j, k), v, 1e-3, `value at ${i},${j},${k}`);
 });
+
+const PMN_NXS = "E:/Projects/PMN_PT_diffuse_scripts/PMN_x0p0_300K_cc_m-3m.nxs";
+
+realTest("PMN Mantid MDHisto loads in H,K,L order with bin-centre axes", PMN_NXS, async file => {
+  const app = loadApp();
+  const res = await app.parseFile(file);
+  assert.deepEqual(Array.from(res.shape), [501, 501, 41]);
+  assert.deepEqual(Array.from(app.nativeAxisLabels(res)), ["H", "K", "L"]);
+  assertClose(res.h[0], -7.984031915664673, 1e-9, "first H centre");
+  assertClose(res.l[0], -1.9512194991111755, 1e-9, "first L centre");
+  assertClose(res.cellDeg[0], 4.048077537537062, 1e-9, "a");
+  // Reference values read with h5py as signal[l][k][h].
+  const expected = [
+    [[100, 250, 20], 0.04558469758943384], [[420, 300, 5], 0.040506363357832816],
+    [[250, 100, 30], 0.11756924952297079], [[250, 200, 20], 0.052338511320624816],
+    [[160, 260, 35], 0.02334252235854931]
+  ];
+  for(const [[i, j, k], v] of expected) assertClose(valueAt(res, i, j, k), v, 1e-12, `value at ${i},${j},${k}`);
+});

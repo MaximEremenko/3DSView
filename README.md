@@ -74,7 +74,10 @@ HDF5 signature), read with h5wasm:
 - **DISCUS / Yell 1.0 HDF5** (`/data` with `lower_limits`, `step_sizes` and `is_direct`;
   direct-space Yell 3D-PDF files are supported).
 - **Generic NeXus signal files**, e.g. `MDHistoWorkspace/data/signal` or
-  `entry/data/signal`.
+  `entry/data/signal`. The signal's `axes` attribute sets the axis order, so Mantid
+  MDHisto files (stored `[D2][D1][D0]`) are put back in dimension order. HKL projection
+  names such as `[H,H,0]` are taken from the axis `long_name` and keep their Q geometry,
+  and a `mask` dataset next to the signal hides masked voxels.
 
 ## Getting started
 

@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {loadApp, h5File} = require("./harness");
-const {cOrderValues, fortranOrderValues, assertValues, assertClose} = require("./fixtures");
+const {code, cOrderValues, fortranOrderValues, assertValues, assertClose} = require("./fixtures");
 
 function assertStep(app, res, axis, expected){
   const unit = [0, 0, 0];
@@ -183,4 +183,71 @@ test("HDF5 files are recognised by signature, whatever their extension", async (
     const file = await scatteringFile(app, name, {shape, order:"c", vectors:DIAGONAL, attrs:{h_indices:0, k_indices:1, l_indices:2}});
     assertValues(await app.parseFile(file), shape);
   }
+});
+
+// Mantid SaveMD layout: signal stored [D2][D1][D0] with axes "D2:D1:D0",
+// D0-D2 holding bin edges with long_name such as "[H,0,0]".
+async function mantidFile(app, name, {shape, longNames=["[H,0,0]", "[0,K,0]", "[0,0,L]"], cell=[4, 4, 6, 90, 90, 90], mask=null}){
+  const [n0, n1, n2] = shape;
+  return h5File(app, name, f => {
+    const ws = f.create_group("MDHistoWorkspace");
+    const data = ws.create_group("data");
+    const disk = new Float64Array(n0 * n1 * n2);
+    let p = 0;
+    for(let k=0;k<n2;k++) for(let j=0;j<n1;j++) for(let i=0;i<n0;i++) disk[p++] = code(i, j, k);
+    const signal = data.create_dataset({name:"signal", data:disk, shape:[n2, n1, n0], dtype:"<d"});
+    signal.create_attribute("axes", "D2:D1:D0");
+    signal.create_attribute("signal", 1, [], "<i");
+    shape.forEach((n, axis) => {
+      const edges = Array.from({length:n + 1}, (_, i) => -1 + 0.5 * i - 0.25);
+      const ds = data.create_dataset({name:`D${axis}`, data:edges, shape:[n + 1], dtype:"<d"});
+      ds.create_attribute("long_name", longNames[axis]);
+      ds.create_attribute("units", "r.l.u.");
+      ds.create_attribute("frame", "HKL");
+    });
+    if(mask){
+      const m = new Int32Array(n0 * n1 * n2);
+      for(const [i, j, k] of mask) m[(k * n1 + j) * n0 + i] = 1;
+      data.create_dataset({name:"mask", data:m, shape:[n2, n1, n0], dtype:"<i"});
+    }
+    const lattice = ws.create_group("experiment0").create_group("sample").create_group("oriented_lattice");
+    ["a", "b", "c", "alpha", "beta", "gamma"].forEach((key, i) => {
+      lattice.create_dataset({name:`unit_cell_${key}`, data:[cell[i]], shape:[1], dtype:"<d"});
+    });
+  });
+}
+
+test("Mantid MDHisto [D2][D1][D0] signal is put back in H,K,L order", async () => {
+  const app = loadApp();
+  const shape = [5, 3, 4];
+  const res = await app.parseFile(await mantidFile(app, "mdhisto.nxs", {shape}));
+  assertValues(res, shape);
+  assert.deepEqual(Array.from(app.nativeAxisLabels(res)), ["H", "K", "L"]);
+  assert.deepEqual(Array.from(res.h), [-1, -0.5, 0, 0.5, 1]);
+  // The L axis maps onto c* of the tetragonal cell (|c*| = 2 pi / 6).
+  const q = app.hklToQ(0, 0, 1, res.Bq);
+  assertClose(Math.hypot(q[0], q[1], q[2]), 2 * Math.PI / 6, 1e-12, "|Q(0,0,1)|");
+});
+
+test("Mantid projection axes keep their names and Q geometry", async () => {
+  const app = loadApp();
+  const shape = [3, 3, 2];
+  const res = await app.parseFile(await mantidFile(app, "projection.nxs", {
+    shape, longNames:["[H,H,0]", "[-K,K,0]", "[0,0,L]"], cell:[4, 4, 4, 90, 90, 90]
+  }));
+  assertValues(res, shape);
+  assert.deepEqual(Array.from(app.nativeAxisLabels(res)), ["[H,H,0]", "[-K,K,0]", "[0,0,L]"]);
+  const q = app.hklToQ(1, 0, 0, res.Bq);
+  const s = 2 * Math.PI / 4;
+  [s, s, 0].forEach((v, c) => assertClose(Math.abs(q[c]), Math.abs(v), 1e-12, `Q component ${c}`));
+  assertClose(Math.hypot(q[0], q[1], q[2]), s * Math.SQRT2, 1e-12, "|Q| of one [H,H,0] step");
+});
+
+test("Mantid mask hides masked voxels", async () => {
+  const app = loadApp();
+  const shape = [3, 2, 2];
+  const res = await app.parseFile(await mantidFile(app, "masked.nxs", {shape, mask:[[2, 1, 0]]}));
+  assert.ok(Number.isNaN(res.I[(2 * 2 + 1) * 2 + 0]), "masked voxel is NaN");
+  assert.equal(res.maskedVoxels, 1);
+  assert.equal(res.I[(1 * 2 + 1) * 2 + 0], code(1, 1, 0));
 });
