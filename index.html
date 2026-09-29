@@ -495,7 +495,9 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
 <script src="./js/unified_hdf5.js"></script>
 <script>
 const PLOTLY_CDN = "https://cdn.plot.ly/plotly-2.35.2.min.js";
-const H5WASM_CDN = "https://cdn.jsdelivr.net/npm/h5wasm@0.7.5/dist/esm/hdf5_hl.js";
+// Vendored h5wasm 0.10.3 (wasm embedded), loaded as a classic script so
+// HDF5 works offline and from file:// pages.
+const H5WASM_LOCAL = "./js/h5wasm.js";
 const STREAM_TEXT_THRESHOLD = 64 * 1024 * 1024;
 const MAX_BROWSER_VOXELS = 1000000000;
 const MAX_AXIS_SLICE_CELLS = 1500000;
@@ -2553,12 +2555,25 @@ async function parseStreamedTextData(file, sampleText, progress=null){
   return parseStreamedPointTextFile(file, sampleText, progress);
 }
 
+function loadScript(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error(`${src} could not be loaded.`));
+    document.head.appendChild(s);
+  });
+}
+
 async function ensureH5wasm(){
   if(state.h5wasmPromise) return state.h5wasmPromise;
-  state.h5wasmPromise = import(H5WASM_CDN).then(async mod => {
-    if(mod.ready) await mod.ready;
-    return mod;
-  });
+  state.h5wasmPromise = (async () => {
+    if(!window.h5wasm) await loadScript(H5WASM_LOCAL);
+    if(!window.h5wasm) throw new Error("HDF5 engine failed to load.");
+    await window.h5wasm.ready;
+    return window.h5wasm;
+  })();
   return state.h5wasmPromise;
 }
 
@@ -3152,7 +3167,7 @@ function nexusAxisCandidates(i, axesNames=[]){
 
 async function parseNexusFile(file){
   const h5 = await ensureH5wasm().catch(err => {
-    throw new Error(`NeXus support needs h5wasm from the CDN. If offline, use the converted _d3d.dat file. ${err.message || err}`);
+    throw new Error(`HDF5 support needs ${H5WASM_LOCAL} next to index.html. ${err.message || err}`);
   });
   if(!h5 || !h5.File || !h5.FS || typeof h5.FS.writeFile !== "function"){
     throw new Error("h5wasm loaded, but its virtual filesystem API is unavailable.");

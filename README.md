@@ -4,8 +4,8 @@
 
 A browser-based viewer — formerly the 3DS Plotter — for slicing through 3-D diffuse-scattering volumes produced by
 RMCProfile and related programs. The application is a single HTML file
-(`index.html`) plus a small local helper script (`js/unified_hdf5.js`) used
-for the unified HDF5 export, and it runs fully client-side: files are parsed in the
+(`index.html`) plus local helper scripts in `js/` (the unified HDF5 helper and the
+vendored HDF5 engine), and it runs fully client-side: files are parsed in the
 browser, nothing is uploaded anywhere. It loads RMCProfile 3DS text output, unified HDF5 volumes,
 DISCUS/Yell HDF5 and generic NeXus files, and provides interactive axis, arbitrary-plane
 and slab-average slicing with linked 2-D and 3-D views.
@@ -85,15 +85,11 @@ HDF5 formats (`.h5`, `.hdf5`, `.nx`, `.nxs`), read with h5wasm:
    and browse to `http://localhost:8000/index.html`.
 3. Drop a data file onto the input area (or click it to browse).
 
-Two libraries are fetched from CDNs on demand, so an internet connection is required for
-the corresponding features:
-
-- **Plotly** (`cdn.plot.ly`, v2.35.2) — needed for the two 3-D panels and the SVG/HTML
-  plot exports.
-- **h5wasm** (`cdn.jsdelivr.net`, v0.7.5) — needed to read HDF5/NeXus files and to write
-  the unified HDF5 export.
-
-Text-format loading and the 2-D slice map work without either library.
+HDF5/NeXus reading and the unified HDF5 export use the vendored h5wasm engine in
+`js/h5wasm.js`, so they work offline and from a `file://` page. Only **Plotly**
+(`cdn.plot.ly`, v2.35.2) is fetched from a CDN on demand; it is needed for the two 3-D
+panels and the SVG/HTML plot exports. Text and HDF5 loading and the 2-D slice map work
+without it.
 
 ## Development
 
@@ -113,6 +109,14 @@ This repository was extracted, with full git history, from the
 vendored from that monorepo's `RMCProfileUtilities/Format_Converter`. The companion
 diffuse-scattering calculator, [3DSCalculator](https://github.com/MaximEremenko/3DSCalculator), lives in its own repository.
 
+## Third-party code
+
+`js/h5wasm.js` is a vendored copy of [h5wasm](https://github.com/usnistgov/h5wasm) 0.10.3
+(the HDF5 library compiled to WebAssembly, with the `.wasm` binary embedded), identical to
+the copies in 3DSConvert and 3DSCalculator. It is distributed under the NIST and HDF5
+license terms reproduced in [`js/h5wasm-LICENSE.txt`](js/h5wasm-LICENSE.txt).
+
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE). Third-party components keep their own
+licenses as noted above.
