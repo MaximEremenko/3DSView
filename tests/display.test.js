@@ -376,3 +376,17 @@ test("a normal plane with a slab averages across it", () => {
   app.setControl("slabWidth", {value:""});
   assert.equal(app.context.slabHalfWidth(), 0, "an empty slab is a thin plane");
 });
+
+test("the colour bar keeps its zoom while the levels move inside it", () => {
+  const app = loadApp();
+  app.setControl("scale", {value:"log1p"});
+  const levels = {rawMin:0, rawMax:10.8, min:9.6, max:10.58};
+  const first = Array.from(app.context.stableLevelRange("bar", levels));
+  assert.ok(first[0] > 0 && first[1] === 10.8, "a narrow window is zoomed onto");
+  assert.deepEqual(Array.from(app.context.stableLevelRange("bar", {...levels, max:10})), first, "a max moved down keeps the ends");
+  assert.deepEqual(Array.from(app.context.stableLevelRange("bar", {...levels, min:9.9})), first, "so does a min moved up");
+  const wider = app.context.stableLevelRange("bar", {...levels, min:first[0] - 0.5});
+  assert.ok(wider[0] <= first[0] - 0.5, "a window reaching beyond an end zooms out to hold it");
+  const other = {rawMin:0, rawMax:12, min:9.6, max:10.58};
+  assert.deepEqual(Array.from(app.context.stableLevelRange("bar", other)), Array.from(app.context.histogramRange(other)), "another full range zooms afresh");
+});

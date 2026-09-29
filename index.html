@@ -6969,6 +6969,7 @@ function autoLevelMode(){
 
 function resetDisplayLevels(redraw=true){
   state.manualLevelBounds = null;
+  state.levelZoom = null;
   state.levelDrag = null;
   state.levelClickSuppress = false;
   if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
@@ -6985,9 +6986,15 @@ function barYFromValue(v, b){
   return b.y + b.h * (1 - (v - b.rawMin) / den);
 }
 
-function barValueFromY(y, b){
+// Handles stay this far apart (about a pixel of the bar), so the two level
+// fields never round to one value.
+function levelGap(lo, hi){
+  return 0.002 * Math.abs(hi - lo) || 1e-12;
+}
+
+function barValueFromY(y, b, withinBar=true){
   const t = 1 - (y - b.y) / Math.max(1, b.h);
-  return b.rawMin + clamp(t, 0, 1) * (b.rawMax - b.rawMin);
+  return b.rawMin + (withinBar ? clamp(t, 0, 1) : t) * (b.rawMax - b.rawMin);
 }
 
 function drawColorBarHandle(ctx, b, y, active){
@@ -7015,8 +7022,8 @@ function drawColorBarHandle(ctx, b, y, active){
 
 function pickColorBarHandle(x, y, b){
   if(!b || x < b.x - 12 || x > b.x + b.w + 12 || y < b.y - 12 || y > b.y + b.h + 12) return null;
-  const yMax = barYFromValue(b.dispMax, b);
-  const yMin = barYFromValue(b.dispMin, b);
+  const yMax = clamp(barYFromValue(b.dispMax, b), b.y, b.y + b.h);
+  const yMin = clamp(barYFromValue(b.dispMin, b), b.y, b.y + b.h);
   const dMax = Math.abs(y - yMax), dMin = Math.abs(y - yMin);
   if(Math.min(dMax, dMin) > 12) return null;
   return dMin <= dMax ? "min" : "max";
@@ -7040,8 +7047,9 @@ function onHeatmapClick(ev){
   if(!pt || pt.x < b.x || pt.x > b.x + b.w || pt.y < b.y || pt.y > b.y + b.h) return;
   const picked = barValueFromY(pt.y, b);
   let nmin = b.dispMin, nmax = b.dispMax;
-  if(Math.abs(picked - nmin) <= Math.abs(picked - nmax)) nmin = Math.min(picked, nmax - 1e-12);
-  else nmax = Math.max(picked, nmin + 1e-12);
+  const gap = levelGap(b.rawMin, b.rawMax);
+  if(Math.abs(picked - nmin) <= Math.abs(picked - nmax)) nmin = Math.min(picked, nmax - gap);
+  else nmax = Math.max(picked, nmin + gap);
   [nmin, nmax] = symmetricPick(nmin, nmax, picked);
   setDisplayLevelsFromBounds(nmin, nmax, {rawMin:b.fullMin, rawMax:b.fullMax});
   draw2d();
@@ -7132,10 +7140,10 @@ function onHeatmapPointerMove(ev){
     cv.style.cursor = pickColorBarHandle(pt.x, pt.y, b) ? "ns-resize" : zoomed ? "grab" : pointInMapArea(pt) ? "crosshair" : "default";
     return;
   }
-  const picked = barValueFromY(pt.y, b);
+  const picked = barValueFromY(pt.y, b, false), gap = levelGap(b.rawMin, b.rawMax);
   let nmin = b.dispMin, nmax = b.dispMax;
-  if(drag.handle === "min") nmin = Math.min(picked, nmax - 1e-12);
-  else nmax = Math.max(picked, nmin + 1e-12);
+  if(drag.handle === "min") nmin = Math.min(picked, nmax - gap);
+  else nmax = Math.max(picked, nmin + gap);
   [nmin, nmax] = symmetricPick(nmin, nmax, picked);
   setDisplayLevelsFromBounds(nmin, nmax, {rawMin:b.fullMin, rawMax:b.fullMax});
   drag.moved = true;
@@ -7904,9 +7912,9 @@ function pointInMapArea(pt){
 function histPointer(ev){
   const g = state.lastHist, r = $("levelHist").getBoundingClientRect();
   if(!g) return null;
-  const x = clamp(ev.clientX - r.left, 0, g.w), span = g.rawMax - g.rawMin;
+  const rawX = ev.clientX - r.left, x = clamp(rawX, 0, g.w), span = g.rawMax - g.rawMin;
   const px = v => (v - g.rawMin) / span * g.w;
-  return {g, x, value:g.rawMin + x / Math.max(1, g.w) * span, x0:px(g.min), x1:px(g.max)};
+  return {g, x, rawX, value:g.rawMin + x / Math.max(1, g.w) * span, x0:px(g.min), x1:px(g.max)};
 }
 
 function histTarget(p){
@@ -7919,12 +7927,12 @@ function histTarget(p){
 // The range captured at pointer-down maps positions to values for the whole
 // drag, although the histogram redraws under it.
 function applyHistDrag(p){
-  const d = state.histDrag, g = d.g, span = g.rawMax - g.rawMin, gap = span * 1e-9;
-  const value = g.rawMin + clamp(p.x, 0, g.w) / Math.max(1, g.w) * span;
+  const d = state.histDrag, g = d.g, span = g.rawMax - g.rawMin, gap = levelGap(g.rawMin, g.rawMax);
+  const value = g.rawMin + p.rawX / Math.max(1, g.w) * span;
   let nmin = d.min, nmax = d.max;
   if(d.target === "band"){
     const width = d.max - d.min;
-    nmin = clamp(d.min + (p.x - d.x) / Math.max(1, g.w) * span, g.fullMin, g.fullMax - width);
+    nmin = clamp(d.min + (p.rawX - d.x) / Math.max(1, g.w) * span, g.fullMin, g.fullMax - width);
     nmax = nmin + width;
   }else{
     if(d.target === "min") nmin = Math.min(value, nmax - gap);
@@ -7983,7 +7991,7 @@ function drawLevelHistogram(hist, levels){
   ctx.clearRect(0, 0, w, h);
   state.lastHist = null;
   if(!hist || !hist.total || !(levels.rawMax > levels.rawMin)) return;
-  const [lo, hi] = state.histDrag ? [state.histDrag.g.rawMin, state.histDrag.g.rawMax] : histogramRange(levels);
+  const [lo, hi] = state.histDrag ? [state.histDrag.g.rawMin, state.histDrag.g.rawMax] : stableLevelRange("hist", levels);
   state.lastHist = {w, rawMin:lo, rawMax:hi, fullMin:levels.rawMin, fullMax:levels.rawMax, min:levels.min, max:levels.max};
   const bins = Math.max(16, Math.min(160, Math.floor(w / 2)));
   const counts = new Float64Array(bins);
@@ -8041,6 +8049,20 @@ function histogramRange(levels){
   const lo = levels.rawMin, hi = levels.rawMax, width = levels.max - levels.min;
   if(!(hi > lo) || !(width > 0) || width >= 0.4 * (hi - lo)) return [lo, hi];
   return [Math.max(lo, levels.min - 0.75 * width), Math.min(hi, levels.max + 0.75 * width)];
+}
+
+// The range the colour bar ("bar") or the level histogram ("hist") shows.
+// Its zoom holds while the levels move inside it, so its ends and handles
+// stay put; it zooms afresh for another scale, view or full range, after a
+// reset, or when the window reaches beyond it.
+function stableLevelRange(slot, levels){
+  const key = `${$("scale") ? $("scale").value : ""}|${state.showMode || "data"}|${levels.rawMin}|${levels.rawMax}`;
+  const zoom = state.levelZoom || (state.levelZoom = {});
+  const kept = zoom[slot], tol = kept ? 1e-9 * Math.abs(kept.hi - kept.lo) : 0;
+  if(kept && kept.key === key && levels.min >= kept.lo - tol && levels.max <= kept.hi + tol) return [kept.lo, kept.hi];
+  const [lo, hi] = histogramRange(levels);
+  zoom[slot] = {key, lo, hi};
+  return [lo, hi];
 }
 
 function niceTicks(min, max, count=7){
@@ -8109,7 +8131,7 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   // dragged, so the handle stays under the pointer.
   const held = state.levelDrag && state.levelDrag.active && state.lastBar;
   const [lo, hi] = held ? [state.lastBar.rawMin, state.lastBar.rawMax]
-    : histogramRange({rawMin:fullMin, rawMax:fullMax, min:levels.min, max:levels.max});
+    : stableLevelRange("bar", {rawMin:fullMin, rawMax:fullMax, min:levels.min, max:levels.max});
   const b = {x, y, w, h, rawMin:lo, rawMax:hi, fullMin, fullMax, dispMin:levels.min, dispMax:levels.max};
   // The ramp spans the display window, as on the map; values beyond it take
   // the end colours.
@@ -8119,8 +8141,8 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
     ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
     ctx.fillRect(x, y + i, w, 1);
   }
-  const yMax = barYFromValue(b.dispMax, b);
-  const yMin = barYFromValue(b.dispMin, b);
+  const yMax = clamp(barYFromValue(b.dispMax, b), y, y + h);
+  const yMin = clamp(barYFromValue(b.dispMin, b), y, y + h);
   const tb = themePlot();
   ctx.fillStyle = tb.shade;
   if(yMax > y) ctx.fillRect(x, y, w, yMax - y);

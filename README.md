@@ -209,7 +209,10 @@ and slab-average slicing with linked 2-D and 3-D views.
     histogram of the shown slice; a click moves the nearer limit, and a double-click on
     the histogram returns to auto levels. The level fields can be typed into at any
     time; typed levels become manual levels. When the window is a small part of the
-    value range, both zoom onto it, and arrows on the bar mark the range beyond.
+    value range, both zoom onto it, and arrows on the bar mark the range beyond. The
+    zoom holds while the levels move, so the ends of the bar and the handle you did not
+    touch stay where they are. Dragging a handle past an end reaches the rest of the
+    range, and the zoom follows when you let go.
   - **Signed data:** real-space volumes (delta-PDF, Patterson, density) open on a linear
     scale with RdBu and symmetric levels.
 - **Show selector**: above the map, choose what the map, the 3-D views, the readout and the
