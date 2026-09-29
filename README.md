@@ -16,20 +16,25 @@ and slab-average slicing with linked 2-D and 3-D views.
   current slice plane and a 3-D isosurface of the whole volume (both Plotly), plus a
   Structure view of the crystal structure.
 - **Window layout**: the 2-D map is the main view. The slice mode, the plane shown, the
-  value scale and the colour map sit above it, and the slice slider (with ‹ › step
-  buttons) sits below it. The values beside the slider can be typed into: the slice
-  coordinate or slice number, and the centre of a normal plane or slab (e.g.
-  `0.4, 0, 0`), which the plane then passes through exactly; so can the centre fields
-  on the Slice page. The 3-D views share a dock beside the map. Show the slice plane,
-  the isosurface, both, or the structure, drag the splitters to resize, enlarge the map
-  or the dock, or hide the dock (**Map** / **Map + 3-D**). Only the 3-D views on screen
-  are drawn; a hidden view is drawn when it is shown again, and Plotly is not loaded
-  until a 3-D view is needed.
-- **Side panel**: the Data, Slice, Levels, 3-D and Export pages open from the rail on the
-  left; click the open page again to hide the panel. The layout, the open page and the
-  splitter positions are remembered between visits.
+  map resolution, the value scale and the colour map sit above it, with buttons for the
+  profiles, a PNG of the map and a larger map; the slice slider (with ‹ › step buttons)
+  sits below it. The values beside the slider can be typed into: the slice coordinate or
+  slice number, and the centre of a normal plane (e.g. `0.4, 0, 0`), which the plane
+  then passes through exactly; so can the centre fields on the Slice page. Before a file
+  is opened, the map shows only the welcome card. The 3-D views share a dock beside the
+  map. Show the slice plane, the isosurface, both, or the structure, drag the splitters
+  to resize, enlarge the map or the dock, or hide the dock (**Map** / **Map + 3-D**).
+  Only the 3-D views on screen are drawn; a hidden view is drawn when it is shown again,
+  and Plotly is not loaded until a 3-D view is needed.
+- **Side panel**: the Data, Slice, Levels, Compare, 3-D, Process and Export pages open
+  from the rail on the left; click the open page again to hide the panel. Each page keeps
+  its hints to a line, with the longer explanations folded underneath. The layout, the
+  open page and the splitter positions are remembered between visits.
 - **Files**: drop a file anywhere in the window, or use **Open**. The status bar shows the
   latest message and the slice statistics; click the message to see recent messages.
+  The Data page gives the file's format, grid and value range, and the ranges of its axes
+  as the map and the shown volume use them (H, K, L in r.l.u. for an HKL grid); when the
+  3-D views draw through a cell, their Cartesian ranges follow on a line of their own.
   The page address can name files to open on start, e.g.
   `index.html?url=data/run.nxs&compare=data/run_calc.dat&structure=data/run.rmc6f`.
   Relative addresses resolve against the page; files on another host open when that
@@ -39,8 +44,10 @@ and slab-average slicing with linked 2-D and 3-D views.
   the middle slice when the axis does not reach 0, and on the nearest slice holding data
   when that slice falls in a gap of a block grid.
 - **Profiles** (the strip under the map, <kbd>P</kbd>):
-  - **Line cuts:** turn on the cut tool (<kbd>L</kbd>) and drag across the map. Drag an
-    end to adjust the cut, drag the line to move it, or click to clear it. The cut
+  - **Line cuts:** open the profiles on *Line cut* and drag across the map. Until a cut
+    is drawn the cut tool is on; **Draw** in the strip (or <kbd>L</kbd>) turns it on and
+    off, and with it off the map pans and zooms by dragging again. Drag an end to adjust
+    the cut, drag the line to move it, or click to clear it. The cut
     averages the voxels in a band of the given width across it and thickness along the
     slice normal, one slice by default. Distances are in the plot frame (Å⁻¹ for Q), so
     skewed and non-orthogonal grids measure true lengths. A drawn cut follows its plane as
@@ -84,23 +91,24 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **Cursor readout**: hovering over the 2-D map shows the coordinates under the cursor
   (H K L, Q or X Y Z), plus Q, |Q| and the d-spacing when a reciprocal basis is known,
   and the value. On axis slices the value is the voxel itself, at full resolution; on
-  plane and slab slices it is the value drawn there. On a thick slice it is the mean, and
+  normal planes, thin or slab, it is the value drawn there. On a thick slice it is the mean, and
   the readout says how many voxels went into it.
 - **2-D zoom and pan**: zoom the map with the mouse wheel (about the cursor) or the +/−
   buttons, or drag a box to zoom into it. A zoomed map pans when dragged (Shift+drag
   still draws a box); double-click or ↺ shows the whole slice again. Ticks follow
   the visible region, skewed grids keep their shape, and each cell is centred on its
   sample.
-- **Three slice modes**:
+- **Two slice modes**:
   - *Axis*: fix H, K or L and step through the volume with an index slider. A map can
     average ±N neighbouring slices, set in slices or as a half-width in axis units (the
     Slice page); empty voxels stay out, and the
     readout, the line-cut thickness and the comparison's slice agreement follow the slab.
-  - *Normal plane*: define an arbitrary plane by its normal and origin in HKL/Q space,
-    move it along the normal, and set the plane extent. The map is sampled at the data
-    resolution unless points per side are set by hand.
-  - *Volume average*: average a slab of adjustable half-width and sample count around the
-    plane.
+  - *Normal plane*: an arbitrary plane given by its normal and centre in HKL/Q space. A
+    typed normal turns the plane about its centre, a typed centre moves the plane through
+    it, and the slider moves it along the normal. With *Slab ±* above 0, each point of the
+    map is the mean of *Samples across* points through a slab of that half-thickness. The
+    map's side is a multiple of the widest data range (*Map size*), and the map is sampled
+    at the data resolution unless points per side are set by hand.
 - **Three linked slices** (<kbd>G</kbd>, or the grid button beside the plane selector, in
   axis mode): HK, HL and KL through one point, with the point and a shared colour bar in
   the fourth tile.
@@ -161,21 +169,26 @@ and slab-average slicing with linked 2-D and 3-D views.
   maps are in lattice units; for x, y, z maps in Å the structure is taken with a along x.
   The readout names the vector under the cursor, [u v w] and |r|, and its pairs. When
   the marks would crowd the map, zoom in.
-- **Shown-volume limits**: crop the displayed volume per axis with dual-range sliders.
-  The limits, like the other coordinate fields, are rounded to the precision the grid
-  step needs, so float32 axes read -8 rather than -7.999999508.
-- **Resolution** (Slice page, above Shown volume): set how finely each figure is drawn,
-  and see the points and spacing that gives.
-  - **Map resolution** (the selector on the map toolbar): axis slices show every data
-    point, up to 1.5 million. Normal-plane and slab maps are sampled at the finest data
-    step by default (*Data resolution*), twice as fine (*2× finer*), or at the points per
-    side typed on the Slice page (*Custom points*, up to 2400). While a slice or plane is
-    dragged, the map keeps its full resolution up to 400,000 cells (planes up to 360
-    points per side) and is redrawn in full when the move ends.
-  - **3-D plane points per side** (180 by default, up to 520).
-  - **Isosurface voxel cap**, the same field as on the 3-D page; the stride follows from it.
-  - **PNG image**: 1x to 4x the size on screen, with the resulting pixel size of each
-    figure.
+- **Shown-volume limits**: crop the displayed volume per axis. Each axis has a row with
+  its lower limit, a dual-range slider and its upper limit; a typed limit or a released
+  slider applies at once. The limits, like the other coordinate fields, are rounded to
+  the precision the grid step needs, so float32 axes read -8 rather than -7.999999508.
+- **Resolution**: each figure's resolution is set, and shown, next to the figure's other
+  settings.
+  - **Map resolution** (the selector above the map): the chosen entry names the points
+    drawn, such as *Data resolution · 135 × 135*, and its tooltip gives the spacing.
+    Axis slices show every data point, up to 1.5 million, so the selector rests for them.
+    Normal-plane maps are sampled at the finest data step by default (*Data resolution*),
+    twice as fine (*2× finer*), or at the points per side typed on the Slice page
+    (*Custom points*, up to 2400). While a slice or plane is dragged, the map keeps its
+    full resolution up to 400,000 cells (planes up to 360 points per side, slabs 180) and
+    is redrawn in full when the move ends.
+  - **3-D plane points per side** (3-D page; 180 by default, up to 520), with the points
+    and spacing drawn.
+  - **Isosurface voxel cap** (3-D page), with the samples and spacing it gives; the
+    stride follows from it.
+  - **PNG resolution** (Export page): 1x to 4x the size on screen, with the resulting
+    pixel size of each figure.
   - The 3-D views' headers and the status line under the map also give each figure's
     points and spacing.
 - **Display controls**:
@@ -214,7 +227,9 @@ and slab-average slicing with linked 2-D and 3-D views.
   points are skipped and reported. For example, when L has a different step from H and
   K, m−3m keeps only its 4/mmm part. The class is suggested from the file name (e.g.
   `_m-3m`) or from the cell metric. *Data − symmetrized* shows where the data break the
-  symmetry, and *Equivalents found* shows the coverage.
+  symmetry, and *Equivalents found* shows the coverage. The symmetrized view can be
+  exported like the data; symmetrization as a recorded processing step is done in
+  3DSConvert.
   - **Custom operations:** the Laue class list ends with *Custom operations…*. Type
     generators separated by `;`, either as reciprocal triplets (`h+k,-h,l` is the six-fold
     about c* in hexagonal axes) or as real-space ones (`x-y,x,z`). Translations are
@@ -230,7 +245,8 @@ and slab-average slicing with linked 2-D and 3-D views.
     of its equivalents with data (or, with *Fill empty voxels only*, keeps its measured
     value).
     - The result opens as a volume of its own, since its grid differs, and can be
-      exported like any data. *Back to the measured data* returns to the file.
+      exported like any data. Meanwhile the **Clear** button reads *Back to the measured
+      data* and returns to the file.
     - The grown grid is limited to 48 million voxels; crop the shown volume first for
       larger ones.
 - **Mask preview** (Process page): shows what a mask would remove, as two Show views,
@@ -241,9 +257,7 @@ and slab-average slicing with linked 2-D and 3-D views.
   - The *outlier cut* marks voxels more than k robust standard deviations (1.4826 × MAD,
     at least 0.1 % of the median) above the median of their symmetry equivalents, using
     the Laue class above, for orbits with at least three voxels with data. Each orbit is
-    visited once: about 2 s for 10 million voxels. The symmetrized view can be
-  exported like the data; symmetrization as a recorded processing step is done in
-  3DSConvert.
+    visited once: about 2 s for 10 million voxels.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
   isosurfaces. That covers NaN values, a Mantid `mask`, and I = 0 in RMCProfile text,
   which RMCProfile uses for "no data". The zero mask switches on automatically when at
@@ -257,7 +271,8 @@ and slab-average slicing with linked 2-D and 3-D views.
   b or c, or along a typed [hkl] or [uvw] direction. Roll, tilt and turn in steps of a
   chosen angle, and switch to an orthographic projection; the choice is remembered.
 - **3-D render controls**: isosurface percentile and surface count, voxel cap, surface
-  opacity and an auto-refresh toggle.
+  opacity, and *Redraw the 3-D views as the data and the slice change* (on by default;
+  with it off, **Render 3-D** draws them).
   - When the voxel cap thins the volume, each sample is by default the mean of its block
     of voxels (empty voxels left out) rather than every n-th voxel. The samples are
     placed so that one block is centred on the origin, which keeps symmetric data
@@ -277,11 +292,12 @@ and slab-average slicing with linked 2-D and 3-D views.
   parallel Web Workers (up to 8). Parsed volumes are cached in IndexedDB so reloading
   the same file is nearly instant.
 - **Export**:
-  - **2-D slice:** PNG; SVG, with vector axes, ticks and a colour-bar legend over the
-    embedded slice image; and CSV, with native coordinates, u/v for plane slices, Q when
-    a reciprocal basis is known, and the value.
-  - **3-D views:** PNG images of the slice plane, the isosurface and the structure; SVG
-    snapshots; and standalone interactive HTML copies of either 3-D plot.
+  - **Figures:** the Export page lists each figure with its formats.
+    - **Map:** PNG, also from the button above the map; SVG, with vector axes, ticks and a
+      colour-bar legend over the embedded slice image; and CSV, with native coordinates,
+      u/v for plane slices, Q when a reciprocal basis is known, and the value.
+    - **Slice plane, isosurface and structure:** PNG images, SVG snapshots and
+      standalone interactive HTML copies.
   - **PNG resolution:** 1x to 4x the size on screen (2x by default). The map is redrawn at
     that size, so text and lines stay sharp and the data pixels stay crisp; the
     interatomic-vector legend is drawn in when it is shown.

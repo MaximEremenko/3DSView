@@ -342,3 +342,37 @@ test("levels in the fields read like the colour bar's when large or small", () =
   assert.equal(Number(app.context.fmtLevel(4087770000)), 4087770000, "the field still reads as the number");
   assert.equal(app.context.fmtLevel(0), "0");
 });
+
+test("file-info ranges use the data's own axes, as the map does", () => {
+  const app = loadApp();
+  const ax = Array.from({length:5}, (_, i) => -1 + 0.5 * i);
+  const res = app.context.makeVolumeResult("cell.h5", [5, 5, 5], ax, ax, ax, new Float64Array(125), "test", "hkl");
+  app.state.res = res;
+  const ranges = app.context.fileAxisRanges(res);
+  assert.deepEqual(Array.from(ranges, g => g.label), ["H", "K", "L"]);
+  assert.deepEqual(Array.from(ranges, g => [g.min, g.max]), [[-1, 1], [-1, 1], [-1, 1]]);
+});
+
+test("a normal plane with a slab averages across it", () => {
+  const app = loadApp();
+  const ax = [-2, -1, 0, 1, 2];
+  const values = new Float64Array(125);
+  // The value is l squared everywhere.
+  let p = 0;
+  for(let i=0;i<5;i++) for(let j=0;j<5;j++) for(const l of ax) values[p++] = l * l;
+  const res = app.context.makeVolumeResult("slab.h5", [5, 5, 5], ax, ax, ax, values, "test", "hkl");
+  app.state.res = res;
+  app.state.plane = {normal:[0, 0, 1], normalUnit:[0, 0, 1], origin:[0, 0, 0], center:[0, 0, 0], slider:[0], sliderIndex:0};
+  for(const [id, value] of [["sliceMode", "plane"], ["pScale", "1"], ["slabWidth", "0"], ["slabN", "3"]]) app.setControl(id, {value});
+  // 33 points over the side of 4 put the middle one on the centre.
+  const mid = sl => sl.d[16 * sl.cols + 16];
+  const thin = app.context.currentSlice(33, undefined, false);
+  assert.equal(thin.type, "plane");
+  assertClose(mid(thin), 0, 1e-12, "a thin plane through l = 0");
+  app.setControl("slabWidth", {value:"1"});
+  const slab = app.context.currentSlice(33, undefined, false);
+  assert.equal(slab.type, "avgvol");
+  assertClose(mid(slab), 2 / 3, 1e-12, "the mean of l = -1, 0 and 1");
+  app.setControl("slabWidth", {value:""});
+  assert.equal(app.context.slabHalfWidth(), 0, "an empty slab is a thin plane");
+});

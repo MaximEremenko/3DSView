@@ -178,11 +178,6 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .side label{color:var(--subtle)}
 .side input,.side select{background:var(--side2);border-color:var(--line);color:var(--sideText)}
 .side input[readonly]{background:var(--sideRoBg);color:var(--sideRoText)}
-.drop{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px dashed var(--dropBorder);border-radius:9px;background:var(--dropBg);color:var(--dropText);cursor:pointer;font-size:.88rem}
-.drop:hover{border-color:var(--brand)}
-.drop svg{width:26px;height:26px;flex:0 0 auto;color:var(--brand)}
-.drop b{display:block;font-weight:600}
-.drop span{display:block;color:var(--subtle);font-size:.78rem}
 .meta{display:grid;grid-template-columns:96px 1fr;gap:5px 9px;font-size:.84rem;line-height:1.25}
 .meta .k{color:var(--metaK)}
 .meta>div{min-width:0;overflow-wrap:anywhere}
@@ -196,12 +191,23 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .side button{padding:7px 10px;font-size:.84rem}
 .side .iconBtn{padding:0}
 .row3>button{align-self:end;min-height:34px}
+.vecGrid{display:grid;grid-template-columns:52px repeat(3,minmax(0,1fr));gap:6px 7px;align-items:center}
+.vecGrid .k,.cropAxis{font-size:.8rem;color:var(--subtle)}
+.vecHead{font-size:.72rem;color:var(--muted);text-align:center}
+.exportGrid{display:grid;grid-template-columns:78px repeat(3,minmax(0,1fr));gap:6px 7px;align-items:center}
+.exportGrid .k{font-size:.8rem;color:var(--subtle)}
+.cropRow{display:grid;grid-template-columns:30px 64px minmax(0,1fr) 64px;gap:6px;align-items:center}
+.cropRow input{padding:4px 6px}
+.cropRow .dualRange{margin:0 5px}
 .toolbox{border:1px solid var(--line);border-radius:8px;background:var(--boxBg);overflow:hidden}
 .toolbox>summary{cursor:pointer;list-style:none;padding:9px 10px;font-weight:600;font-size:.88rem;color:var(--sideText)}
 .toolbox>summary::-webkit-details-marker{display:none}
 .toolbox>summary:before{content:"";display:inline-block;width:0;height:0;border-left:5px solid var(--arrow);border-top:4px solid transparent;border-bottom:4px solid transparent;margin-right:7px;transition:transform .15s}
 .toolbox[open]>summary:before{transform:rotate(90deg)}
 .toolbody{padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
+.fineDetails>summary{cursor:pointer;font-size:.78rem;color:var(--metaK)}
+.fineDetails>summary:hover{color:var(--sideText)}
+.fineDetails>p{margin:5px 0 0}
 .hidden{display:none !important}
 
 /* Workspace: the 2-D map, a splitter and the 3-D dock. */
@@ -228,7 +234,6 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .val .valEdit:hover:not(:disabled){border-color:var(--line)}
 .val .valEdit:focus{border-color:var(--brand);background:var(--inputBg);color:var(--ink);outline:none}
 .val .valEdit:disabled{opacity:1;cursor:default}
-.plotRes .k{white-space:nowrap}
 .stepBtn{flex:0 0 auto;width:26px;height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--side2);color:var(--sideText);font-size:1.05rem;line-height:1}
 .stepBtn:hover{background:var(--soft)}
 .barRight{display:flex;align-items:center;gap:6px;margin-left:auto}
@@ -239,11 +244,12 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .profileHead label{display:inline-flex;align-items:center;gap:5px;color:var(--statsText);font-size:.78rem}
 .profileHead label.check{min-height:0;align-self:center}
 .profileHead input[type=number]{width:62px;padding:3px 5px;font-size:.8rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
-.profileFields{display:inline-flex;gap:10px}
+.profileFields{display:inline-flex;align-items:center;gap:10px}
 .profileInfo{padding:2px 10px;min-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--statsText);font:11px Consolas,"Courier New",monospace}
 .profilePlot{position:relative;flex:1;min-height:0}
 #profileChart{width:100%;height:100%}
 .iconBtn.wide{width:auto;padding:0 8px;font-size:.74rem;font-weight:700}
+.iconBtn.withText{gap:5px;height:26px}
 .iconBtn.on,.iconBtn.ghost.on{background:var(--brand);border-color:var(--brand);color:#fff}
 .viewHead select.mini{width:auto;padding:1px 4px;font-size:.72rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
 .iconBtn.mini{width:22px;height:22px;font-size:.85rem}
@@ -364,9 +370,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
     <button id="openFile" class="openBtn" title="Open a data file (O)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Open</button>
     <div class="dataset" id="dataset" title="File details">
       <span class="chip strong" id="tbFile">No file</span>
-      <span class="chip" id="tbKind">Type -</span>
-      <span class="chip" id="tbGrid">Grid -</span>
-      <span class="chip" id="tbRange">Axes -</span>
+      <span class="chip hidden" id="tbKind"></span>
+      <span class="chip hidden" id="tbGrid"></span>
+      <span class="chip hidden" id="tbRange"></span>
     </div>
     <div class="topActions">
       <div class="seg" role="group" aria-label="Layout">
@@ -395,31 +401,30 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
     </div>
 
     <section class="page" data-page="data">
-      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Open a data file">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg>
-        <div><b>Open file&hellip;</b><span>or drop 3DS / calculator / NeXus data anywhere</span></div>
-      </div>
       <div class="btns">
+        <button id="dataOpen" type="button" title="Open a data file (O); files can also be dropped anywhere in the window">Open file&hellip;</button>
         <button id="openFolder" class="alt" type="button" title="Pairs an experimental file with its _calc file and takes the cell from an .rmc6f">Open run folder&hellip;</button>
       </div>
-      <div class="group">
+      <div class="group hidden" id="fileGroup">
         <h3>File</h3>
         <div class="meta">
           <div class="k">File</div><div id="mFile">-</div>
+          <div class="k">Format</div><div id="mFormat">-</div>
           <div class="k">Data type</div><div id="mKind">-</div>
           <div class="k">Rows</div><div id="mRows">-</div>
           <div class="k">Grid</div><div id="mGrid">-</div>
           <div class="k" id="mHName">H range</div><div id="mH">-</div>
           <div class="k" id="mKName">K range</div><div id="mK">-</div>
           <div class="k" id="mLName">L range</div><div id="mL">-</div>
+          <div class="k hidden" id="mFrameName">3-D views</div><div id="mFrame" class="hidden">-</div>
           <div class="k" id="mIName">Intensity</div><div id="mI">-</div>
-          <div class="k">Header</div><div id="mHeader">-</div>
+          <div class="k">Read as</div><div id="mRead">-</div>
+          <div class="k hidden" id="mHeaderName">Header</div><div id="mHeader" class="hidden">-</div>
           <div class="k hidden" id="mProcName">Processing</div><div id="mProc" class="hidden">-</div>
         </div>
       </div>
-      <div class="group">
+      <div class="group hidden" id="readingGroup">
         <h3>Reading</h3>
-        <label>Detected format<input id="mFormat" type="text" value="-" readonly></label>
         <div class="row2">
           <label>Coordinates
             <select id="coordMode" disabled>
@@ -435,7 +440,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button id="swapAxes" class="alt" disabled title="The file does not record its axis order; transpose the data if the map looks mirrored">Swap H/L data order</button>
         </div>
       </div>
-      <details class="toolbox" id="cellTool">
+      <details class="toolbox hidden" id="cellTool">
         <summary>Unit cell (optional override)</summary>
         <div class="toolbody">
           <div class="row3">
@@ -462,8 +467,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
 
     <section class="page" data-page="slice">
       <div class="group" id="axisHelp">
-        <h3>Axis slices</h3>
-        <p class="fine">Choose the fixed axis above the map and step through the slices with the slider, the &lsaquo; &rsaquo; buttons or the <kbd>&larr;</kbd> <kbd>&rarr;</kbd> keys. Switch the mode there to cut a normal plane or average a slab.</p>
+        <h3>Axis slice</h3>
+        <p class="fine">Pick the plane above the map; step with the slider under it, its &lsaquo; &rsaquo; buttons or <kbd>&larr;</kbd> <kbd>&rarr;</kbd>.</p>
         <div class="row2">
           <label>Average over &plusmn; slices<input id="sliceThick" type="number" min="0" max="100" step="1" value="0" disabled></label>
           <label>&plusmn; in axis units<input id="sliceThickUnits" type="number" min="0" step="any" value="0" title="Half-width of the averaged slab along the fixed axis, rounded to whole slices" disabled></label>
@@ -472,107 +477,57 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       </div>
       <div id="planeControls" class="group hidden">
         <h3>Normal plane</h3>
-        <div class="row3">
-          <label>nH<input id="pNH" type="number" value="1" step="any" disabled></label>
-          <label>nK<input id="pNK" type="number" value="0" step="any" disabled></label>
-          <label>nL<input id="pNL" type="number" value="0" step="any" disabled></label>
+        <div class="vecGrid">
+          <span></span><span class="vecHead" id="planeCol0">H</span><span class="vecHead" id="planeCol1">K</span><span class="vecHead" id="planeCol2">L</span>
+          <span class="k">Normal</span>
+          <input id="pNH" type="number" value="1" step="any" title="Normal of the plane; a typed normal turns the plane about its centre" disabled>
+          <input id="pNK" type="number" value="0" step="any" title="Normal of the plane; a typed normal turns the plane about its centre" disabled>
+          <input id="pNL" type="number" value="0" step="any" title="Normal of the plane; a typed normal turns the plane about its centre" disabled>
+          <span class="k">Centre</span>
+          <input id="pCH" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled>
+          <input id="pCK" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled>
+          <input id="pCL" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled>
         </div>
-        <div class="row3">
-          <label>oH<input id="pOH" type="number" value="0" step="any" disabled></label>
-          <label>oK<input id="pOK" type="number" value="0" step="any" disabled></label>
-          <label>oL<input id="pOL" type="number" value="0" step="any" disabled></label>
-        </div>
-        <div class="row3">
-          <label>cH<input id="pCH" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
-          <label>cK<input id="pCK" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
-          <label>cL<input id="pCL" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
+        <div class="row2">
+          <label>Slab &plusmn;<input id="slabWidth" type="number" value="0" min="0" max="20" step="0.01" title="Half-thickness of a slab averaged across the plane, in axis units; 0 cuts a thin plane" disabled></label>
+          <label>Samples across<input id="slabN" type="number" value="9" min="3" max="101" step="2" title="Points averaged across the slab" disabled></label>
         </div>
         <div class="row2">
           <label>Points per side<input id="pRes" type="number" value="220" min="32" max="2400" step="1" title="Points along each side of the map; typing a value sets the map resolution to Custom" disabled></label>
-          <label>Plane scale<input id="pScale" type="number" value="1.35" min="0.2" max="4" step="0.05" disabled></label>
+          <label>Map size (&times; data)<input id="pScale" type="number" value="1.35" min="0.2" max="4" step="0.05" title="Side of the map as a multiple of the widest data range; above 1 leaves room for tilted planes" disabled></label>
         </div>
-        <div class="btns">
-          <button id="planeApply" class="alt" disabled>Set plane</button>
-          <button id="planeReset" class="alt" disabled>Reset</button>
-        </div>
-      </div>
-      <div id="avgControls" class="group hidden">
-        <h3>Volume average</h3>
-        <div class="row3">
-          <label>nH<input id="avNH" type="number" value="1" step="any" disabled></label>
-          <label>nK<input id="avNK" type="number" value="0" step="any" disabled></label>
-          <label>nL<input id="avNL" type="number" value="0" step="any" disabled></label>
-        </div>
-        <div class="row3">
-          <label>oH<input id="avOH" type="number" value="0" step="any" disabled></label>
-          <label>oK<input id="avOK" type="number" value="0" step="any" disabled></label>
-          <label>oL<input id="avOL" type="number" value="0" step="any" disabled></label>
-        </div>
-        <div class="row3">
-          <label>cH<input id="avCH" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
-          <label>cK<input id="avCK" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
-          <label>cL<input id="avCL" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
-        </div>
-        <div class="row2">
-          <label>Points per side<input id="avRes" type="number" value="180" min="32" max="2400" step="1" title="Points along each side of the map; typing a value sets the map resolution to Custom" disabled></label>
-          <label>Plane scale<input id="avScale" type="number" value="1.2" min="0.2" max="4" step="0.05" disabled></label>
-        </div>
-        <div class="row2">
-          <label>Slab +/-<input id="slabWidth" type="number" value="0.25" min="0.001" max="20" step="0.01" disabled></label>
-          <label>Samples<input id="slabN" type="number" value="9" min="3" max="101" step="2" disabled></label>
-        </div>
-        <div class="btns">
-          <button id="avgApply" class="alt" disabled>Set average</button>
-          <button id="avgReset" class="alt" disabled>Reset</button>
-        </div>
-      </div>
-      <div class="group" id="resolutionGroup">
-        <h3>Resolution</h3>
-        <div class="row2">
-          <label>Map points per side<input id="resMap" type="number" min="32" max="520" step="1" placeholder="every point" title="Points along each side of a normal-plane or slab map; axis slices show every data point" disabled></label>
-          <label>3-D plane points per side<input id="res3dPlane" type="number" min="32" max="520" step="1" value="180" title="Points along each side of the 3-D slice plane" disabled></label>
-        </div>
-        <div class="row2">
-          <label>Isosurface voxel cap<input id="resIso" type="number" min="5000" step="1000" value="220000" title="The most points the isosurface samples; the stride follows from it" disabled></label>
-          <label>PNG image<select id="resImage" title="PNG exports at this multiple of their size on screen"><option value="1">1x screen</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
-        </div>
-        <div class="meta plotRes">
-          <div class="k">Map</div><div id="plotResMap">-</div>
-          <div class="k">3-D plane</div><div id="plotResPlane">-</div>
-          <div class="k">Isosurface</div><div id="plotResIso">-</div>
-          <div class="k">PNG</div><div id="plotResImage">-</div>
-        </div>
+        <div class="btns"><button id="planeReset" class="alt" disabled>Reset the plane</button></div>
       </div>
       <div class="group">
         <h3>Shown volume</h3>
-        <div class="row2">
-          <label><span id="viewAxis0">Axis 1</span> min<input id="viewMin0" type="number" step="any" disabled></label>
-          <label><span id="viewAxis0b">Axis 1</span> max<input id="viewMax0" type="number" step="any" disabled></label>
+        <div class="cropRow">
+          <span class="cropAxis" id="viewAxis0">Axis 1</span>
+          <input id="viewMin0" type="number" step="any" aria-label="Axis 1 minimum" disabled>
+          <div class="dualRange" id="viewRange0">
+            <button id="viewMinSlider0" class="dualThumb" type="button" aria-label="Axis 1 lower limit" disabled></button>
+            <button id="viewMaxSlider0" class="dualThumb" type="button" aria-label="Axis 1 upper limit" disabled></button>
+          </div>
+          <input id="viewMax0" type="number" step="any" aria-label="Axis 1 maximum" disabled>
         </div>
-        <div class="dualRange" id="viewRange0">
-          <button id="viewMinSlider0" class="dualThumb" type="button" aria-label="Axis 1 lower limit" disabled></button>
-          <button id="viewMaxSlider0" class="dualThumb" type="button" aria-label="Axis 1 upper limit" disabled></button>
+        <div class="cropRow">
+          <span class="cropAxis" id="viewAxis1">Axis 2</span>
+          <input id="viewMin1" type="number" step="any" aria-label="Axis 2 minimum" disabled>
+          <div class="dualRange" id="viewRange1">
+            <button id="viewMinSlider1" class="dualThumb" type="button" aria-label="Axis 2 lower limit" disabled></button>
+            <button id="viewMaxSlider1" class="dualThumb" type="button" aria-label="Axis 2 upper limit" disabled></button>
+          </div>
+          <input id="viewMax1" type="number" step="any" aria-label="Axis 2 maximum" disabled>
         </div>
-        <div class="row2">
-          <label><span id="viewAxis1">Axis 2</span> min<input id="viewMin1" type="number" step="any" disabled></label>
-          <label><span id="viewAxis1b">Axis 2</span> max<input id="viewMax1" type="number" step="any" disabled></label>
+        <div class="cropRow">
+          <span class="cropAxis" id="viewAxis2">Axis 3</span>
+          <input id="viewMin2" type="number" step="any" aria-label="Axis 3 minimum" disabled>
+          <div class="dualRange" id="viewRange2">
+            <button id="viewMinSlider2" class="dualThumb" type="button" aria-label="Axis 3 lower limit" disabled></button>
+            <button id="viewMaxSlider2" class="dualThumb" type="button" aria-label="Axis 3 upper limit" disabled></button>
+          </div>
+          <input id="viewMax2" type="number" step="any" aria-label="Axis 3 maximum" disabled>
         </div>
-        <div class="dualRange" id="viewRange1">
-          <button id="viewMinSlider1" class="dualThumb" type="button" aria-label="Axis 2 lower limit" disabled></button>
-          <button id="viewMaxSlider1" class="dualThumb" type="button" aria-label="Axis 2 upper limit" disabled></button>
-        </div>
-        <div class="row2">
-          <label><span id="viewAxis2">Axis 3</span> min<input id="viewMin2" type="number" step="any" disabled></label>
-          <label><span id="viewAxis2b">Axis 3</span> max<input id="viewMax2" type="number" step="any" disabled></label>
-        </div>
-        <div class="dualRange" id="viewRange2">
-          <button id="viewMinSlider2" class="dualThumb" type="button" aria-label="Axis 3 lower limit" disabled></button>
-          <button id="viewMaxSlider2" class="dualThumb" type="button" aria-label="Axis 3 upper limit" disabled></button>
-        </div>
-        <div class="btns">
-          <button id="viewApply" class="alt" disabled>Apply limits</button>
-          <button id="viewReset" class="alt" disabled>Show full volume</button>
-        </div>
+        <div class="btns"><button id="viewReset" class="alt" disabled>Show full volume</button></div>
         <div id="viewInfo" class="mono fine">Load data to set the shown volume.</div>
       </div>
     </section>
@@ -657,7 +612,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <h3>Agreement</h3>
         <div id="cmpStats" class="mono fine"></div>
         <div id="cmpSliceStats" class="mono fine"></div>
-        <p class="fine">Voxels without data on either side stay out. R = &Sigma;|y &minus; m| / &Sigma;|y|, wR = &radic;(&Sigma;w(y &minus; m)&sup2; / &Sigma;wy&sup2;) with w = 1/&sigma;&sup2; when &sigma; is known, &chi;&sup2;/N uses &sigma;, and &Sigma;(y &minus; m)&sup2;/&Sigma;y&sup2; is the figure RMCProfile logs. Pick the comparison views in Show above the map; <kbd>C</kbd> flips between the data and the comparison.</p>
+        <p class="fine">Pick the comparison views in Show above the map; <kbd>C</kbd> flips between the data and the comparison.</p>
+        <details class="fineDetails"><summary>How the figures are computed</summary><p class="fine">Voxels without data on either side stay out. R = &Sigma;|y &minus; m| / &Sigma;|y|, wR = &radic;(&Sigma;w(y &minus; m)&sup2; / &Sigma;wy&sup2;) with w = 1/&sigma;&sup2; when &sigma; is known, &chi;&sup2;/N uses &sigma;, and &Sigma;(y &minus; m)&sup2;/&Sigma;y&sup2; is the figure RMCProfile logs.</p></details>
       </div>
     </section>
 
@@ -669,16 +625,25 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <label>Surface count<input id="isoCount" type="number" value="4" min="1" max="12" step="1" disabled></label>
         </div>
         <div class="row2">
-          <label>Voxel cap<input id="voxelCap" type="number" value="220000" min="5000" step="1000" disabled></label>
-          <label>Auto refresh<select id="auto3d" disabled><option value="1" selected>On</option><option value="0">Off</option></select></label>
-        </div>
-        <div class="row2">
+          <label>Voxel cap<input id="voxelCap" type="number" value="220000" min="5000" step="1000" title="The most points the isosurface samples; the stride follows from it" disabled></label>
           <label>Samples<select id="isoSampling" disabled title="When the volume is thinned to the voxel cap: the mean of each block of voxels, or every n-th voxel"><option value="block" selected>Block means</option><option value="points">Every n-th voxel</option></select></label>
-          <label>Surface opacity<input id="isoOpacity" type="number" value="0.25" min="0.05" max="1" step="0.05" disabled></label>
         </div>
-        <label class="check"><input id="isoSlices" type="checkbox" checked disabled>Show the slices in the isosurface view</label>
-        <button id="render3d" class="alt" disabled>Render 3-D</button>
-        <p class="fine">Only the 3-D views on screen are drawn. Pick them with the tabs above the 3-D dock, or hide the dock with <kbd>D</kbd>.</p>
+        <div id="plotResIso" class="fine"></div>
+        <div class="row2">
+          <label>Surface opacity<input id="isoOpacity" type="number" value="0.25" min="0.05" max="1" step="0.05" disabled></label>
+          <label class="check" title="Show the slices in the isosurface view"><input id="isoSlices" type="checkbox" checked disabled>Show the slices</label>
+        </div>
+      </div>
+      <div class="group">
+        <h3>Slice plane</h3>
+        <label>Points per side<input id="res3dPlane" type="number" min="32" max="520" step="1" value="180" title="Points along each side of the 3-D slice plane" disabled></label>
+        <div id="plotResPlane" class="fine"></div>
+      </div>
+      <div class="group">
+        <h3>Drawing</h3>
+        <label class="check"><input id="auto3d" type="checkbox" checked disabled>Redraw the 3-D views as the data and the slice change</label>
+        <button id="render3d" class="alt hidden" disabled>Render 3-D</button>
+        <p class="fine">Only the 3-D views on screen are drawn: pick them with the tabs above them, or hide them with <kbd>D</kbd>.</p>
       </div>
     </section>
 
@@ -713,9 +678,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button id="symApply" disabled>Symmetrize</button>
           <button id="symClear" class="alt" disabled>Clear</button>
         </div>
-        <div class="btns hidden" id="symBackRow"><button id="symBack" class="alt" type="button">Back to the measured data</button></div>
         <div id="symInfo" class="mono fine"></div>
-        <p class="fine">Each voxel is averaged with its symmetry equivalents that hold data; empty voxels stay out of the average. <b>Fill empty voxels only</b> keeps the measured values and fills the gaps; with &minus;1 it completes Friedel pairs. Then pick <b>Data &minus; symmetrized</b> above the map to see where the data break the symmetry, or <b>Equivalents found</b> for the coverage. Exports save the values on show.</p>
+        <p class="fine">Then pick <b>Data &minus; symmetrized</b> in Show above the map to see where the data break the symmetry.</p>
+        <details class="fineDetails"><summary>How it works</summary><p class="fine">Each voxel is averaged with its symmetry equivalents that hold data; empty voxels stay out of the average. <b>Fill empty voxels only</b> keeps the measured values and fills the gaps; with &minus;1 it completes Friedel pairs. <b>Equivalents found</b> in Show gives the coverage. With <b>Extend the grid</b> the result is a volume of its own, grown to hold every symmetric image. Exports save the values on show.</p></details>
       </div>
       <div class="group">
         <h3>Mask preview</h3>
@@ -728,7 +693,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button id="maskClear" class="alt" disabled>Clear</button>
         </div>
         <div id="maskInfo" class="mono fine"></div>
-        <p class="fine">Edge erosion marks measured voxels within <i>r</i> voxels of empty ones, where detector edges leave high values. The outlier cut marks voxels more than <i>k</i> robust standard deviations (1.4826 &times; MAD) above the median of their symmetry equivalents, with the Laue class above; 0 turns either off. Pick <b>Masked data</b> or <b>Removed by the mask</b> above the map to check them. This only previews a mask: masking as a recorded processing step is done in 3DSConvert.</p>
+        <p class="fine">A preview: pick <b>Masked data</b> or <b>Removed by the mask</b> in Show above the map. Masking itself is done in 3DSConvert.</p>
+        <details class="fineDetails"><summary>What the mask marks</summary><p class="fine">Edge erosion marks measured voxels within <i>r</i> voxels of empty ones, where detector edges leave high values. The outlier cut marks voxels more than <i>k</i> robust standard deviations (1.4826 &times; MAD) above the median of their symmetry equivalents, with the Laue class above. 0 turns either off.</p></details>
       </div>
     </section>
 
@@ -738,25 +704,27 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <label>File name<input id="exportName" type="text" placeholder="data file name" disabled></label>
         <label class="check"><input id="exportTransparent" type="checkbox" disabled>Transparent background</label>
         <label>PNG resolution<select id="imageScale" title="PNG exports at this multiple of their size on screen"><option value="1">1x screen</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
+        <div id="plotResImage" class="fine"></div>
       </div>
       <div class="group">
-        <h3>2-D slice</h3>
-        <div class="btns">
+        <h3>Figures</h3>
+        <div class="exportGrid">
+          <span class="k">Map</span>
           <button id="savePng" class="alt" disabled>PNG</button>
           <button id="saveSliceSvg" class="alt" disabled title="Vector axes and colour bar with the slice image embedded">SVG</button>
-          <button id="saveCsv" class="alt" disabled>CSV</button>
-        </div>
-      </div>
-      <div class="group">
-        <h3>3-D views</h3>
-        <div class="btns">
-          <button id="savePlanePng" class="alt" disabled>Plane PNG</button>
-          <button id="saveIsoPng" class="alt" disabled>Iso PNG</button>
-          <button id="saveStructPng" class="alt" disabled>Structure PNG</button>
-          <button id="savePlaneSvg" class="alt" disabled>Plane SVG</button>
-          <button id="saveIsoSvg" class="alt" disabled>Iso SVG</button>
-          <button id="savePlaneHtml" class="alt" disabled>Plane HTML</button>
-          <button id="saveIsoHtml" class="alt" disabled>Iso HTML</button>
+          <button id="saveCsv" class="alt" disabled title="The values of the map as a table">CSV</button>
+          <span class="k">Slice plane</span>
+          <button id="savePlanePng" class="alt" disabled>PNG</button>
+          <button id="savePlaneSvg" class="alt" disabled>SVG</button>
+          <button id="savePlaneHtml" class="alt" disabled title="A page with the interactive 3-D figure">HTML</button>
+          <span class="k">Isosurface</span>
+          <button id="saveIsoPng" class="alt" disabled>PNG</button>
+          <button id="saveIsoSvg" class="alt" disabled>SVG</button>
+          <button id="saveIsoHtml" class="alt" disabled title="A page with the interactive 3-D figure">HTML</button>
+          <span class="k">Structure</span>
+          <button id="saveStructPng" class="alt" disabled>PNG</button>
+          <button id="saveStructSvg" class="alt" disabled>SVG</button>
+          <button id="saveStructHtml" class="alt" disabled title="A page with the interactive 3-D figure">HTML</button>
         </div>
       </div>
       <div class="group">
@@ -794,7 +762,6 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <select id="sliceMode" disabled title="Slice mode">
           <option value="axis" selected>Axis slice</option>
           <option value="plane">Normal plane</option>
-          <option value="avgvol">Volume average</option>
         </select>
         <span id="axisPick">
           <select id="axis" disabled title="Plane shown; the third axis is fixed (1, 2, 3)">
@@ -833,8 +800,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             </optgroup>
           </select>
           <button type="button" id="vectorToggle" class="iconBtn ghost hidden" title="Interatomic vectors of the loaded structure (V)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8 16l7.5-7.5"/><path d="M11 8.5h4.5V13"/></svg></button>
-          <button type="button" id="cutTool" class="iconBtn ghost" title="Line cut: drag across the map (L)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2.2" fill="currentColor"/><circle cx="19" cy="5" r="2.2"/></svg></button>
-          <button type="button" id="profileToggle" class="iconBtn ghost" title="Profiles under the map: line cut and |Q| (P)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M4 16l4-6 4 3 4-8 4 5"/></svg></button>
+          <button type="button" id="profileToggle" class="iconBtn ghost" title="Profiles under the map: a line cut drawn on the map, or the |Q| profile (P)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M4 16l4-6 4 3 4-8 4 5"/></svg></button>
+          <button type="button" id="mapSavePng" class="iconBtn ghost" title="Save the map as PNG (more formats on the Export page)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg></button>
           <button type="button" id="mapMax" class="iconBtn ghost" title="Enlarge the map (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         </div>
       </div>
@@ -867,6 +834,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <button type="button" data-profile="q">|Q| profile</button>
           </div>
           <span id="cutFields" class="profileFields">
+            <button type="button" id="cutTool" class="iconBtn ghost wide withText" title="Draw a line cut: drag across the map (L)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2.2" fill="currentColor"/><circle cx="19" cy="5" r="2.2"/></svg>Draw</button>
             <label title="Across the cut, in the plot frame (empty: two grid steps)">Width <input id="cutWidth" type="number" step="any" min="0"></label>
             <label title="Along the slice normal (empty: one slice)">Thickness <input id="cutThick" type="number" step="any" min="0"></label>
           </span>
@@ -881,7 +849,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <div id="profileInfo" class="profileInfo"></div>
         <div class="profilePlot" id="profilePlot">
           <div id="profileChart"></div>
-          <div id="profileEmpty" class="empty3d">Pick the cut tool (L) and drag across the map.</div>
+          <div id="profileEmpty" class="empty3d">Drag across the map to draw a line cut.</div>
         </div>
       </section>
       <div class="sliceBar" id="sliceBar">
@@ -897,13 +865,6 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <input id="planeMove" type="range" min="0" max="400" value="200" disabled aria-label="Plane position along the normal">
           <button type="button" class="stepBtn" data-step="1" title="Move forward (&rarr;)" disabled>&rsaquo;</button>
           <span id="planeMoveVal" class="val">Centre <input id="planeCenterEdit" class="valEdit" type="text" spellcheck="false" autocomplete="off" aria-label="Plane centre" title="Type the plane centre, e.g. 0.4, 0, 0, and press Enter" disabled><span id="planeMoveInfo"></span></span>
-        </div>
-        <div id="avgMoveGroup" class="navGroup hidden">
-          <span class="navLabel">Slab centre</span>
-          <button type="button" class="stepBtn" data-step="-1" title="Move back (&larr;)" disabled>&lsaquo;</button>
-          <input id="avgMove" type="range" min="0" max="400" value="200" disabled aria-label="Slab position along the normal">
-          <button type="button" class="stepBtn" data-step="1" title="Move forward (&rarr;)" disabled>&rsaquo;</button>
-          <span id="avgMoveVal" class="val">Centre <input id="avgCenterEdit" class="valEdit" type="text" spellcheck="false" autocomplete="off" aria-label="Slab centre" title="Type the slab centre, e.g. 0.4, 0, 0, and press Enter" disabled><span id="avgMoveInfo"></span></span>
         </div>
       </div>
     </section>
@@ -931,7 +892,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <span id="plot3dStatus" class="st">Idle</span></div>
           <div class="plotWrap" id="planeWrap">
             <div id="plot3dPlane"></div>
-            <div id="empty3dPlane" class="empty3d">No data loaded.</div>
+            <div id="empty3dPlane" class="empty3d">The 3-D slice plane appears here.</div>
             <div class="plotOverlay">
               <button class="iconBtn" id="planeZoomIn" title="Zoom in">+</button>
               <button class="iconBtn" id="planeZoomOut" title="Zoom out">&minus;</button>
@@ -945,7 +906,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <div class="viewHead"><h3>Isosurface</h3><span id="iso3dStatus" class="st">Idle</span></div>
           <div class="plotWrap" id="isoWrap">
             <div id="plot3dIso"></div>
-            <div id="empty3dIso" class="empty3d">No data loaded.</div>
+            <div id="empty3dIso" class="empty3d">The isosurface appears here.</div>
             <div class="plotOverlay">
               <button class="iconBtn" id="isoZoomIn" title="Zoom in">+</button>
               <button class="iconBtn" id="isoZoomOut" title="Zoom out">&minus;</button>
@@ -980,7 +941,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
 
   <footer class="statusbar">
     <div id="status" role="status" title="Recent messages">Waiting for data file.</div>
-    <div id="sliceStats">No data loaded.</div>
+    <div id="sliceStats"></div>
   </footer>
 </div>
 
@@ -1096,7 +1057,6 @@ const state = {
   sourceGeometry:null,
   displayRanges:null,
   plane:null,
-  avgvol:null,
   lastSlice:null,
   lastLevels:null,
   lastBar:null,
@@ -1736,19 +1696,16 @@ function updateAxisOptionText(){
       opts[n].title = `Fix ${labels[fixed]}, show ${labels[a]}-${labels[b]}`;
     });
   }
-  const fieldLabels = [
-    ["pNH",`n${labels[0]}`],["pNK",`n${labels[1]}`],["pNL",`n${labels[2]}`],
-    ["pOH",`o${labels[0]}`],["pOK",`o${labels[1]}`],["pOL",`o${labels[2]}`],
-    ["pCH",`c${labels[0]}`],["pCK",`c${labels[1]}`],["pCL",`c${labels[2]}`],
-    ["avNH",`n${labels[0]}`],["avNK",`n${labels[1]}`],["avNL",`n${labels[2]}`],
-    ["avOH",`o${labels[0]}`],["avOK",`o${labels[1]}`],["avOL",`o${labels[2]}`],
-    ["avCH",`c${labels[0]}`],["avCK",`c${labels[1]}`],["avCL",`c${labels[2]}`]
-  ];
-  for(const [id, text] of fieldLabels){
-    const input = $(id);
-    const label = input && input.parentElement;
-    if(label && label.firstChild && label.firstChild.nodeType === Node.TEXT_NODE) label.firstChild.nodeValue = text;
-  }
+  labels.forEach((label, a) => {
+    if($("planeCol" + a)) $("planeCol" + a).textContent = label;
+    const n = $(["pNH", "pNK", "pNL"][a]), c = $(["pCH", "pCK", "pCL"][a]);
+    if(n) n.setAttribute("aria-label", `Normal, ${label}`);
+    if(c) c.setAttribute("aria-label", `Centre, ${label}`);
+    for(const kind of ["Min", "Max"]){
+      const f = $("view" + kind + a);
+      if(f) f.setAttribute("aria-label", `${label} ${kind === "Min" ? "minimum" : "maximum"}`);
+    }
+  });
 }
 
 function looksLikeHeader(nums){
@@ -6444,10 +6401,7 @@ function readPlaneInputsIntoState(){
   const raw = [Number($("pNH").value), Number($("pNK").value), Number($("pNL").value)];
   const prevNormal = prev && Array.isArray(prev.normal) ? prev.normal : [1,0,0];
   const normal = Math.hypot(raw[0], raw[1], raw[2]) > 1e-12 ? raw : prevNormal.slice();
-  const originRaw = [Number($("pOH").value), Number($("pOK").value), Number($("pOL").value)];
-  const fallback = centerOfRes(state.res);
-  const prevOrigin = prev && Array.isArray(prev.origin) ? prev.origin : fallback;
-  const origin = originRaw.map((v,i) => Number.isFinite(v) ? v : prevOrigin[i]);
+  const origin = prev && Array.isArray(prev.origin) ? prev.origin.slice() : centerOfRes(state.res);
   const center = prev && Array.isArray(prev.center) ? prev.center.slice() : origin.slice();
   state.plane = {
     normal,
@@ -6481,33 +6435,32 @@ function setPlaneInputs(){
   $("pNK").value = fmt(p.normal[1], 7);
   $("pNL").value = fmt(p.normal[2], 7);
   const axes = [state.res.h, state.res.k, state.res.l];
-  ["pOH", "pOK", "pOL"].forEach((id, a) => { $(id).value = fmtAxis(p.origin[a], axes[a]); });
   ["pCH", "pCK", "pCL"].forEach((id, a) => setFieldUnlessEditing(id, fmtAxis(p.center[a], axes[a])));
   $("planeMove").max = String(Math.max(0, p.slider.length - 1));
   $("planeMove").value = String(p.sliderIndex);
-  const t = p.slider[p.sliderIndex] || 0;
   const centre = p.center.map((v, a) => fmtAxis(v, axes[a])).join(", ");
-  const info = ` | t=${fmt(t)} | n=(${fmt(p.normalUnit[0],3)}, ${fmt(p.normalUnit[1],3)}, ${fmt(p.normalUnit[2],3)})`;
+  const slab = slabHalfWidth();
+  const info = ` | n=(${fmt(p.normalUnit[0],3)}, ${fmt(p.normalUnit[1],3)}, ${fmt(p.normalUnit[2],3)})${slab ? ` | slab \u00b1${fmt(slab, 3)}` : ""}`;
   setValEdit("planeCenterEdit", centre);
   $("planeMoveInfo").textContent = info;
   $("planeMoveVal").title = `Plane centre (${centre})${info}. Type a centre and press Enter to move the plane through it.`;
 }
 
-// Moves the normal plane or the averaging slab so that it passes through c,
-// which becomes its origin and its centre.
-function moveSliceCenterTo(kind, c){
+// Moves the normal plane so that it passes through c, which becomes its
+// origin and its centre; with the normal fields read first, a typed normal
+// turns the plane about c.
+function movePlaneCenterTo(c){
   if(!state.res) return;
   finishSliceMoveCameraLock();
-  const plane = kind === "plane";
-  if(plane) readPlaneInputsIntoState(); else readAvgVolInputsIntoState();
-  const p = plane ? state.plane : state.avgvol;
+  readPlaneInputsIntoState();
+  const p = state.plane;
   p.origin = c.slice();
-  if(plane) rebuildPlaneSlider(0); else rebuildAvgVolSlider(0);
+  rebuildPlaneSlider(0);
   // The slider steps through the volume along the normal; its chosen step
   // lands exactly on the typed centre.
   p.slider[p.sliderIndex] = 0;
   p.center = c.slice();
-  if(plane) setPlaneInputs(); else setAvgVolInputs();
+  setPlaneInputs();
   const b = displayBounds(state.res, false);
   if(c.some((v, a) => v < Math.min(b.min[a], b.max[a]) - 1e-9 || v > Math.max(b.min[a], b.max[a]) + 1e-9)){
     status(`The centre (${c.map(v => fmt(v)).join(", ")}) lies outside the shown volume.`, "warn");
@@ -6516,118 +6469,15 @@ function moveSliceCenterTo(kind, c){
   scheduleRender3d();
 }
 
-function applyPlaneInputs(){
-  if(!state.res) return;
-  const raw = [Number($("pNH").value), Number($("pNK").value), Number($("pNL").value)];
-  const normal = Math.hypot(raw[0], raw[1], raw[2]) > 1e-12 ? raw : [1,0,0];
-  const originRaw = [Number($("pOH").value), Number($("pOK").value), Number($("pOL").value)];
-  const fallback = centerOfRes(state.res);
-  state.plane = {
-    normal,
-    normalUnit:norm3(normal),
-    origin:originRaw.map((v,i) => Number.isFinite(v) ? v : fallback[i]),
-    center:fallback.slice(),
-    slider:[],
-    sliderIndex:0
-  };
-  rebuildPlaneSlider();
+function sliceKindName(sl){
+  return sl.type === "avgvol" ? "slab" : sl.type;
 }
 
-function resetAvgVolState(){
-  const res = state.res;
-  if(!res) return;
-  const mid = centerOfRes(res);
-  state.avgvol = {normal:[1,0,0], normalUnit:[1,0,0], origin:mid.slice(), center:mid.slice(), slider:[], sliderIndex:0};
-  rebuildAvgVolSlider();
-  setAvgVolInputs();
-}
-
-function rebuildAvgVolSlider(targetT=0){
-  const res = state.res, p = state.avgvol;
-  if(!res || !p) return;
-  p.normalUnit = norm3(p.normal);
-  const iv = planeSliderInterval(p.origin, p.normalUnit, displayBounds(res, false));
-  const count = 401;
-  p.slider = Array.from({length:count}, (_,i) => iv[0] + (iv[1] - iv[0]) * i / (count - 1));
-  let best = 0, bestAbs = Infinity;
-  for(let i=0;i<count;i++){
-    const a = Math.abs(p.slider[i] - targetT);
-    if(a < bestAbs){ bestAbs = a; best = i; }
-  }
-  moveAvgVol(best);
-}
-
-function readAvgVolInputsIntoState(){
-  if(!state.res) return false;
-  const prev = state.avgvol;
-  const raw = [Number($("avNH").value), Number($("avNK").value), Number($("avNL").value)];
-  const prevNormal = prev && Array.isArray(prev.normal) ? prev.normal : [1,0,0];
-  const normal = Math.hypot(raw[0], raw[1], raw[2]) > 1e-12 ? raw : prevNormal.slice();
-  const originRaw = [Number($("avOH").value), Number($("avOK").value), Number($("avOL").value)];
-  const fallback = centerOfRes(state.res);
-  const prevOrigin = prev && Array.isArray(prev.origin) ? prev.origin : fallback;
-  const origin = originRaw.map((v,i) => Number.isFinite(v) ? v : prevOrigin[i]);
-  const center = prev && Array.isArray(prev.center) ? prev.center.slice() : origin.slice();
-  state.avgvol = {
-    normal,
-    normalUnit:norm3(normal),
-    origin,
-    center,
-    slider:[],
-    sliderIndex:prev ? prev.sliderIndex : 0
-  };
-  const p = state.avgvol;
-  const iv = planeSliderInterval(p.origin, p.normalUnit, displayBounds(state.res, false));
-  const count = 401;
-  p.slider = Array.from({length:count}, (_,i) => iv[0] + (iv[1] - iv[0]) * i / (count - 1));
-  p.sliderIndex = clamp(Math.round(p.sliderIndex), 0, p.slider.length - 1);
-  return true;
-}
-
-function moveAvgVol(index){
-  const p = state.avgvol;
-  if(!p) return;
-  const i = clamp(Math.round(index), 0, p.slider.length - 1);
-  p.sliderIndex = i;
-  p.center = add3(p.origin, scale3(p.normalUnit, p.slider[i]));
-  setAvgVolInputs();
-}
-
-function setAvgVolInputs(){
-  const p = state.avgvol;
-  if(!p) return;
-  $("avNH").value = fmt(p.normal[0], 7);
-  $("avNK").value = fmt(p.normal[1], 7);
-  $("avNL").value = fmt(p.normal[2], 7);
-  const axes = [state.res.h, state.res.k, state.res.l];
-  ["avOH", "avOK", "avOL"].forEach((id, a) => { $(id).value = fmtAxis(p.origin[a], axes[a]); });
-  ["avCH", "avCK", "avCL"].forEach((id, a) => setFieldUnlessEditing(id, fmtAxis(p.center[a], axes[a])));
-  $("avgMove").max = String(Math.max(0, p.slider.length - 1));
-  $("avgMove").value = String(p.sliderIndex);
-  const t = p.slider[p.sliderIndex] || 0;
-  const slab = Math.max(0.001, Number($("slabWidth").value) || 0.25);
-  const centre = p.center.map((v, a) => fmtAxis(v, axes[a])).join(", ");
-  const info = ` | t=${fmt(t)} | slab \u00b1${fmt(slab,3)}`;
-  setValEdit("avgCenterEdit", centre);
-  $("avgMoveInfo").textContent = info;
-  $("avgMoveVal").title = `Slab centre (${centre})${info}. Type a centre and press Enter to move the slab through it.`;
-}
-
-function applyAvgVolInputs(){
-  if(!state.res) return;
-  const raw = [Number($("avNH").value), Number($("avNK").value), Number($("avNL").value)];
-  const normal = Math.hypot(raw[0], raw[1], raw[2]) > 1e-12 ? raw : [1,0,0];
-  const originRaw = [Number($("avOH").value), Number($("avOK").value), Number($("avOL").value)];
-  const fallback = centerOfRes(state.res);
-  state.avgvol = {
-    normal,
-    normalUnit:norm3(normal),
-    origin:originRaw.map((v,i) => Number.isFinite(v) ? v : fallback[i]),
-    center:fallback.slice(),
-    slider:[],
-    sliderIndex:0
-  };
-  rebuildAvgVolSlider();
+// Half-thickness of the slab averaged across the normal plane, in axis
+// units; 0 cuts a thin plane.
+function slabHalfWidth(){
+  const v = Number($("slabWidth") && $("slabWidth").value);
+  return Number.isFinite(v) && v > 0 ? Math.min(20, v) : 0;
 }
 
 function chooseSliceStrides(rows, cols, cap=MAX_AXIS_SLICE_CELLS){
@@ -6796,9 +6646,11 @@ function buildNormalPlaneSlice(res, resOverride=null, include3d=true){
   return {type:"plane", rows, cols, d, x3, y3, z3, plane:`Plane c=(${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) n=(${fmt(n[0],3)}, ${fmt(n[1],3)}, ${fmt(n[2],3)})`, xLabel:"u", yLabel:"v", xMin:-half, xMax:half, yMin:-half, yMax:half, xVec:u, yVec:v, valid};
 }
 
+// The normal plane with a slab: each map point is the mean of the samples
+// across the slab.
 function buildAvgVolSlice(res, resOverride=null, include3d=true, options={}){
-  if(!state.avgvol) resetAvgVolState();
-  const p = state.avgvol;
+  if(!state.plane) resetPlaneState();
+  const p = state.plane;
   const n = p.normalUnit, basis = planeBasisFromNormal(n), u = basis.u, v = basis.v;
   const shownBounds = displayBounds(res, false);
   const range = Math.max(
@@ -6807,9 +6659,9 @@ function buildAvgVolSlice(res, resOverride=null, include3d=true, options={}){
     Math.abs(shownBounds.max[2] - shownBounds.min[2]),
     1e-6
   );
-  const scale = Math.max(0.2, Math.min(4, Number($("avScale").value) || 1.2));
-  const nRes = Number.isFinite(resOverride) ? clamp(Math.floor(resOverride), 16, 2400) : planeMapPoints(res, range * scale, "avRes");
-  const slabHalf = Math.max(0.001, Math.min(20, Number($("slabWidth").value) || 0.25));
+  const scale = Math.max(0.2, Math.min(4, Number($("pScale").value) || 1.35));
+  const nRes = Number.isFinite(resOverride) ? clamp(Math.floor(resOverride), 16, 2400) : planeMapPoints(res, range * scale, "pRes");
+  const slabHalf = Math.max(0.001, slabHalfWidth());
   const fullSlabN = Math.max(3, Math.min(101, Math.floor(Number($("slabN").value) || 9)));
   const slabN = options.fast ? Math.min(fullSlabN, 3) : fullSlabN;
   const size = range * scale, half = size / 2, step = nRes > 1 ? size / (nRes - 1) : 0;
@@ -6842,26 +6694,25 @@ function buildAvgVolSlice(res, resOverride=null, include3d=true, options={}){
       if(Number.isFinite(avg)) valid++;
     }
   }
-  return {type:"avgvol", rows, cols, d, x3, y3, z3, plane:`VolAvg c=(${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) n=(${fmt(n[0],3)}, ${fmt(n[1],3)}, ${fmt(n[2],3)}) slab=+/-${fmt(slabHalf,3)} (${slabN} pt)`, xLabel:"u", yLabel:"v", xMin:-half, xMax:half, yMin:-half, yMax:half, xVec:u, yVec:v, valid};
+  return {type:"avgvol", rows, cols, d, x3, y3, z3, plane:`Slab c=(${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) n=(${fmt(n[0],3)}, ${fmt(n[1],3)}, ${fmt(n[2],3)}) slab=+/-${fmt(slabHalf,3)} (${slabN} pt)`, xLabel:"u", yLabel:"v", xMin:-half, xMax:half, yMin:-half, yMax:half, xVec:u, yVec:v, valid};
 }
 
 function currentSlice(resOverride=null, axisCellCap=MAX_AXIS_SLICE_CELLS, include3d=true, options={}){
   if(!state.res) return null;
   const res = options.res || viewRes();
-  if($("sliceMode").value === "plane") return buildNormalPlaneSlice(res, resOverride, include3d);
-  if($("sliceMode").value === "avgvol") return buildAvgVolSlice(res, resOverride, include3d, options);
+  if($("sliceMode").value === "plane") return slabHalfWidth() > 0 ? buildAvgVolSlice(res, resOverride, include3d, options) : buildNormalPlaneSlice(res, resOverride, include3d);
   return buildAxisSlice(res, $("axis").value, Number($("idx").value), axisCellCap, include3d);
 }
 
-// While a plane or slab moves: its full points up to a cap that keeps the
-// motion smooth; the full map follows when the move ends.
+// While a plane moves: its full points up to a cap that keeps the motion
+// smooth (lower for a slab, which samples across it); the full map follows
+// when the move ends.
 function fastMoveSliceResolution(){
-  const mode = $("sliceMode").value;
-  if(mode !== "plane" && mode !== "avgvol") return null;
-  const res = viewRes(), b = displayBounds(res, false), plane = mode === "plane";
+  if($("sliceMode").value !== "plane") return null;
+  const res = viewRes(), b = displayBounds(res, false);
   const range = Math.max(...[0, 1, 2].map(a => Math.abs(b.max[a] - b.min[a])), 1e-6);
-  const scale = clamp(Number($(plane ? "pScale" : "avScale").value) || (plane ? 1.35 : 1.2), 0.2, 4);
-  return Math.min(planeMapPoints(res, range * scale, plane ? "pRes" : "avRes"), plane ? 360 : 180);
+  const scale = clamp(Number($("pScale").value) || 1.35, 0.2, 4);
+  return Math.min(planeMapPoints(res, range * scale, "pRes"), slabHalfWidth() > 0 ? 180 : 360);
 }
 
 function scheduleDraw2d(options={}){
@@ -7406,7 +7257,7 @@ function prepareHeatmapCanvas(){
 function draw2d(options={}){
   if(!state.res){
     prepareHeatmapCanvas();
-    setTextWithTitle("sliceStats", "No data loaded.");
+    setTextWithTitle("sliceStats", "");
     $("levelInfo").textContent = "Display levels: -";
     state.lastSlice = null;
     state.lastBar = null;
@@ -7464,7 +7315,7 @@ function draw2d(options={}){
   paint2d();
   if(!fast){
     state.plotRes.map = sliceSampling(sl);
-    if(sl.type !== "axis" && (state.ui.mapQuality || "data") !== "custom") setFieldUnlessEditing(sl.type === "plane" ? "pRes" : "avRes", String(sl.cols));
+    if(sl.type !== "axis" && (state.ui.mapQuality || "data") !== "custom") setFieldUnlessEditing("pRes", String(sl.cols));
     updatePlotResInfo();
   }
 
@@ -7977,7 +7828,7 @@ function sliceReadout(pt, last=state.lastSlice){
       ? thickMean(cv, sl.fixedAxis, sl.fixedIndex, idx[others[0]], idx[others[1]], range[0], range[1], sl.thickness)
       : cv.I[idx3(res.shape, idx[0], idx[1], idx[2])];
   }else{
-    const p = sl.type === "plane" ? state.plane : state.avgvol;
+    const p = state.plane;
     if(!p) return null;
     out.uv = [xv, yv];
     out.native = [0, 1, 2].map(c => p.center[c] + sl.xVec[c] * xv + sl.yVec[c] * yv);
@@ -8675,27 +8526,46 @@ function imageSizesText(){
   return `${s}x the size on screen${parts.length ? `: ${parts.join(", ")}` : ""}`;
 }
 
-// The resolution each figure is drawn with, and the fields that set it.
+const MAP_QUALITY_LABELS = {data:"Data resolution", double:"2\u00d7 finer", custom:"Custom points"};
+
+// The select above the map names the points the map is drawn with. Axis
+// slices always show every data point, so the choice rests for them and
+// applies to normal-plane maps.
+function syncMapQualitySelect(){
+  const sel = $("mapQuality");
+  if(!sel) return;
+  const res = state.res, s = state.plotRes && state.plotRes.map, axisMode = $("sliceMode").value === "axis";
+  sel.disabled = !res || axisMode;
+  sel.value = axisMode ? "data" : (state.ui && state.ui.mapQuality) || "data";
+  const drawn = res && s ? ` \u00b7 ${s.cols} \u00d7 ${s.rows}` : "";
+  for(const opt of sel.options){
+    const base = opt.value === "data" && s && s.type === "axis" && s.full === false ? "Sampled" : MAP_QUALITY_LABELS[opt.value];
+    opt.textContent = opt.value === sel.value ? base + drawn : MAP_QUALITY_LABELS[opt.value];
+  }
+  sel.title = `Resolution of the map on screen${res && s ? `: ${samplingText(s, coordUnit(res))}` : ""}. ` +
+    (axisMode ? "Axis slices show every data point." : "Normal-plane maps are sampled at the finest data step, twice as fine, or at the points per side set on the Slice page.");
+}
+
+// The resolution each figure is drawn with, next to the setting that sets
+// it: the map's above the map, the 3-D plane's and the isosurface's on the
+// 3-D page, the PNG sizes on the Export page.
 function updatePlotResInfo(){
-  if(!$("plotResMap")) return;
-  const res = state.res, mode = $("sliceMode").value, planeMap = mode === "plane" || mode === "avgvol";
-  $("resMap").disabled = !res || !planeMap;
-  setFieldUnlessEditing("resMap", planeMap ? String(state.plotRes && state.plotRes.map && state.plotRes.map.type !== "axis" ? state.plotRes.map.cols : $(mode === "plane" ? "pRes" : "avRes").value) : "");
+  if(!$("mapQuality")) return;
+  syncMapQualitySelect();
   setFieldUnlessEditing("res3dPlane", String(plane3dRes()));
-  setFieldUnlessEditing("resIso", $("voxelCap").value);
   $("plotResImage").textContent = imageSizesText();
+  const res = state.res;
   if(!res){
-    for(const id of ["plotResMap", "plotResPlane", "plotResIso"]) $(id).textContent = "-";
+    for(const id of ["plotResPlane", "plotResIso"]) $(id).textContent = "";
     return;
   }
   const unit = coordUnit(res), r = state.plotRes || {};
-  $("plotResMap").textContent = samplingText(r.map, unit);
-  $("plotResPlane").textContent = r.plane || view3dShown("plane") ? samplingText(r.plane, unit) : "the 3-D slice plane is hidden";
+  $("plotResPlane").textContent = r.plane || view3dShown("plane") ? `Drawn: ${samplingText(r.plane, unit)}` : "The 3-D slice plane is hidden.";
   const size = displayIndexRanges(res).map(g => g[1] - g[0] + 1);
   const cap = Math.max(5000, Math.floor(Number($("voxelCap").value) || 220000));
   const strides = chooseVolumeStrides(size, cap), counts = volumePicks(res, displayIndexRanges(res), strides).map(p => p.length);
   const how = strides.every(s => s === 1) ? "every data point" : `stride ${strides.join(" x ")}${isoBlockMeans(strides) ? ", block means" : ""}`;
-  $("plotResIso").textContent = `${counts.join(" x ")} (~${(counts[0] * counts[1] * counts[2]).toLocaleString()} points), ${how}; ${isoSpacingText(res, strides)}`;
+  $("plotResIso").textContent = `Samples ${counts.join(" x ")} (~${(counts[0] * counts[1] * counts[2]).toLocaleString()} points), ${how}; ${isoSpacingText(res, strides)}`;
 }
 
 function resetShownVolume(redraw=true){
@@ -8704,7 +8574,6 @@ function resetShownVolume(redraw=true){
   updateShownVolumeInputs();
   updateAxisIndexBounds();
   resetPlaneState();
-  resetAvgVolState();
   updateMeta();
   if(redraw){
     resetDisplayLevels(false);
@@ -8729,7 +8598,6 @@ function applyShownVolume(){
   updateShownVolumeInputs();
   updateAxisIndexBounds();
   resetPlaneState();
-  resetAvgVolState();
   resetDisplayLevels(false);
   updateMeta();
   draw2d();
@@ -8741,8 +8609,8 @@ function syncControls(){
   const has = !!state.res;
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
-  const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","zeroMask","sliceMode","scale","mapQuality","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","savePlanePng","saveIsoPng","res3dPlane","resIso","isoPct","isoCount","voxelCap","auto3d","isoSampling","isoOpacity","isoSlices","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  const axisMode = sm === "axis", planeMode = sm === "plane";
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","mapSavePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","savePlanePng","saveIsoPng","res3dPlane","isoPct","isoCount","voxelCap","auto3d","isoSampling","isoOpacity","isoSlices","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -8758,34 +8626,33 @@ function syncControls(){
   for(const id of ["axis","idx","sliceCoord","sliceIndex"]){
     $(id).disabled = !has || !axisMode;
   }
-  for(const id of ["pNH","pNK","pNL","pOH","pOK","pOL","pCH","pCK","pCL","planeCenterEdit","planeMove","pRes","pScale","planeApply","planeReset"]){
+  for(const id of ["pNH","pNK","pNL","pCH","pCK","pCL","planeCenterEdit","planeMove","pRes","pScale","slabWidth","planeReset"]){
     $(id).disabled = !has || !planeMode;
   }
-  for(const id of ["avNH","avNK","avNL","avOH","avOK","avOL","avCH","avCK","avCL","avgCenterEdit","avgMove","avRes","avScale","slabWidth","slabN","avgApply","avgReset"]){
-    $(id).disabled = !has || !avgMode;
-  }
+  $("slabN").disabled = !has || !planeMode || slabHalfWidth() === 0;
   $("levelMin").disabled = !has;
   $("levelMax").disabled = !has;
   $("asinhSoft").disabled = !has;
   $("asinhRow").classList.toggle("hidden", $("scale").value !== "asinh");
   $("axisControls").classList.toggle("hidden", !axisMode);
   $("planeControls").classList.toggle("hidden", !planeMode);
-  $("avgControls").classList.toggle("hidden", !avgMode);
   $("axisHelp").classList.toggle("hidden", !axisMode);
   $("sliceThick").disabled = !has || !axisMode;
   $("sliceThickUnits").disabled = !has || !axisMode;
   $("triToggle").disabled = !has || !axisMode;
   updateSliceThickInfo();
   $("axisPick").classList.toggle("hidden", !axisMode);
+  $("render3d").classList.toggle("hidden", $("auto3d").checked);
+  syncMapQualitySelect();
   $("planeMoveGroup").classList.toggle("hidden", !planeMode);
-  $("avgMoveGroup").classList.toggle("hidden", !avgMode);
   for(const b of document.querySelectorAll(".stepBtn")) b.disabled = !has;
   $("welcome").classList.toggle("hidden", has);
+  $("mapBar").classList.toggle("hidden", !has);
+  $("sliceBar").classList.toggle("hidden", !has);
   syncStructureControls();
   updateAxisOptionText();
   if(has && axisMode) updateAxisIndexBounds();
   if(has && planeMode) setPlaneInputs();
-  if(has && avgMode) setAvgVolInputs();
   updateCellInfo();
   syncSymControls();
   syncShowOptions();
@@ -8808,49 +8675,64 @@ function metaAxisLabels(r){
   return r && useBasisToDirect(r) ? ["X", "Y", "Z"] : renderAxisLabels(r);
 }
 
+// Ranges of the data's own axes, the ones the map and the shown volume use.
+function fileAxisRanges(r){
+  const labels = nativeAxisLabels(r);
+  return [r.h, r.k, r.l].map((values, a) => {
+    const lo = values[0], hi = values[values.length - 1];
+    return {label:labels[a], min:Math.min(lo, hi), max:Math.max(lo, hi)};
+  });
+}
+
 function updateMeta(){
   const r = state.res;
-  const labels = metaAxisLabels(r);
-  $("mHName").textContent = `${labels[0]} range`;
-  $("mKName").textContent = `${labels[1]} range`;
-  $("mLName").textContent = `${labels[2]} range`;
+  for(const id of ["fileGroup", "readingGroup", "cellTool"]) $(id).classList.toggle("hidden", !r);
   if(!r){
-    for(const id of ["mFile","mKind","mRows","mGrid","mH","mK","mL","mI","mHeader"]) $(id).textContent = "-";
-    for(const id of ["mProcName","mProc"]) $(id).classList.add("hidden");
+    for(const id of ["mFile","mFormat","mKind","mRows","mGrid","mH","mK","mL","mI","mRead","mHeader"]) $(id).textContent = "-";
+    for(const id of ["mProcName","mProc","mFrameName","mFrame","mHeaderName","mHeader"]) $(id).classList.add("hidden");
     $("mIName").textContent = "Value range";
-    $("mFormat").value = "-";
     $("tbFile").textContent = "No file";
-    $("tbKind").textContent = "Type -";
-    $("tbGrid").textContent = "Grid -";
-    $("tbRange").textContent = "Axes -";
+    for(const id of ["tbKind", "tbGrid", "tbRange"]){ $(id).textContent = ""; $(id).classList.add("hidden"); }
     chipTitles();
     return;
   }
   $("mFile").textContent = r.file;
+  $("mFormat").textContent = r.format || "data";
   $("mKind").textContent = dataKindText(r);
   $("mRows").textContent = `${r.rows.toLocaleString()} rows, ${r.filled.toLocaleString()} voxels`;
   $("mGrid").textContent = `${r.shape[0]} x ${r.shape[1]} x ${r.shape[2]}`;
-  const b = plotBounds(r);
-  $("mH").textContent = `${fmt(b.min[0])} .. ${fmt(b.max[0])}`;
-  $("mK").textContent = `${fmt(b.min[1])} .. ${fmt(b.max[1])}`;
-  $("mL").textContent = `${fmt(b.min[2])} .. ${fmt(b.max[2])}`;
+  const ranges = fileAxisRanges(r), unit = coordUnit(r);
+  ranges.forEach((g, a) => {
+    $(["mHName", "mKName", "mLName"][a]).textContent = `${g.label} range`;
+    $(["mH", "mK", "mL"][a]).textContent = `${fmt(g.min)} .. ${fmt(g.max)}${unit}`;
+  });
+  // Drawn through a cell, the 3-D views have Cartesian axes of their own.
+  const frame = useBasisToQ(r) || useBasisToDirect(r);
+  for(const id of ["mFrameName", "mFrame"]) $(id).classList.toggle("hidden", !frame);
+  if(frame){
+    const b = plotBounds(r), labels = metaAxisLabels(r);
+    $("mFrame").textContent = labels.map((l, a) => `${l} ${fmt(b.min[a], 3)} .. ${fmt(b.max[a], 3)}`).join(", ") + (useBasisToQ(r) ? " \u00c5\u207b\u00b9" : " \u00c5");
+  }
   $("mIName").textContent = `${valueLabel(r)} range`;
   $("mI").textContent = `${r.rawMin.toExponential(4)} .. ${r.rawMax.toExponential(4)}`;
-  const h = r.header;
-  $("mHeader").textContent = h ? `n=${h.points.toLocaleString()}, sec=${h.sections}${h.scale !== null ? `, scale=${fmt(h.scale)}` : ""}${h.offset !== null ? `, offset=${fmt(h.offset)}` : ""}` : "not found";
+  // A header is worth showing when it carries a scale or an offset.
+  const h = r.header, header = !!(h && (h.scale !== null || h.offset !== null));
+  for(const id of ["mHeaderName", "mHeader"]) $(id).classList.toggle("hidden", !header);
+  if(header) $("mHeader").textContent = `${h.scale !== null ? `scale ${fmt(h.scale)}` : ""}${h.scale !== null && h.offset !== null ? ", " : ""}${h.offset !== null ? `offset ${fmt(h.offset)}` : ""}`;
   const proc = r.process;
   for(const id of ["mProcName","mProc"]) $(id).classList.toggle("hidden", !proc);
   $("mProc").textContent = proc ? [[proc.program, proc.date.slice(0, 10)].filter(Boolean).join(", "), ...proc.steps].filter(Boolean).join("\n") : "-";
-  const basis = usePlotBasis(r) ? ` | basis=${r.basisSource || (useBasisToQ(r) ? "Bq" : "direct cell")}` : "";
+  const basis = usePlotBasis(r) ? `, basis ${r.basisSource || (useBasisToQ(r) ? "Bq" : "direct cell")}` : "";
   const geometry = useBasisToQ(r) ? "Q from HKL" : useBasisToDirect(r) ? "XYZ" : activeCoordKind().toUpperCase();
-  const layout = r.h5 && r.h5.diskOrder ? ` | disk ${r.h5.diskOrder}${r.axisOrderAmbiguous ? " (assumed)" : ""}` : "";
+  const layout = r.h5 && r.h5.diskOrder ? `; disk order ${r.h5.diskOrder}${r.axisOrderAmbiguous ? " (assumed)" : ""}` : "";
   const native = nativeAxisLabels(r);
-  const swapped = r.axisOrderSwapped ? ` | ${native[0]}/${native[2]} order swapped` : "";
-  $("mFormat").value = `${r.format || "data"} | ${dataKindText(r)} | detected ${(r.coordKind || "q").toUpperCase()} | showing ${geometry}${basis}${layout}${swapped}`;
+  const swapped = r.axisOrderSwapped ? `; ${native[0]}/${native[2]} order swapped` : "";
+  $("mRead").textContent = `${(r.coordKind || "q").toUpperCase()}, drawn as ${geometry}${basis}${layout}${swapped}`;
   $("tbFile").textContent = r.file;
+  for(const id of ["tbKind", "tbGrid", "tbRange"]) $(id).classList.remove("hidden");
   $("tbKind").textContent = r.dataKind && r.dataKind.label ? r.dataKind.label : "Type -";
   $("tbGrid").textContent = `${r.shape[0]} x ${r.shape[1]} x ${r.shape[2]}`;
-  $("tbRange").textContent = `${labels[0]} ${fmt(b.min[0],2)}..${fmt(b.max[0],2)} ${labels[1]} ${fmt(b.min[1],2)}..${fmt(b.max[1],2)} ${labels[2]} ${fmt(b.min[2],2)}..${fmt(b.max[2],2)}`;
+  $("tbRange").textContent = ranges.map(g => `${g.label} ${fmt(g.min, 2)}..${fmt(g.max, 2)}`).join("  ") + unit;
   chipTitles();
 }
 
@@ -9246,7 +9128,7 @@ function syncStructureControls(){
   const st = state.structure;
   $("structStatus").textContent = st ? structureText(st) : "No structure";
   $("structStatus").title = $("structStatus").textContent;
-  $("saveStructPng").disabled = !(st && st.atoms.length);
+  for(const id of ["saveStructPng", "saveStructSvg", "saveStructHtml"]) $(id).disabled = !(st && st.atoms.length);
   const available = vectorsAvailable(), on = vectorOverlayOn();
   $("vectorToggle").classList.toggle("hidden", !available);
   $("vectorToggle").classList.toggle("on", on);
@@ -9619,7 +9501,7 @@ function restoreFileCell(){
 
 function scheduleRender3d(delay=180, force=false){
   if(!state.res) return;
-  if(!force && $("auto3d") && $("auto3d").value !== "1") return;
+  if(!force && $("auto3d") && !$("auto3d").checked) return;
   if(state.moveActive) return;
   if(state.renderTimer) clearTimeout(state.renderTimer);
   state.renderTimer = setTimeout(() => {
@@ -10299,7 +10181,7 @@ async function updatePlane3dFast(){
           else await Plotly.restyle(gd, update, [0]);
         }
       }else{
-        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Slice Plane (${sl.type})`, keepCamera || liveCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
+        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Slice Plane (${sliceKindName(sl)})`, keepCamera || liveCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
         wireCamera("plot3dPlane", "plane");
       }
       if(keepCamera) state.cameras.plane = cloneCamera(keepCamera);
@@ -10390,7 +10272,7 @@ async function renderPlane3d(Plotly){
     flatshading:false,
     lighting:{ambient:0.9, diffuse:0.35, specular:0.05, roughness:0.9}
   };
-  await Plotly.react("plot3dPlane", withHklAxisOverlay([trace]), sceneLayout(`Slice Plane (${sl.type})`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
+  await Plotly.react("plot3dPlane", withHklAxisOverlay([trace]), sceneLayout(`Slice Plane (${sliceKindName(sl)})`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
   wireCamera("plot3dPlane", "plane");
   captureSceneCamera("plot3dPlane", "plane");
   $("empty3dPlane").style.display = "none";
@@ -10527,7 +10409,7 @@ function view3dShown(which){
 
 function refreshStale3d(){
   if(!state.res || state.moveActive) return;
-  if($("auto3d") && $("auto3d").value !== "1") return;
+  if($("auto3d") && !$("auto3d").checked) return;
   const views = ["plane", "iso"].filter(v => state.stale3d[v] && view3dShown(v));
   if(views.length) render3d(views).catch(err => status(`3D render failed: ${err.message}`, "err"));
 }
@@ -11055,22 +10937,29 @@ function downloadDataUrl(name, dataUrl){
 }
 
 // A 3-D view as PNG at the chosen scale of its size on screen.
+// Draws a 3-D view for export: the plane and the isosurface from the data,
+// the structure from itself. False when there is nothing to draw.
+async function prepareExportPlot(plotId){
+  if(plotId === "plot3dStruct") return !!(state.structure && state.structure.atoms.length);
+  if(!state.res) return false;
+  await render3d([plotId === "plot3dPlane" ? "plane" : "iso"]);
+  return true;
+}
+
+function plotExportBase(){
+  return state.res ? baseName() : String(state.structure && state.structure.name || "structure").replace(/\.[^.]+$/, "");
+}
+
 async function savePlotPng(plotId, tag){
   try{
     const Plotly = await ensurePlotly();
-    if(plotId === "plot3dStruct"){
-      if(!state.structure || !state.structure.atoms.length) return;
-    }else{
-      if(!state.res) return;
-      await render3d([plotId === "plot3dPlane" ? "plane" : "iso"]);
-    }
+    if(!await prepareExportPlot(plotId)) return;
     const fig = exportPlotFigure(plotId);
     if(!fig) throw new Error("the view has not been drawn yet; show it in the dock first.");
     const rect = $(plotId).getBoundingClientRect(), scale = imageScale();
     const width = Math.round(rect.width) || 1200, height = Math.round(rect.height) || 900;
     const url = await Plotly.toImage(fig, {format:"png", width, height, scale});
-    const base = state.res ? baseName() : String(state.structure.name || "structure").replace(/\.[^.]+$/, "");
-    downloadDataUrl(`${base}_${tag}.png`, url);
+    downloadDataUrl(`${plotExportBase()}_${tag}.png`, url);
     status(`Saved ${tag} PNG, ${width * scale} x ${height * scale} px (${scale}x).`, "ok");
   }catch(err){
     status(`PNG export failed: ${err.message}`, "err");
@@ -11078,14 +10967,13 @@ async function savePlotPng(plotId, tag){
 }
 
 async function savePlotSvg(plotId, tag){
-  if(!state.res) return;
   try{
-    await render3d([plotId === "plot3dPlane" ? "plane" : "iso"]);
+    if(!await prepareExportPlot(plotId)) return;
     const Plotly = await ensurePlotly();
     const fig = exportPlotFigure(plotId);
-    if(!fig) throw new Error("Target 3D plot is empty.");
+    if(!fig) throw new Error("the view has not been drawn yet; show it in the dock first.");
     const uri = await Plotly.toImage(fig, {format:"svg", width:1200, height:900});
-    downloadDataUrl(`${baseName()}_${tag}.svg`, uri);
+    downloadDataUrl(`${plotExportBase()}_${tag}.svg`, uri);
     status(`Saved ${tag} SVG.`, "ok");
   }catch(err){
     status(`SVG export failed: ${err.message}`, "err");
@@ -11137,16 +11025,15 @@ function exportPlotFigure(plotId){
 }
 
 async function savePlotHtml(plotId, tag, title){
-  if(!state.res) return;
   try{
-    await render3d([plotId === "plot3dPlane" ? "plane" : "iso"]);
+    if(!await prepareExportPlot(plotId)) return;
     const fig = exportPlotFigure(plotId);
-    if(!fig || !Array.isArray(fig.data) || !fig.data.length) throw new Error("Target 3D plot is empty.");
+    if(!fig || !Array.isArray(fig.data) || !fig.data.length) throw new Error("the view has not been drawn yet; show it in the dock first.");
     const payload = JSON.stringify({fig, title, createdAt:new Date().toISOString()}).replace(/</g, "\\u003c");
     const tx = themePlot();
     const pageBg = exportTransparent() ? "transparent" : tx.bg;
     const html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><script src="${PLOTLY_CDN}"><\/script><style>body{margin:0;background:${pageBg};color:${tx.text};font-family:Segoe UI,Tahoma,sans-serif}main{padding:12px;display:grid;gap:10px}#plot{min-height:720px;border:1px solid ${tx.grid};background:${pageBg}}</style></head><body><main><h2 style="margin:0">${title}</h2><div id="plot"></div></main><script>const payload=${payload};Plotly.newPlot("plot",(payload.fig&&payload.fig.data)||[],(payload.fig&&payload.fig.layout)||{},{responsive:true,displaylogo:false});<\/script></body></html>`;
-    saveText(`${baseName()}_${tag}.html`, html, "text/html;charset=utf-8");
+    saveText(`${plotExportBase()}_${tag}.html`, html, "text/html;charset=utf-8");
     status(`Saved ${tag} HTML.`, "ok");
   }catch(err){
     status(`HTML export failed: ${err.message}`, "err");
@@ -11203,7 +11090,6 @@ function showDataset(parsed, {name=parsed.file, note=""}={}){
   state.manualLevelBounds = null;
   $("coordMode").value = "auto";
   resetPlaneState();
-  resetAvgVolState();
   $("sliceMode").value = "axis";
   $("axis").value = "l";
   state.axisIndex = {};
@@ -11316,7 +11202,7 @@ function applyUi(){
   $("cutawayFlip").title = ui.cutawayKeep === "above" ? "Showing the block above the slice; show the part below" : "Showing the block below the slice; show the part above";
   $("camOrtho").checked = !!ui.ortho;
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
-  for(const id of ["imageScale", "resImage"]) $(id).value = String(ui.imageScale);
+  $("imageScale").value = String(ui.imageScale);
   $("triToggle").classList.toggle("on", !!ui.tri);
   $("mapQuality").value = ui.mapQuality;
   $("triToggle").setAttribute("aria-pressed", String(!!ui.tri));
@@ -11340,7 +11226,7 @@ function openDataFile(file){
 
 function activeSliceSlider(){
   const mode = $("sliceMode").value;
-  return $(mode === "plane" ? "planeMove" : mode === "avgvol" ? "avgMove" : "idx");
+  return $(mode === "plane" ? "planeMove" : "idx");
 }
 
 // Moves the active slice slider as a drag would. The settling "change" step
@@ -11539,12 +11425,7 @@ function bindLayout(){
   const pick = () => $("file").click();
   $("openFile").addEventListener("click", pick);
   $("welcomeOpen").addEventListener("click", pick);
-  $("drop").addEventListener("click", pick);
-  $("drop").addEventListener("keydown", ev => {
-    if(ev.key !== "Enter" && ev.key !== " ") return;
-    ev.preventDefault();
-    pick();
-  });
+  $("dataOpen").addEventListener("click", pick);
   $("dataset").addEventListener("click", () => showSidePage("data"));
 
   // Files can be dropped anywhere in the window.
@@ -11764,9 +11645,11 @@ function syncSymControls(){
   syncMaskControls();
   const has = !!state.res, busy = !!state.symBusy;
   for(const id of ["laueClass", "symMode", "symOps", "symExtend"]) $(id).disabled = !has || busy;
-  $("symBackRow").classList.toggle("hidden", !state.symSource);
+  const views = !!(state.sym && state.sym.res === state.res), back = !views && !!state.symSource;
+  $("symClear").textContent = back ? "Back to the measured data" : "Clear";
+  $("symClear").title = back ? "Close the symmetrized volume and show the file again" : "Remove the symmetrized views";
   $("symApply").disabled = !has || busy;
-  $("symClear").disabled = !has || busy || !state.sym;
+  $("symClear").disabled = !has || busy || !(views || back);
 }
 
 // Symmetrization onto a grown grid: the index box of all images of the shown
@@ -12133,6 +12016,9 @@ function profileOpen(){
 
 function setProfileOpen(open, kind=null){
   setUi(kind ? {profile:!!open, profileKind:kind} : {profile:!!open});
+  const line = !!open && state.ui.profileKind === "line";
+  if(line && !state.cut && !state.cutMode && state.res && !triOn()) setCutMode(true);
+  else if(!line && state.cutMode) setCutMode(false);
   if(open) scheduleProfile(true);
 }
 
@@ -12152,7 +12038,7 @@ function setCutMode(on){
 // that plane as the slice moves; another plane hides it.
 function sliceKeyForCut(sl){
   if(!sl) return "";
-  return sl.type === "axis" ? `axis|${sl.fixedAxis}` : `${sl.type}|${String(sl.xVec)}|${String(sl.yVec)}`;
+  return sl.type === "axis" ? `axis|${sl.fixedAxis}` : `plane|${String(sl.xVec)}|${String(sl.yVec)}`;
 }
 
 function sliceToNative(sl, xv, yv){
@@ -12164,7 +12050,7 @@ function sliceToNative(sl, xv, yv){
     f[sl.rowAxis] = axisToFraction(axes[sl.rowAxis], metas[sl.rowAxis], yv);
     return nativeAtFraction(res, f);
   }
-  const p = sl.type === "plane" ? state.plane : state.avgvol;
+  const p = state.plane;
   return [0, 1, 2].map(c => p.center[c] + sl.xVec[c] * xv + sl.yVec[c] * yv);
 }
 
@@ -12225,7 +12111,7 @@ async function renderProfile(){
   const empty = $("profileEmpty"), chart = $("profileChart");
   if(!data){
     const kind = state.ui.profileKind;
-    empty.textContent = error || (!state.res ? "Load data first." : kind === "line" ? "Pick the cut tool (L) and drag across the map." : "No values to profile.");
+    empty.textContent = error || (!state.res ? "Load data first." : kind === "line" ? (state.cutMode ? "Drag across the map to draw a line cut." : "Press Draw (L), then drag across the map.") : "No values to profile.");
     empty.style.display = "flex";
     chart.style.visibility = "hidden";
     $("profileInfo").textContent = "";
@@ -12472,9 +12358,6 @@ function bind(){
   $("cellRestore").addEventListener("click", () => {
     try{ restoreFileCell(); }catch(err){ status(`Cell restore failed: ${err.message}`, "err"); }
   });
-  $("viewApply").addEventListener("click", () => {
-    try{ applyShownVolume(); }catch(err){ status(`Shown-volume error: ${err.message}`, "err"); }
-  });
   $("viewReset").addEventListener("click", () => resetShownVolume(true));
   for(let axis=0;axis<3;axis++){
     bindDualVolumeSlider(axis);
@@ -12604,9 +12487,8 @@ function bind(){
   $("symOps").addEventListener("change", () => updateSymInfo());
   $("symOps").addEventListener("keydown", ev => { if(ev.key === "Enter") runSymmetry(); });
   $("symApply").addEventListener("click", runSymmetry);
-  $("symClear").addEventListener("click", clearSymmetry);
+  $("symClear").addEventListener("click", () => (state.sym && state.sym.res === state.res) || !state.symSource ? clearSymmetry() : symmetryBack());
   $("maskRun").addEventListener("click", runMaskPreview);
-  $("symBack").addEventListener("click", symmetryBack);
   $("maskClear").addEventListener("click", clearMaskPreview);
   $("heatmap").addEventListener("click", onHeatmapClick);
   $("heatmap").addEventListener("pointerdown", onHeatmapPointerDown);
@@ -12639,7 +12521,6 @@ function bind(){
   $("mapZoomIn").addEventListener("click", () => zoom2dCenter(1.4));
   $("mapZoomOut").addEventListener("click", () => zoom2dCenter(1 / 1.4));
   $("mapZoomReset").addEventListener("click", resetZoom2d);
-  $("planeApply").addEventListener("click", () => { finishSliceMoveCameraLock(); applyPlaneInputs(); draw2d(); scheduleRender3d(); });
   $("planeReset").addEventListener("click", () => { finishSliceMoveCameraLock(); resetPlaneState(); draw2d(); scheduleRender3d(); });
   $("planeMove").addEventListener("input", () => {
     const requestedIndex = Number($("planeMove").value);
@@ -12653,60 +12534,50 @@ function bind(){
   $("pRes").addEventListener("change", () => { setUi({mapQuality:"custom"}); draw2d(); scheduleRender3d(); });
   $("mapQuality").addEventListener("change", () => { setUi({mapQuality:$("mapQuality").value}); draw2d(); scheduleRender3d(); });
   $("pScale").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
-  $("avgApply").addEventListener("click", () => { finishSliceMoveCameraLock(); applyAvgVolInputs(); draw2d(); scheduleRender3d(); });
-  $("avgReset").addEventListener("click", () => { finishSliceMoveCameraLock(); resetAvgVolState(); draw2d(); scheduleRender3d(); });
-  $("avgMove").addEventListener("input", () => {
-    const requestedIndex = Number($("avgMove").value);
-    startSliceMoveCameraLock();
-    if(state.renderTimer){ clearTimeout(state.renderTimer); state.renderTimer = 0; }
-    readAvgVolInputsIntoState();
-    moveAvgVol(requestedIndex);
-    scheduleDraw2d({fast:true, sync3d:true});
-  });
-  $("avgMove").addEventListener("change", () => { finalizeSliceMoveCameraLock(); });
   bindValEdit("sliceCoord", applySliceCoordinate);
   bindValEdit("sliceIndex", applySliceIndex);
-  bindValEdit("planeCenterEdit", text => moveSliceCenterTo("plane", parseTriple(text)));
-  bindValEdit("avgCenterEdit", text => moveSliceCenterTo("avgvol", parseTriple(text)));
-  for(const [kind, ids] of [["plane", ["pCH", "pCK", "pCL"]], ["avgvol", ["avCH", "avCK", "avCL"]]]){
-    for(const id of ids) $(id).addEventListener("change", () => {
-      const c = ids.map(i => Number($(i).value));
-      if(c.every(Number.isFinite)) moveSliceCenterTo(kind, c);
-    });
-  }
-  $("avRes").addEventListener("change", () => setUi({mapQuality:"custom"}));
-  for(const id of ["avRes","avScale","slabWidth","slabN"]){
-    $(id).addEventListener("change", () => { setAvgVolInputs(); draw2d(); scheduleRender3d(); });
-  }
+  bindValEdit("planeCenterEdit", text => movePlaneCenterTo(parseTriple(text)));
+  const centreIds = ["pCH", "pCK", "pCL"];
+  for(const id of centreIds) $(id).addEventListener("change", () => {
+    const c = centreIds.map(i => Number($(i).value));
+    if(c.every(Number.isFinite)) movePlaneCenterTo(c);
+  });
+  // A typed normal turns the plane about its centre.
+  for(const id of ["pNH", "pNK", "pNL"]) $(id).addEventListener("change", () => {
+    if(state.plane) movePlaneCenterTo(state.plane.center.slice());
+  });
+  for(const id of ["slabWidth", "slabN"]) $(id).addEventListener("change", () => {
+    $("slabN").disabled = !state.res || slabHalfWidth() === 0;
+    if(state.plane) setPlaneInputs();
+    draw2d();
+    scheduleRender3d();
+  });
   for(const id of ["isoPct","isoCount","voxelCap","isoSampling","isoOpacity","isoSlices"]){
     $(id).addEventListener("change", () => {
       if(id === "voxelCap" || id === "isoSampling") updateShownVolumeInputs();
       scheduleRender3d();
     });
   }
-  $("auto3d").addEventListener("change", () => { if($("auto3d").value === "1") scheduleRender3d(0); });
+  $("auto3d").addEventListener("change", () => {
+    $("render3d").classList.toggle("hidden", $("auto3d").checked);
+    if($("auto3d").checked) scheduleRender3d(0);
+  });
   $("render3d").addEventListener("click", () => {
     // Rendering draws the views on screen, so bring the 3-D dock back first.
     if(state.ui && (state.ui.layout === "map" || state.ui.max === "map")) setUi({layout:"split", max:null});
     render3d().catch(err => status(`3D render failed: ${err.message}`, "err"));
   });
   $("savePng").addEventListener("click", savePng);
+  $("mapSavePng").addEventListener("click", savePng);
   $("savePlanePng").addEventListener("click", () => savePlotPng("plot3dPlane", "plane3d"));
   $("saveIsoPng").addEventListener("click", () => savePlotPng("plot3dIso", "iso3d"));
   $("saveStructPng").addEventListener("click", () => savePlotPng("plot3dStruct", "structure"));
-  for(const id of ["imageScale", "resImage"]) $(id).addEventListener("change", () => setUi({imageScale:clamp(Math.round(Number($(id).value) || 2), 1, 4)}));
-  $("resMap").addEventListener("change", () => {
-    const id = $("sliceMode").value === "avgvol" ? "avRes" : "pRes";
-    $(id).value = String(clamp(Math.round(Number($("resMap").value) || 0), 32, 520));
-    $(id).dispatchEvent(new Event("change"));
-  });
+  $("saveStructSvg").addEventListener("click", () => savePlotSvg("plot3dStruct", "structure"));
+  $("saveStructHtml").addEventListener("click", () => savePlotHtml("plot3dStruct", "structure", "3DSView Structure"));
+  $("imageScale").addEventListener("change", () => setUi({imageScale:clamp(Math.round(Number($("imageScale").value) || 2), 1, 4)}));
   $("res3dPlane").addEventListener("change", () => {
     setUi({plane3dRes:clamp(Math.round(Number($("res3dPlane").value) || 180), 32, 520)});
     scheduleRender3d(0, true);
-  });
-  $("resIso").addEventListener("change", () => {
-    $("voxelCap").value = String(Math.max(5000, Math.round(Number($("resIso").value) || 220000)));
-    $("voxelCap").dispatchEvent(new Event("change"));
   });
   $("saveSliceSvg").addEventListener("click", saveSliceSvg);
   $("saveCsv").addEventListener("click", saveCsv);
