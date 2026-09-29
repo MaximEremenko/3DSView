@@ -13,7 +13,7 @@ const EXPORTS = [
   "parseFile", "parseTextData", "parseNexusFile", "finalizeResult",
   "idx3", "pointAtIndex", "nativeAxisLabels", "renderAxisLabels",
   "useBasisToQ", "hklToQ", "basisFromCell", "ensureH5wasm", "unifiedExportSpec",
-  "applyManualCell", "restoreFileCell", "swapFirstAndLastAxes"
+  "applyManualCell", "restoreFileCell", "transposeFirstAndLastAxes"
 ];
 
 function appScriptSource(options){

@@ -228,6 +228,9 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
           <div class="k" id="mIName">Intensity</div><div id="mI">-</div>
           <div class="k">Header</div><div id="mHeader">-</div>
         </div>
+        <div class="btns hidden" id="swapAxesRow">
+          <button id="swapAxes" class="alt" disabled title="The file does not record its axis order; transpose the data if the map looks mirrored">Swap H/L data order</button>
+        </div>
         <details class="toolbox" id="cellTool">
           <summary>Unit Cell (optional override)</summary>
           <div class="toolbody">
@@ -511,7 +514,7 @@ const ORDERED_INDEXED_TAIL_BYTES = 1024 * 1024;
 const CACHE_DB_NAME = "three_ds_plotter_cache_v1";
 const CACHE_STORE_NAME = "parsed_volumes";
 // Bump whenever parser semantics change so stale axis/data-kind metadata is not restored.
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 const $ = (id) => document.getElementById(id);
 
 const THEME_KEY = "view3ds-theme";
@@ -639,7 +642,7 @@ function cacheBaseFromResult(res){
   const keys = [
     "file","header","skipped","rows","filled","format","coordKind","shape",
     "h","k","l","I","rawMin","rawMax","dataKind","Bq","Bp","cellDeg","basisSource",
-    "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5"
+    "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous"
   ];
   const base = {};
   for(const key of keys){
@@ -1027,6 +1030,7 @@ function updateAxisOptionText(){
     if(lo) lo.setAttribute("aria-label", labels[axis] + " lower limit");
     if(hi) hi.setAttribute("aria-label", labels[axis] + " upper limit");
   }
+  if($("swapAxes")) $("swapAxes").textContent = `Swap ${labels[0]}/${labels[2]} data order`;
   const opts = $("axis") ? $("axis").options : null;
   if(opts && opts.length >= 3){
     opts[0].textContent = `Fix ${labels[2]}, show ${labels[0]}-${labels[1]}`;
@@ -2903,6 +2907,12 @@ function fortranRawShapeMatches(rawShape, dims){
   return sameShape(raw, full) || sameShape(raw, reduced);
 }
 
+function cOrderRawShapeMatches(rawShape, dims){
+  const raw = Array.from(rawShape || []).slice(0, 3).map(v => Math.floor(Number(v))).filter(v => v > 0);
+  if(!raw.length) return false;
+  return sameShape(raw, dims) || sameShape(raw, compactReducedShape(dims));
+}
+
 function reorderFortranCube(flat, rawShape, dims){
   const total = dims[0] * dims[1] * dims[2];
   if(flat.length < total) return flat;
@@ -2962,11 +2972,16 @@ function parseFortranUnifiedH5(h5file, name){
   if(!shape.length) shape = rawFlat.length ? [rawFlat.length] : [];
   shape = normalizeShape3(shape, rawFlat.length);
   shape = assertVolumeFits(shape, "RMCProfile/DiffuseCode unified HDF5 grid").dims;
-  const values = reorderFortranCube(rawFlat, rawShape, shape);
+  // Current writers store data_values in C order [nh,nk,nl] (l fastest) and
+  // data_increment_vector as [component][axis]. Only a stored shape that is
+  // the reverse of data_dimension, and differs from it, marks h-fastest
+  // Fortran-order data, whose vectors are stored the other way round too.
+  const fortranOrder = !cOrderRawShapeMatches(rawShape, shape) && fortranRawShapeMatches(rawShape, shape);
+  const values = fortranOrder ? reorderFortranCube(rawFlat, rawShape, shape) : rawFlat;
   const corner = readH5Array(h5file, ["entry/data/data_corner"]).slice(0, 3);
   while(corner.length < 3) corner.push(0);
   const vecFlat = readH5Array(h5file, ["entry/data/data_increment_vector"]);
-  const vectors = matrix3FromH5(vecFlat, true);
+  const vectors = matrix3FromH5(vecFlat, fortranOrder);
   const space = readH5Text(h5file, ["entry/data/data_type_reciprocal"]);
   const contract = unifiedDataContract(h5file, h5Lookup(h5file, "entry/data"), space);
   const axesCodes = readH5Array(h5file, ["entry/data/data_axes"]).slice(0, 3).map(v => Math.round(Number(v)));
@@ -3070,25 +3085,62 @@ function parseDiscusH5(h5file, name){
   return result;
 }
 
+// /scattering/data/data comes in two disk layouts. The DiffuseDevelopers
+// Python writer and NeXus files with AXISNAME_indices store C order [H,K,L];
+// 3DSConvert and Fortran writers store [L,K,H] with H fastest. Both write
+// indices_abs=0, so only NeXus indices or unequal axis lengths tell them
+// apart. Returns "c", "fortran", or null when the file does not say.
+function scatteringDiskOrder(h5file, dataGroup, diskShape, axesNames){
+  const rank = diskShape.length;
+  if(rank < 2) return "c";
+  const names = axesNames.slice(0, rank);
+  const dims = names.map(axis => {
+    const v = flatNumericArray(h5AttrValue(dataGroup, `${axis}_indices`));
+    return v.length ? Math.round(v[0]) : NaN;
+  });
+  if(names.length === rank && dims.every(Number.isFinite)){
+    if(dims.every((d, axis) => d === axis)) return "c";
+    if(dims.every((d, axis) => d === rank - 1 - axis)) return "fortran";
+  }
+  const first = diskShape[0], last = diskShape[rank - 1];
+  if(first !== last && names.length === rank){
+    const lengthOf = axis => flatNumericArray(h5Value(h5Lookup(h5file, `scattering/data/${axis}`))).length;
+    const fits = (len, n) => len === n || len === n + 1;
+    const n0 = lengthOf(names[0]), nLast = lengthOf(names[rank - 1]);
+    if(fits(n0, first) && fits(nLast, last)) return "c";
+    if(fits(n0, last) && fits(nLast, first)) return "fortran";
+  }
+  return null;
+}
+
 function parseCommonScatteringH5(h5file, name){
   const dataGroup = h5Lookup(h5file, "scattering/data");
   const dataObj = h5Lookup(h5file, "scattering/data/data");
   if(!dataGroup || !dataObj) return null;
-  const rawShapeMeta = h5Shape(dataObj, null).slice(0, 3).map(v => Math.floor(Number(v))).filter(v => v > 0);
-  if(rawShapeMeta.length) assertVolumeFits(normalizeShape3(rawShapeMeta.slice().reverse()), "DiffuseDevelopers unified HDF5 grid");
-  const rawValue = h5Value(dataObj);
-  const rawFlat = flatNumericArray(rawValue);
-  const diskShape = rawShapeMeta.length ? rawShapeMeta : h5Shape(dataObj, rawValue).slice(0, 3).map(v => Math.floor(Number(v))).filter(v => v > 0);
-  let shape = diskShape.slice().reverse();
-  shape = normalizeShape3(shape, rawFlat.length);
-  shape = assertVolumeFits(shape, "DiffuseDevelopers unified HDF5 grid").dims;
-  // /scattering/data/data is stored on disk as [L,K,H] with H fastest.
-  // The slice tool uses logical [H,K,L] with L fastest internally.
-  const values = reorderFortranCube(rawFlat, diskShape, shape);
   const space = h5Text(h5AttrValue(dataGroup, "space"));
   const contract = unifiedDataContract(h5file, dataGroup, space);
   let axesNames = parseH5AxesNames(h5AttrValue(dataGroup, "axes"));
   if(!axesNames.length) axesNames = unifiedAxesNames(contract.axesType);
+  const rawShapeMeta = h5Shape(dataObj, null).slice(0, 3).map(v => Math.floor(Number(v))).filter(v => v > 0);
+  if(rawShapeMeta.length) assertVolumeFits(normalizeShape3(rawShapeMeta), "DiffuseDevelopers unified HDF5 grid");
+  let diskShape = rawShapeMeta;
+  let detectedOrder = diskShape.length ? scatteringDiskOrder(h5file, dataGroup, diskShape, axesNames) : null;
+  // 3DSConvert writes /entry/data next to /scattering/data; read that
+  // unambiguous layout instead of guessing.
+  if(!detectedOrder && h5Lookup(h5file, "entry/data/data_values")) return null;
+  const rawValue = h5Value(dataObj);
+  const rawFlat = flatNumericArray(rawValue);
+  if(!diskShape.length){
+    diskShape = h5Shape(dataObj, rawValue).slice(0, 3).map(v => Math.floor(Number(v))).filter(v => v > 0);
+    detectedOrder = scatteringDiskOrder(h5file, dataGroup, diskShape, axesNames);
+  }
+  // Without evidence keep the 3DSConvert/Fortran layout [L,K,H]. The slice
+  // tool uses logical [H,K,L] with L fastest internally.
+  const cOrder = detectedOrder === "c";
+  let shape = cOrder ? diskShape.slice() : diskShape.slice().reverse();
+  shape = normalizeShape3(shape, rawFlat.length);
+  shape = assertVolumeFits(shape, "DiffuseDevelopers unified HDF5 grid").dims;
+  const values = cOrder ? rawFlat : reorderFortranCube(rawFlat, diskShape, shape);
   const content = h5Text(h5AttrValue(dataGroup, "content"));
   const radiation = h5Text(h5AttrValue(dataGroup, "radiation"));
   const coordKind = unifiedCoordKind(contract.axesType);
@@ -3103,7 +3155,9 @@ function parseCommonScatteringH5(h5file, name){
   const lAxis = readH5Axis(h5file, shape[2], [`scattering/data/${axis2}`, "scattering/data/l", "scattering/data/indices_top", "scattering/data/qz", "scattering/data/z"]);
   const corner = readH5Array(h5file, ["scattering/data/lower_limits"]).slice(0, 3);
   while(corner.length < 3) corner.push(0);
-  const vectors = matrix3FromH5(readH5Array(h5file, ["scattering/data/step_vectors"]));
+  // step_vectors is [component][axis] in C-order files and [axis][component]
+  // in [L,K,H] files, matching how each writer stores the data.
+  const vectors = matrix3FromH5(readH5Array(h5file, ["scattering/data/step_vectors"]), !cOrder);
   const gridMeta = vectors ? {
     gridOrigin:corner,
     gridVectors:vectors,
@@ -3129,7 +3183,8 @@ function parseCommonScatteringH5(h5file, name){
     {...meta, ...gridMeta, dataKind, ...(axisLabelsMeta ? {axisLabels:axisLabelsMeta} : {})}
   );
   result.header = {points:values.length, sections:1, scale:null, offset:null};
-  result.h5 = {space, content, radiation, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary};
+  result.h5 = {space, content, radiation, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary, diskOrder:cOrder ? "[H,K,L]" : "[L,K,H]"};
+  result.axisOrderAmbiguous = !detectedOrder && diskShape.length >= 2 && diskShape[0] === diskShape[diskShape.length - 1];
   return result;
 }
 
@@ -3384,6 +3439,20 @@ function axisMeta(axis){
     if(dev > maxDev) maxDev = dev;
   }
   return {step, maxDev, uniform:maxDev <= Math.max(1e-8, Math.abs(step) * 1e-5)};
+}
+
+// Reinterprets the value order between the first and last axes, for files
+// whose disk layout could not be detected. Axis coordinates stay in place.
+function transposeFirstAndLastAxes(res){
+  const [n0, n1, n2] = res.shape;
+  if(n0 !== n2) throw new Error("Swapping the data order needs equal first and last axis sizes.");
+  const out = new Float64Array(res.I.length);
+  for(let i=0;i<n0;i++) for(let j=0;j<n1;j++) for(let k=0;k<n2;k++){
+    out[idx3(res.shape, k, j, i)] = res.I[idx3(res.shape, i, j, k)];
+  }
+  res.I = out;
+  res.axisOrderSwapped = !res.axisOrderSwapped;
+  return res;
 }
 
 function finalizeResult(base){
@@ -4938,6 +5007,9 @@ function syncControls(){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
+  const swappable = has && !!state.res.axisOrderAmbiguous && state.res.shape[0] === state.res.shape[2];
+  $("swapAxesRow").classList.toggle("hidden", !swappable);
+  $("swapAxes").disabled = !swappable;
   for(const id of CELL_INPUT_IDS) $(id).disabled = !cellAllowed;
   $("cellApply").disabled = !cellAllowed;
   $("cellRestore").disabled = !cellAllowed;
@@ -5002,7 +5074,10 @@ function updateMeta(){
   $("mHeader").textContent = h ? `n=${h.points.toLocaleString()}, sec=${h.sections}${h.scale !== null ? `, scale=${fmt(h.scale)}` : ""}${h.offset !== null ? `, offset=${fmt(h.offset)}` : ""}` : "not found";
   const basis = usePlotBasis(r) ? ` | basis=${r.basisSource || (useBasisToQ(r) ? "Bq" : "direct cell")}` : "";
   const geometry = useBasisToQ(r) ? "Q from HKL" : useBasisToDirect(r) ? "XYZ" : activeCoordKind().toUpperCase();
-  $("mFormat").value = `${r.format || "data"} | ${dataKindText(r)} | detected ${(r.coordKind || "q").toUpperCase()} | showing ${geometry}${basis}`;
+  const layout = r.h5 && r.h5.diskOrder ? ` | disk ${r.h5.diskOrder}${r.axisOrderAmbiguous ? " (assumed)" : ""}` : "";
+  const native = nativeAxisLabels(r);
+  const swapped = r.axisOrderSwapped ? ` | ${native[0]}/${native[2]} order swapped` : "";
+  $("mFormat").value = `${r.format || "data"} | ${dataKindText(r)} | detected ${(r.coordKind || "q").toUpperCase()} | showing ${geometry}${basis}${layout}${swapped}`;
   $("tbFile").textContent = r.file;
   $("tbKind").textContent = r.dataKind && r.dataKind.label ? r.dataKind.label : "Type -";
   $("tbGrid").textContent = `${r.shape[0]} x ${r.shape[1]} x ${r.shape[2]}`;
@@ -6062,7 +6137,11 @@ async function onFile(file){
   syncControls();
   draw2d();
   const cacheText = parsed.fromCache ? " from cache" : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.`, parsed.skipped ? "warn" : "ok");
+  const labels = nativeAxisLabels(parsed);
+  const orderNote = parsed.axisOrderAmbiguous
+    ? ` The file does not record its axis order; assumed the 3DSConvert/Fortran layout [${labels[2]},${labels[1]},${labels[0]}]. Use "Swap ${labels[0]}/${labels[2]} data order" if the map looks mirrored.`
+    : "";
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
@@ -6081,6 +6160,21 @@ function bind(){
   $("coordMode").addEventListener("change", () => { updateAxisOptionText(); updateMeta(); draw2d(); scheduleRender3d(0); });
   $("cellApply").addEventListener("click", () => {
     try{ applyManualCell(); }catch(err){ status(`Cell error: ${err.message}`, "err"); }
+  });
+  $("swapAxes").addEventListener("click", () => {
+    if(!state.res) return;
+    try{
+      transposeFirstAndLastAxes(state.res);
+      updateMeta();
+      draw2d();
+      scheduleRender3d(0);
+      const labels = nativeAxisLabels(state.res);
+      status(state.res.axisOrderSwapped
+        ? `Swapped the ${labels[0]}/${labels[2]} data order (file read as [${labels[0]},${labels[1]},${labels[2]}] on disk).`
+        : `Restored the assumed ${labels[0]}/${labels[2]} data order.`, "ok");
+    }catch(err){
+      status(`Axis swap failed: ${err.message}`, "err");
+    }
   });
   $("cellRestore").addEventListener("click", () => {
     try{ restoreFileCell(); }catch(err){ status(`Cell restore failed: ${err.message}`, "err"); }
