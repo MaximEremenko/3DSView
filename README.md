@@ -152,10 +152,13 @@ and slab-average slicing with linked 2-D and 3-D views.
     the whole sphere. The region near Q = 0 can be removed too.
   - **Fill the gaps.** Empty voxels are filled from their neighbours with a NaN-aware
     Gaussian.
-  - **Transform.** The latest step's values are windowed (Lorch, Hann or none), placed on
-    a zero-padded power-of-two grid centred on Q = 0 and Fourier transformed. The real
-    part opens as a ΔPDF dataset on the dual grid: lattice units u, v, w with the direct
-    metric, or Å for Q data. A half-space grid gives the Friedel-symmetric ΔPDF.
+  - **Transform.** The latest step's values in the shown volume (the crop) are windowed
+    (Lorch, Hann or none), placed on a zero-padded grid centred on Q = 0 and Fourier
+    transformed. Grid sizes are products of 2, 3, 5 and 7, so little padding is added. A
+    grid that would pass 32 M points is binned by 2 along its longest axes, which halves
+    the real-space range there; the note says so. The real part opens as a ΔPDF dataset
+    on the dual grid: lattice units u, v, w with the direct metric, or Å for Q data. A
+    half-space grid gives the Friedel-symmetric ΔPDF.
   - **Checking and returning.** Show offers *Bragg removed* and *Gaps filled* to check
     each step, and *Back to the diffuse data* returns to the source.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
