@@ -196,6 +196,13 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .vecHead{font-size:.72rem;color:var(--muted);text-align:center}
 .exportGrid{display:grid;grid-template-columns:78px repeat(3,minmax(0,1fr));gap:6px 7px;align-items:center}
 .exportGrid .k{font-size:.8rem;color:var(--subtle)}
+.efBody{display:flex;flex-direction:column;gap:8px}
+.efRow{display:grid;grid-template-columns:60px minmax(0,1fr);gap:6px;align-items:start}
+.efRow .k{font-size:.8rem;color:var(--subtle);padding-top:3px}
+.chipSet{display:flex;flex-wrap:wrap;gap:4px}
+.side .chipSet button{padding:2px 9px;border:1px solid var(--line);border-radius:11px;background:var(--side2);color:var(--sideText);font-size:.76rem;font-weight:600}
+.side .chipSet button:hover{border-color:var(--brand)}
+.side .chipSet button.on{background:var(--brand);border-color:var(--brand);color:#fff}
 .ubGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 7px}
 .ubGrid input,.ubRotate input{padding:5px 5px;font:11.5px Consolas,"Courier New",monospace}
 .ubRotate{display:grid;grid-template-columns:58px repeat(3,minmax(0,1fr)) auto;gap:6px;align-items:center}
@@ -727,7 +734,26 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         </div>
         <div id="maskInfo" class="mono fine"></div>
         <p class="fine">A preview: pick <b>Masked data</b> or <b>Removed by the mask</b> in Show above the map. Masking itself is done in 3DSConvert.</p>
-        <details class="fineDetails"><summary>What the mask marks</summary><p class="fine">Edge erosion marks measured voxels within <i>r</i> voxels of empty ones, where detector edges leave high values. The outlier cut marks voxels more than <i>k</i> robust standard deviations (1.4826 &times; MAD) above the median of their symmetry equivalents, with the Laue class above. 0 turns either off.</p></details>
+        <details class="fineDetails" id="maskDetails"><summary>What the mask marks</summary><p class="fine">Edge erosion marks measured voxels within <i>r</i> voxels of empty ones, where detector edges leave high values. The outlier cut marks voxels more than <i>k</i> robust standard deviations (1.4826 &times; MAD) above the median of their symmetry equivalents, with the Laue class above. 0 turns either off.</p></details>
+      </div>
+      <div class="group" id="efGroup">
+        <h3>Element filter (FFT)</h3>
+        <div id="efNoStructure" class="fine">Load a structure (.rmc6f, CIF or unified structure .h5, in the Structure view or with Cell from structure file) to filter the data by its interatomic vectors.</div>
+        <div id="efBody" class="efBody hidden">
+          <div class="efRow"><span class="k">Elements</span><span id="efElements" class="chipSet" role="group" aria-label="Elements"></span></div>
+          <div class="efRow"><span class="k">Pairs</span><span id="efPairs" class="chipSet" role="group" aria-label="Element pairs"></span></div>
+          <div class="row2">
+            <label>Radius (&Aring;)<input id="efRadius" type="number" min="0.05" max="5" step="0.05" value="0.5" title="Radius kept about each interatomic vector; the edge falls off over half as much again" disabled></label>
+            <label class="check" title="r = 0 holds the self term of every atom and the average level; it is left out unless kept"><input id="efOrigin" type="checkbox" disabled>Keep r = 0</label>
+          </div>
+          <div class="btns">
+            <button id="efRun" disabled>Filter</button>
+            <button id="efClear" class="alt" disabled>Clear</button>
+          </div>
+          <div id="efInfo" class="mono fine"></div>
+          <p class="fine">Then pick <b>Chosen vectors</b> or <b>Data without the chosen vectors</b> in Show above the map.</p>
+          <details class="fineDetails"><summary>How it works</summary><p class="fine">Elements pick every pair among them; pairs can then be set one by one. <b>All</b> keeps every pair and r = 0: the crystal's scattering stays, and whatever does not sit on its vectors, such as powder rings from the sample environment and noise, drops out; <b>Data without the chosen vectors</b> shows what went. Diffuse intensity on an HKL grid is Fourier transformed to interatomic-vector space (empty voxels at the mean, the grid padded to sizes of 2, 3, 5 and 7), everything outside the spheres about the vectors of the chosen pairs is set to zero, and the transform back gives the part of the scattering those vectors carry. A real-space map (3D-&Delta;PDF) is masked directly. The vectors come from the loaded structure, modulo lattice translations, with distances in the data's cell.</p></details>
+        </div>
       </div>
     </section>
 
@@ -791,6 +817,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <option value="snr">I/&sigma;</option>
           <option value="masked">Masked data (preview)</option>
           <option value="maskdrop">Removed by the mask</option>
+          <option value="efilter">Chosen vectors (element filter)</option>
+          <option value="efilterrest">Data without the chosen vectors</option>
         </select>
         <select id="sliceMode" disabled title="Slice mode">
           <option value="axis" selected>Axis slice</option>
@@ -4677,12 +4705,13 @@ const VIEW_NAMES = {
   symdev:"Data \u2212 symmetrized", symcount:"Equivalents found"
 };
 const VIEW_COLUMNS = {sigma:"sigma", snr:"i_over_sigma", cmp:"comparison", diff:"data_minus_comparison", ratio:"data_over_comparison", resid:"normalized_residual"};
-const SIGNED_VIEWS = new Set(["diff", "resid", "symdev"]);
+const SIGNED_VIEWS = new Set(["diff", "resid", "symdev", "efilter"]);
 
 // Builds the volume for a Show mode on the data grid; null for the data itself.
 function buildView(mode, res=state.res){
   if(!res || !mode || mode === "data") return null;
   if(mode === "masked" || mode === "maskdrop") return buildMaskView(mode, res);
+  if(mode === "efilter" || mode === "efilterrest") return buildElementFilterView(mode, res);
   if(mode === "sym" || mode === "symdev" || mode === "symcount") return buildSymView(mode, res);
   const n = res.I.length, I = res.I, sig = res.sigma;
   const cmp = state.cmpAligned, fit = state.cmpFit || {scale:1, offset:0};
@@ -4850,6 +4879,315 @@ function clearMaskPreview(){
   if(SHOW_NEEDS[state.showMode] && !SHOW_NEEDS[state.showMode](state.res)) setShowMode("data");
   else syncShowOptions();
   syncMaskControls();
+}
+
+// ---- Element filter: the part of the data carried by chosen interatomic vectors
+//
+// Diffuse intensity on an HKL grid goes to interatomic-vector space by a
+// Fourier transform; all but spheres about the vectors between chosen element
+// pairs (from the loaded structure, modulo lattice translations) is set to
+// zero, and the transform back gives their part of the scattering. A
+// real-space map is masked directly.
+
+// Smallest size >= n whose prime factors are 2, 3, 5 and 7.
+function smoothSize(n){
+  for(let m=Math.max(1, Math.ceil(n));;m++){
+    let r = m;
+    for(const p of [2, 3, 5, 7]) while(r % p === 0) r /= p;
+    if(r === 1) return m;
+  }
+}
+
+// Mixed-radix (2, 3, 4, 5, 7) complex FFT plans, one per length:
+// X(q) = sum_t x(t) exp(-2 pi i q t / n).
+const fftPlans = new Map();
+function fftPlan(n){
+  let plan = fftPlans.get(n);
+  if(plan) return plan;
+  const factors = [];
+  let m = n;
+  for(const p of [4, 2, 3, 5, 7]) while(m % p === 0){ factors.push(p); m /= p; }
+  if(m !== 1) throw new Error(`FFT length ${n} has a prime factor above 7.`);
+  const cos = new Float64Array(n), sin = new Float64Array(n);
+  for(let k=0;k<n;k++){ cos[k] = Math.cos(2 * Math.PI * k / n); sin[k] = -Math.sin(2 * Math.PI * k / n); }
+  const tr = new Float64Array(7), ti = new Float64Array(7);
+  // Decimation in time: r interleaved sub-transforms of length len / r,
+  // combined with twiddles W^(j k) and an r-point DFT.
+  const run = (inRe, inIm, off, stride, outRe, outIm, outOff, len, fi) => {
+    if(len === 1){ outRe[outOff] = inRe[off]; outIm[outOff] = inIm[off]; return; }
+    const r = factors[fi], sub = len / r, scale = n / len;
+    for(let j=0;j<r;j++) run(inRe, inIm, off + j * stride, stride * r, outRe, outIm, outOff + j * sub, sub, fi + 1);
+    for(let k=0;k<sub;k++){
+      for(let j=0;j<r;j++){
+        const p = outOff + j * sub + k, e = (j * k * scale) % n;
+        const yr = outRe[p], yi = outIm[p], c = cos[e], s = sin[e];
+        tr[j] = yr * c - yi * s;
+        ti[j] = yr * s + yi * c;
+      }
+      for(let q=0;q<r;q++){
+        let sr = 0, si = 0;
+        for(let j=0;j<r;j++){
+          const e = ((j * q) % r) * (n / r), c = cos[e], s = sin[e];
+          sr += tr[j] * c - ti[j] * s;
+          si += tr[j] * s + ti[j] * c;
+        }
+        outRe[outOff + k + q * sub] = sr;
+        outIm[outOff + k + q * sub] = si;
+      }
+    }
+  };
+  const inRe = new Float64Array(n), inIm = new Float64Array(n), outRe = new Float64Array(n), outIm = new Float64Array(n);
+  plan = {n, inRe, inIm, outRe, outIm, exec:() => run(inRe, inIm, 0, 1, outRe, outIm, 0, n, 0)};
+  fftPlans.set(n, plan);
+  return plan;
+}
+
+// In-place complex FFT of every line of re/im along one axis.
+function fftAxis(re, im, dims, axis){
+  const n = dims[axis];
+  if(n < 2) return;
+  const strides = [dims[1] * dims[2], dims[2], 1], stride = strides[axis];
+  const plan = fftPlan(n), others = [0, 1, 2].filter(b => b !== axis);
+  for(let p=0;p<dims[others[0]];p++) for(let q=0;q<dims[others[1]];q++){
+    const base = p * strides[others[0]] + q * strides[others[1]];
+    for(let t=0;t<n;t++){ plan.inRe[t] = re[base + t * stride]; plan.inIm[t] = im[base + t * stride]; }
+    plan.exec();
+    for(let t=0;t<n;t++){ re[base + t * stride] = plan.outRe[t]; im[base + t * stride] = plan.outIm[t]; }
+  }
+}
+
+// 3-D transform, forward or inverse (scaled by 1/N), one axis at a time.
+async function fft3(re, im, dims, inverse=false, onAxis=null){
+  if(inverse) for(let p=0;p<im.length;p++) im[p] = -im[p];
+  for(let a=0;a<3;a++){
+    fftAxis(re, im, dims, a);
+    if(onAxis) await onAxis(a);
+  }
+  if(inverse){
+    const s = 1 / (dims[0] * dims[1] * dims[2]);
+    for(let p=0;p<re.length;p++){ re[p] *= s; im[p] = -im[p] * s; }
+  }
+}
+
+// Metric of a direct cell, g = A^T A for fractional coordinates (Å²).
+function directMetric(cellDeg){
+  const frame = cellDeg && rmcCartesianFrame(cellDeg);
+  if(!frame) throw new Error("the filter needs a unit cell for distances in Å.");
+  const A = frame.A, cols = [0, 1, 2].map(j => [A[0][j], A[1][j], A[2][j]]);
+  return cols.map(u => cols.map(v => dot(u, v)));
+}
+
+// Weight of a point r (fractional) for the vectors d (fractional, modulo
+// lattice translations): 1 within the radius, falling to 0 over half the
+// radius more; r = 0 itself counts only when kept.
+function elementFilterWeigher(vectors, metric, radius, keepOrigin){
+  const edge = 0.5 * radius, outer = radius + edge, outer2 = outer * outer, g = metric;
+  const len2 = (x, y, z) => g[0][0] * x * x + g[1][1] * y * y + g[2][2] * z * z + 2 * (g[0][1] * x * y + g[0][2] * x * z + g[1][2] * y * z);
+  const flat = new Float64Array(vectors.length * 3);
+  vectors.forEach((d, n) => { flat[3 * n] = d[0]; flat[3 * n + 1] = d[1]; flat[3 * n + 2] = d[2]; });
+  return (x, y, z) => {
+    if(!keepOrigin && len2(x, y, z) < outer2) return 0;
+    let best = Infinity;
+    for(let n=0;n<flat.length;n+=3){
+      let dx = x - flat[n], dy = y - flat[n + 1], dz = z - flat[n + 2];
+      dx -= Math.round(dx); dy -= Math.round(dy); dz -= Math.round(dz);
+      const q = len2(dx, dy, dz);
+      if(q < best) best = q;
+    }
+    if(best >= outer2) return 0;
+    const dist = Math.sqrt(best);
+    if(dist <= radius) return 1;
+    const c = Math.cos(0.5 * Math.PI * (dist - radius) / edge);
+    return c * c;
+  };
+}
+
+const EF_MAX_POINTS = 32 * 1024 * 1024;
+
+// The part of res carried by the vectors (fractional), on the data grid.
+async function elementFilter(res, vectors, {cellDeg, radius=0.5, keepOrigin=false, onStep=null}={}){
+  if(!vectors.length) throw new Error("choose at least one pair.");
+  const metric = directMetric(cellDeg);
+  const weigh = elementFilterWeigher(vectors, metric, radius, keepOrigin);
+  const I = res.I, N = I.length, [n0, n1, n2] = res.shape, K = new Float64Array(N);
+  if(isRealSpaceData(res)){
+    // Map points to fractional coordinates: u, v, w maps are; x, y, z maps
+    // go through the structure's lattice (a along x).
+    const lattice = String(res.coordKind || "").toLowerCase() === "xyz" ? rmcCartesianFrame(cellDeg) : null;
+    const toFrac = lattice ? inv3(transpose3(lattice.A)) : null;
+    for(let i=0, v=0;i<n0;i++) for(let j=0;j<n1;j++) for(let k=0;k<n2;k++, v++){
+      const x = I[v];
+      if(x !== x){ K[v] = NaN; continue; }
+      let p = pointAtIndex(res, i, j, k);
+      if(toFrac) p = mul(p, toFrac);
+      K[v] = x * weigh(p[0], p[1], p[2]);
+    }
+    return {K, how:"real"};
+  }
+  if(String(res.coordKind || "").toLowerCase() !== "hkl") throw new Error("put the Q grid on HKL first, with its cell or UB matrix on the Data page.");
+  if(validMatrix3(res.projectionW) && !isIdentity3(res.projectionW)) throw new Error("projected axes such as [H,H,0] are not filtered yet.");
+  const dims = res.shape.map(n => (n > 1 ? smoothSize(n) : 1)), total = dims[0] * dims[1] * dims[2];
+  if(total > EF_MAX_POINTS) throw new Error(`the transform would hold ${total.toLocaleString()} points (${dims.join(" x ")}); crop the shown volume on the Slice page first.`);
+  const Arr = total > 8e6 ? Float32Array : Float64Array, re = new Arr(total), im = new Arr(total);
+  let sum = 0, count = 0;
+  for(let v=0;v<N;v++){ const x = I[v]; if(x === x){ sum += x; count++; } }
+  if(!count) throw new Error("the data hold no values.");
+  // Empty voxels and the padding sit at the mean, which is taken out.
+  const mean = sum / count;
+  for(let i=0, v=0;i<n0;i++) for(let j=0;j<n1;j++){
+    const base = (i * dims[1] + j) * dims[2];
+    for(let k=0;k<n2;k++, v++){ const x = I[v]; re[base + k] = x === x ? x - mean : 0; }
+  }
+  const step = async (what, a) => { if(onStep) await onStep(`${what} ${a + 1} of 3`); };
+  await fft3(re, im, dims, false, a => step("transform, axis", a));
+  // Frequency s_a on an axis of steps G_a is the vector r with G_a·r = -s_a / M_a
+  // (the vector sets are centrosymmetric, so the sign does not matter).
+  const R = inv3(gridFrame(res).G);
+  const t = [0, 0, 0];
+  for(let a=0;a<dims[0];a++){
+    t[0] = -(a <= dims[0] >> 1 ? a : a - dims[0]) / dims[0];
+    for(let b=0;b<dims[1];b++){
+      t[1] = -(b <= dims[1] >> 1 ? b : b - dims[1]) / dims[1];
+      const base = (a * dims[1] + b) * dims[2];
+      for(let c=0;c<dims[2];c++){
+        t[2] = -(c <= dims[2] >> 1 ? c : c - dims[2]) / dims[2];
+        const x = R[0][0] * t[0] + R[0][1] * t[1] + R[0][2] * t[2];
+        const y = R[1][0] * t[0] + R[1][1] * t[1] + R[1][2] * t[2];
+        const z = R[2][0] * t[0] + R[2][1] * t[1] + R[2][2] * t[2];
+        const w = weigh(x, y, z);
+        if(w !== 1){ re[base + c] *= w; im[base + c] *= w; }
+      }
+    }
+    if(onStep && a % 32 === 31) await onStep(`mask ${Math.round(100 * (a + 1) / dims[0])} %`);
+  }
+  await fft3(re, im, dims, true, a => step("transform back, axis", a));
+  for(let i=0, v=0;i<n0;i++) for(let j=0;j<n1;j++){
+    const base = (i * dims[1] + j) * dims[2];
+    for(let k=0;k<n2;k++, v++) K[v] = I[v] === I[v] ? re[base + k] : NaN;
+  }
+  return {K, how:"fft", dims};
+}
+
+function buildElementFilterView(mode, res){
+  const f = state.elementFilter;
+  if(!f || f.res !== res) return null;
+  const I = res.I, out = new Float64Array(I.length), rest = mode === "efilterrest";
+  for(let v=0;v<I.length;v++){ const x = I[v]; out[v] = x === x ? (rest ? x - f.K[v] : f.K[v]) : NaN; }
+  const b = finiteBounds(out);
+  const view = {...res, I:out, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma:null,
+    valueName:rest ? "Data without the chosen vectors" : `Vectors ${f.pairs.join(", ")}`, columnName:rest ? "data_minus_element_filter" : "element_filter",
+    fileTag:rest ? "_efrest" : "_efilter", viewMode:mode, levelsFrom:rest ? res : null};
+  view.global = computeGlobalDisplayBounds(view);
+  return view;
+}
+
+// Elements of the loaded structure in the order its atoms give them.
+function structureElements(st){
+  return st ? Array.from(new Set(st.atoms.map(a => a.element))) : [];
+}
+
+function syncElementFilterControls(){
+  if(!$("efGroup")) return;
+  const st = state.structure, pairs = state.structurePairs || [], ready = !!(st && pairs.length);
+  $("efNoStructure").classList.toggle("hidden", ready);
+  $("efNoStructure").textContent = st && !pairs.length
+    ? `The structure holds ${st.atoms.length.toLocaleString()} atoms, more than the ${VECTOR_ATOM_LIMIT} its vectors are listed for; average it into its parent cell (an .rmc6f is) first.`
+    : "Load a structure (.rmc6f, CIF or unified structure .h5, in the Structure view or with Cell from structure file) to filter the data by its interatomic vectors.";
+  $("efBody").classList.toggle("hidden", !ready);
+  const sel = state.efSelection || (state.efSelection = {elements:new Set(), pairs:new Set()});
+  const key = ready ? pairs.join("|") : "";
+  if(key !== state.efChipsKey){
+    state.efChipsKey = key;
+    sel.elements = new Set();
+    sel.pairs = new Set();
+    const chip = (text, title) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = text;
+      b.title = title;
+      return b;
+    };
+    const all = chip("All", "Every pair, and r = 0: the crystal's scattering stays, and what lies between its vectors (powder rings, noise) goes");
+    all.dataset.all = "1";
+    $("efElements").replaceChildren(all, ...structureElements(st).map(el => {
+      const b = chip(el, "Every pair among the chosen elements");
+      b.dataset.element = el;
+      return b;
+    }));
+    $("efPairs").replaceChildren(...pairs.map(p => {
+      const b = chip(p, `${p} vectors`);
+      b.dataset.pair = p;
+      return b;
+    }));
+  }
+  for(const b of $("efElements").children) b.classList.toggle("on", b.dataset.all ? pairs.length > 0 && sel.pairs.size === pairs.length : sel.elements.has(b.dataset.element));
+  for(const b of $("efPairs").children) b.classList.toggle("on", sel.pairs.has(b.dataset.pair));
+  const has = !!state.res, busy = !!state.efBusy;
+  for(const b of [...$("efElements").children, ...$("efPairs").children]) b.disabled = busy;
+  for(const id of ["efRadius", "efOrigin"]) $(id).disabled = !has || busy;
+  $("efRun").disabled = !has || busy || !ready || !sel.pairs.size;
+  $("efClear").disabled = busy || !state.elementFilter;
+}
+
+// Elements pick every pair among them; a pair can then be set on its own.
+function onElementFilterChip(ev){
+  const b = ev.target.closest("button");
+  if(!b || b.disabled) return;
+  const sel = state.efSelection;
+  if(b.dataset.all){
+    sel.elements = new Set(structureElements(state.structure));
+    sel.pairs = new Set(state.structurePairs || []);
+    $("efOrigin").checked = true;
+  }else if(b.dataset.element){
+    const el = b.dataset.element;
+    if(sel.elements.has(el)) sel.elements.delete(el); else sel.elements.add(el);
+    sel.pairs = new Set((state.structurePairs || []).filter(p => p.split("–").every(e => sel.elements.has(e))));
+  }else if(b.dataset.pair){
+    if(sel.pairs.has(b.dataset.pair)) sel.pairs.delete(b.dataset.pair); else sel.pairs.add(b.dataset.pair);
+  }
+  syncElementFilterControls();
+}
+
+async function runElementFilter(){
+  const res = state.res, st = state.structure;
+  if(!res || !st || state.efBusy) return;
+  const pairs = [...state.efSelection.pairs].sort();
+  const vectors = (state.structureVectors || []).filter(v => state.efSelection.pairs.has(v.pair)).map(v => v.d);
+  const radius = clamp(Number($("efRadius").value) || 0.5, 0.05, 5), keepOrigin = $("efOrigin").checked;
+  const cellDeg = Array.isArray(res.cellDeg) && res.cellDeg.length >= 6 ? res.cellDeg : st.cell;
+  state.efBusy = true;
+  syncElementFilterControls();
+  const t0 = performance.now();
+  let lastYield = t0;
+  try{
+    status(`Element filter: ${pairs.join(", ")} ...`);
+    await nextFrame();
+    const out = await elementFilter(res, vectors, {cellDeg, radius, keepOrigin, onStep:async what => {
+      if(performance.now() - lastYield < 120) return;
+      status(`Element filter: ${what} ...`);
+      await nextFrame();
+      lastYield = performance.now();
+    }});
+    // A file loaded meanwhile takes over.
+    if(state.res !== res) return;
+    state.elementFilter = {res, K:out.K, pairs, radius, keepOrigin};
+    setShowMode("efilter");
+    $("efInfo").textContent = `${pairs.length === (state.structurePairs || []).length ? "Every pair" : pairs.join(", ")}: ${vectors.length} vector${vectors.length === 1 ? "" : "s"} a cell, radius ${fmt(radius, 3)} Å${keepOrigin ? ", r = 0 kept" : ""}; ${out.how === "fft" ? `a ${out.dims.join(" x ")} transform` : "the map masked"} in ${fmt((performance.now() - t0) / 1000, 2)} s.`;
+    status(`Element filter: ${$("efInfo").textContent}`, "ok");
+  }catch(err){
+    status(`Element filter failed: ${err.message}`, "err");
+  }finally{
+    state.efBusy = false;
+    syncElementFilterControls();
+  }
+}
+
+function clearElementFilter(){
+  state.elementFilter = null;
+  $("efInfo").textContent = "";
+  if(SHOW_NEEDS[state.showMode] && !SHOW_NEEDS[state.showMode](state.res)) setShowMode("data");
+  else syncShowOptions();
+  syncElementFilterControls();
 }
 
 // ---- Crystal symmetry: Laue-class averaging on the data grid
@@ -9185,6 +9523,7 @@ function setStructure(st){
   state.structurePairs = vectors ? Array.from(new Set(vectors.map(v => v.pair))).sort() : [];
   state.structureStale = true;
   syncStructureControls();
+  syncElementFilterControls();
   refreshStructureView();
   if(state.res && state.lastSlice) paint2d();
 }
@@ -11911,7 +12250,9 @@ const SHOW_NEEDS = {
   ratio:res => comparisonReady(res),
   resid:res => comparisonReady(res) && !!res.sigma,
   masked:res => !!(state.maskPreview && state.maskPreview.res === res),
-  maskdrop:res => !!(state.maskPreview && state.maskPreview.res === res)
+  maskdrop:res => !!(state.maskPreview && state.maskPreview.res === res),
+  efilter:res => !!(state.elementFilter && state.elementFilter.res === res),
+  efilterrest:res => !!(state.elementFilter && state.elementFilter.res === res)
 };
 
 function syncShowOptions(){
@@ -11963,7 +12304,7 @@ function setShowMode(mode){
   applyViewDisplay(prev, next);
   // Levels start from auto for new kinds of values; the data, the
   // symmetrized data and the comparison share them.
-  const family = mode => (["data", "sym", "cmp", "split", "masked", "maskdrop"].includes(mode) ? "intensity" : mode);
+  const family = mode => (["data", "sym", "cmp", "split", "masked", "maskdrop", "efilterrest"].includes(mode) ? "intensity" : mode);
   if(family(prev) !== family(next)){
     state.manualLevelBounds = null;
     if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
@@ -11979,6 +12320,7 @@ function setShowMode(mode){
 function dataChanged(){
   state.isoSample = null;
   state.maskPreview = null;
+  state.elementFilter = null;
   const hadSym = !!state.sym;
   state.sym = null;
   // The comparison stays on the grid (values and relabels keep voxel order); its fit follows the data.
@@ -12029,6 +12371,7 @@ function updateSymInfo(note=null){
 
 function syncSymControls(){
   syncMaskControls();
+  syncElementFilterControls();
   const has = !!state.res, busy = !!state.symBusy;
   for(const id of ["laueClass", "symMode", "symOps", "symExtend"]) $(id).disabled = !has || busy;
   const views = !!(state.sym && state.sym.res === state.res), back = !views && !!state.symSource;
@@ -12196,6 +12539,7 @@ function clearSymmetry(){
 // A new file: back to its own values, with a Laue class suggested for it.
 function resetViewsForNewData(res){
   state.maskPreview = null;
+  state.elementFilter = null;
   state.tri = {views:{h:null, k:null, l:null}, panels:[], cache:new Map(), images:{}};
   state.plotRes = {map:null, plane:null};
   if(state.viewDisplaySaved){
@@ -12895,6 +13239,10 @@ function bind(){
   $("symClear").addEventListener("click", () => (state.sym && state.sym.res === state.res) || !state.symSource ? clearSymmetry() : symmetryBack());
   $("maskRun").addEventListener("click", runMaskPreview);
   $("maskClear").addEventListener("click", clearMaskPreview);
+  $("efElements").addEventListener("click", onElementFilterChip);
+  $("efPairs").addEventListener("click", onElementFilterChip);
+  $("efRun").addEventListener("click", runElementFilter);
+  $("efClear").addEventListener("click", clearElementFilter);
   $("heatmap").addEventListener("click", onHeatmapClick);
   $("heatmap").addEventListener("pointerdown", onHeatmapPointerDown);
   $("heatmap").addEventListener("pointermove", onHeatmapPointerMove);

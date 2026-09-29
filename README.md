@@ -280,6 +280,25 @@ and slab-average slicing with linked 2-D and 3-D views.
     at least 0.1 % of the median) above the median of their symmetry equivalents, using
     the Laue class above, for orbits with at least three voxels with data. Each orbit is
     visited once: about 2 s for 10 million voxels.
+- **Element filter (FFT)** (Process page): the part of the data carried by chosen
+  interatomic vectors of the loaded structure, shown as two Show views, *Chosen vectors*
+  and *Data without the chosen vectors*. Elements pick every pair among them, pairs can
+  then be set one by one, and **All** keeps every pair and r = 0.
+  - **Reciprocal data:** diffuse intensity on an HKL grid is Fourier transformed to
+    interatomic-vector space, on a grid padded to sizes of 2, 3, 5 and 7, with empty
+    voxels at the mean. The spheres of the given radius about the chosen vectors are
+    kept (modulo lattice translations, with distances in the data's cell), and so is
+    r = 0 when *Keep r = 0* is ticked. Everything else is set to zero, and the
+    transform back is the part those vectors carry.
+  - **Real-space maps:** a 3D-ΔPDF is masked directly.
+  - **Rings:** with **All** the crystal's scattering stays, and what does not sit on
+    its vectors drops out, powder rings from the sample environment and noise among
+    it; *Data without the chosen vectors* shows what went. On the PMN neutron data the
+    rings are much weaker in what is kept, though not gone. A single pair shows which
+    diffuse features its correlations make.
+  - **Size:** a 504 × 504 × 42 transform takes about 6 s; grids above 32 million points
+    have to be cropped first. Q grids are put on HKL first, with the cell or the UB on
+    the Data page.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
   isosurfaces. That covers NaN values, a Mantid `mask`, and I = 0 in RMCProfile text,
   which RMCProfile uses for "no data". The zero mask switches on automatically when at
