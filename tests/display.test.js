@@ -158,3 +158,17 @@ test("files open on the slice at 0, or in the middle when the axis misses 0", ()
   const pdf = {h:axes(-0.5, 10, 0.1), k:axes(-0.5, 10, 0.1), l:axes(-0.5, 10, 0.1)};
   assert.equal(app.context.indexNearestZero(pdf, 2), 5, "r = 0 of a map with its origin at index floor(N/2)");
 });
+
+test("file-info ranges of a u, v, w map drawn through its cell are labelled X, Y, Z", () => {
+  const app = loadApp();
+  const ax = Array.from({length:5}, (_, i) => -1 + 0.5 * i);
+  const meta = {dataKind:{code:"delta_pdf", label:"3D-ΔPDF", source:"test"}};
+  const bare = app.context.makeVolumeResult("map.h5", [5, 5, 5], ax, ax, ax, new Float64Array(125), "test", "uvw", null, 0, meta);
+  assert.deepEqual(Array.from(app.context.metaAxisLabels(bare)), ["U", "V", "W"]);
+  const withCell = app.context.makeVolumeResult("map.h5", [5, 5, 5], ax, ax, ax, new Float64Array(125), "test", "uvw", null, 0,
+    {...meta, cellDeg:[5.64, 5.64, 5.64, 90, 90, 90], Bp:[[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]});
+  app.state.res = withCell;
+  const b = app.context.plotBounds(withCell);
+  assert.ok(Math.abs(b.max[0] - 5.64) < 1e-9, "the ranges are in angstrom");
+  assert.deepEqual(Array.from(app.context.metaAxisLabels(withCell)), ["X", "Y", "Z"]);
+});

@@ -7752,9 +7752,15 @@ function updateAxisIndexBounds(){
   $("idx").value = String(clamp(Number($("idx").value), range[0], range[1]));
 }
 
+// Labels of the ranges in the file info, which are those of the plot frame:
+// Cartesian Å for direct-space data drawn through a cell.
+function metaAxisLabels(r){
+  return r && useBasisToDirect(r) ? ["X", "Y", "Z"] : renderAxisLabels(r);
+}
+
 function updateMeta(){
   const r = state.res;
-  const labels = renderAxisLabels(r);
+  const labels = metaAxisLabels(r);
   $("mHName").textContent = `${labels[0]} range`;
   $("mKName").textContent = `${labels[1]} range`;
   $("mLName").textContent = `${labels[2]} range`;
