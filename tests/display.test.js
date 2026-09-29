@@ -147,3 +147,14 @@ test("mean +- 3 sigma and IQR fences give display windows from the distribution"
   assert.ok(Math.abs(f1 - (0.25 - 0.75)) < 2e-3 && Math.abs(f2 - (0.75 + 0.75)) < 2e-3, `IQR fences ${f1}, ${f2}`);
   assert.equal(app.context.spreadWindow(hist, "p99"), null);
 });
+
+test("files open on the slice at 0, or in the middle when the axis misses 0", () => {
+  const app = loadApp();
+  const axes = (lo, n, step) => Float64Array.from({length:n}, (_, i) => lo + i * step);
+  const res = {h:axes(-2, 9, 0.5), k:axes(-1.75, 8, 0.5), l:axes(1, 5, 1)};
+  assert.equal(app.context.indexNearestZero(res, 0), 4, "an odd axis centred on 0");
+  assert.equal(app.context.indexNearestZero(res, 1), 3, "an even axis: 0 falls between -0.25 and 0.25, the first is kept");
+  assert.equal(app.context.indexNearestZero(res, 2), 2, "an axis from 1 to 5 opens in the middle");
+  const pdf = {h:axes(-0.5, 10, 0.1), k:axes(-0.5, 10, 0.1), l:axes(-0.5, 10, 0.1)};
+  assert.equal(app.context.indexNearestZero(pdf, 2), 5, "r = 0 of a map with its origin at index floor(N/2)");
+});

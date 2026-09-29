@@ -27,9 +27,9 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **Files**: drop a file anywhere in the window, or use **Open**. The status bar shows the
   latest message and the slice statistics; click the message to see recent messages.
   Several files can be opened or dropped together, or a whole run folder opened (see
-  *Compare*). A file opens on the slice nearest to 0 (or the middle slice when the axis
-  does not reach 0), moved to the nearest slice holding data when that falls in a gap of
-  a block grid.
+  *Compare*). A file opens on the slice at 0 (such as HK0, or r = 0 of a ΔPDF map), on
+  the middle slice when the axis does not reach 0, and on the nearest slice holding data
+  when that slice falls in a gap of a block grid.
 - **Profiles** (the strip under the map, <kbd>P</kbd>):
   - **Line cuts:** turn on the cut tool (<kbd>L</kbd>) and drag across the map. Drag an
     end to adjust the cut, drag the line to move it, or click to clear it. The cut
@@ -89,7 +89,8 @@ and slab-average slicing with linked 2-D and 3-D views.
   HKL data is transformed to Q through the reciprocal basis; without one, the override
   only relabels the axes. A Mantid UB matrix is read as Q = 2π·UB·h. Real-space volumes
   (delta-PDF / 3D-PDF, scattering density) are recognized and shown with X/Y/Z or U/V/W
-  axes.
+  axes. 3D-ΔPDF maps are made in 3DSConvert (a recipe step, written as unified `uvw` or
+  Yell `is_direct` files) and opened here.
 - **UB and axis rounding cleanup**: files that store their geometry in float32 (Mantid
   among them) are cleaned as they load.
   - **Lattice:** a reciprocal basis or cell within rounding of an exact lattice is made
@@ -144,23 +145,9 @@ and slab-average slicing with linked 2-D and 3-D views.
   points are skipped and reported. For example, when L has a different step from H and
   K, m−3m keeps only its 4/mmm part. The class is suggested from the file name (e.g.
   `_m-3m`) or from the cell metric. *Data − symmetrized* shows where the data break the
-  symmetry, and *Equivalents found* shows the coverage.
-- **3D-ΔPDF** (Process page), in three steps:
-  - **Remove Bragg peaks.** Within a sphere of chosen radius around each reflection the
-    lattice centring allows (P, I, F, C, A, B or R), the voxels above the local fence
-    Q3 + f·IQR are removed, which keeps the diffuse signal under the peak; f = 0 empties
-    the whole sphere. The region near Q = 0 can be removed too.
-  - **Fill the gaps.** Empty voxels are filled from their neighbours with a NaN-aware
-    Gaussian.
-  - **Transform.** The latest step's values in the shown volume (the crop) are windowed
-    (Lorch, Hann or none), placed on a zero-padded grid centred on Q = 0 and Fourier
-    transformed. Grid sizes are products of 2, 3, 5 and 7, so little padding is added. A
-    grid that would pass 32 M points is binned by 2 along its longest axes, which halves
-    the real-space range there; the note says so. The real part opens as a ΔPDF dataset
-    on the dual grid: lattice units u, v, w with the direct metric, or Å for Q data. A
-    half-space grid gives the Friedel-symmetric ΔPDF.
-  - **Checking and returning.** Show offers *Bragg removed* and *Gaps filled* to check
-    each step, and *Back to the diffuse data* returns to the source.
+  symmetry, and *Equivalents found* shows the coverage. The symmetrized view can be
+  exported like the data; symmetrization as a recorded processing step is done in
+  3DSConvert.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
   isosurfaces. That covers NaN values, a Mantid `mask`, and I = 0 in RMCProfile text,
   which RMCProfile uses for "no data". The zero mask switches on automatically when at
