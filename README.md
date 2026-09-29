@@ -12,9 +12,26 @@ and slab-average slicing with linked 2-D and 3-D views.
 
 ## Features
 
-- **Three linked views**: a 3-D rendering of the current slice plane, a 3-D isosurface of
-  the whole volume (both Plotly), and a 2-D slice heatmap drawn on a canvas with live
-  statistics.
+- **Three linked views**: a 2-D slice heatmap drawn on a canvas, a 3-D rendering of the
+  current slice plane and a 3-D isosurface of the whole volume (both Plotly).
+- **Window layout**: the 2-D map is the main view. The slice mode, the plane shown, the
+  value scale and the colour map sit above it, and the slice slider (with ‹ › step
+  buttons) sits below it. The 3-D views share a dock beside the map. Show the slice
+  plane, the isosurface or both, drag the splitters to resize, enlarge the map or the
+  dock, or hide the dock (**Map** / **Map + 3-D**). Only the 3-D views on screen are
+  drawn; a hidden view is drawn when it is shown again, and Plotly is not loaded until
+  a 3-D view is needed.
+- **Side panel**: the Data, Slice, Levels, 3-D and Export pages open from the rail on the
+  left; click the open page again to hide the panel. The layout, the open page and the
+  splitter positions are remembered between visits.
+- **Files**: drop a file anywhere in the window, or use **Open**. The status bar shows the
+  latest message and the slice statistics; click the message to see recent messages.
+- **Keyboard shortcuts** (press <kbd>?</kbd> for the list): <kbd>←</kbd>/<kbd>→</kbd> step
+  through the slices (<kbd>Shift</kbd> for ten, <kbd>Home</kbd>/<kbd>End</kbd> for the
+  ends), <kbd>1</kbd>–<kbd>3</kbd> pick the plane shown, <kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd>
+  zoom the map, <kbd>F</kbd> enlarges the map, <kbd>D</kbd> shows or hides the 3-D dock,
+  <kbd>B</kbd> the side panel, <kbd>O</kbd> opens a file and <kbd>T</kbd> switches the
+  theme. Each axis keeps its own slice position.
 - **Cursor readout**: hovering over the 2-D map shows the coordinates under the cursor
   (H K L, Q or X Y Z), plus Q, |Q| and the d-spacing when a reciprocal basis is known,
   and the value. On axis slices the value is the voxel itself, at full resolution; on
@@ -60,9 +77,10 @@ and slab-average slicing with linked 2-D and 3-D views.
   which RMCProfile uses for "no data". The zero mask switches on automatically when at
   least 1 % of values are zero and can be toggled with **Treat 0 as no data**. Exports
   keep the original zeros.
-- **3-D render controls**: isosurface percentile and surface count, voxel cap,
-  auto-refresh toggle, independent show/hide for the plane and isosurface views. The
-  camera is preserved across slice updates, with zoom and reset buttons on each panel.
+- **3-D render controls**: isosurface percentile and surface count, voxel cap and an
+  auto-refresh toggle. The camera is preserved across slice updates, with zoom and reset
+  buttons on each view; the default camera backs off in tall, narrow views so the whole
+  box stays in frame.
 - **Large-file handling**: text files larger than 64 MB are streamed line-by-line.
   Regularly ordered indexed files are streamed single-threaded at any size; indexed
   files whose row order cannot be streamed directly are, at 192 MB or more, parsed in
@@ -142,7 +160,7 @@ HDF5 signature), read with h5wasm:
    ```
 
    and browse to `http://localhost:8000/index.html`.
-3. Drop a data file onto the input area (or click it to browse).
+3. Drop a data file anywhere in the window, or press **Open** to browse.
 
 HDF5/NeXus reading and the unified HDF5 export use the vendored h5wasm engine in
 `js/h5wasm.js`, so they work offline and from a `file://` page. Only **Plotly**

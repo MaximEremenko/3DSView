@@ -43,17 +43,22 @@
   --dropText:#d5e3f0;
   --dropDragBg:#163650;
   --metaK:#7088a3;
-  --statusBg:#162230;
   --statusText:#d3deea;
-  --okBg:#0d2818;
-  --warnBg:#2a1d08;
-  --errBg:#2a0a0a;
   --arrow:#6b8099;
   --panelText:#c8d5e2;
   --panelBg:#0b1422;
   --statsText:#92a6bd;
   --iconBg:rgba(15,25,35,.85);
   --iconBorder:rgba(148,163,184,.35);
+  --rail:#0b141e;
+  --railText:#8193a8;
+  --railOn:#e6eef6;
+  --railOnBg:#1a2332;
+  --toolbar:#0d1826;
+  --soft:rgba(26,122,173,.2);
+  --shadow:0 12px 32px rgba(0,0,0,.5);
+  --kbdBg:#223047;
+  --overlay:rgba(2,6,23,.6);
 }
 html[data-theme="light"]{
   --frame:#c9d4e0;
@@ -75,7 +80,7 @@ html[data-theme="light"]{
   --focusRing:#155f88;
   --topText:#1c2a3a;
   --subtle:#64748b;
-  --boxBg:#e7edf4;
+  --boxBg:#dfe6ee;
   --chipText:#475569;
   --h2:#1c2a3a;
   --sideRoBg:#e8eef6;
@@ -85,17 +90,22 @@ html[data-theme="light"]{
   --dropText:#2b3f55;
   --dropDragBg:#dbeafe;
   --metaK:#64748b;
-  --statusBg:#e6edf4;
   --statusText:#243447;
-  --okBg:#dcfce7;
-  --warnBg:#fef3c7;
-  --errBg:#fee2e2;
   --arrow:#64748b;
   --panelText:#243447;
   --panelBg:#dde6f0;
   --statsText:#5a6b82;
   --iconBg:rgba(255,255,255,.85);
   --iconBorder:rgba(71,85,105,.35);
+  --rail:#e2e8f0;
+  --railText:#5a6b82;
+  --railOn:#10223a;
+  --railOnBg:#f4f7fa;
+  --toolbar:#edf2f7;
+  --soft:rgba(26,122,173,.14);
+  --shadow:0 12px 32px rgba(15,23,42,.2);
+  --kbdBg:#e7edf4;
+  --overlay:rgba(15,23,42,.35);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden;font-family:"Segoe UI",Tahoma,sans-serif;color:var(--ink);background:var(--frame)}
@@ -103,14 +113,16 @@ button,input,select{font:inherit}
 button{border:0;border-radius:6px;background:var(--brand);color:#fff;font-weight:600;cursor:pointer;padding:8px 11px}
 button:hover{background:var(--brand2)}
 button:disabled{opacity:.45;cursor:not-allowed}
-button.alt{background:var(--btnAlt)}
-button.alt:hover{background:var(--btnAltHover)}
+button.alt{background:var(--side2);color:var(--sideText);border:1px solid var(--line)}
+button.alt:hover{background:var(--soft);border-color:var(--brand)}
+:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 label{display:grid;gap:4px;font-size:.8rem;color:var(--muted)}
 input,select{min-width:0;width:100%;border:1px solid var(--inputBorder);border-radius:6px;background:var(--inputBg);color:var(--ink);padding:6px 7px}
 input[readonly]{background:var(--roBg);color:var(--roText)}
-input[type=range]{padding:0;border:0;accent-color:var(--brand)}
+input[type=range]{padding:0;border:0;accent-color:var(--brand);background:transparent}
 label.check{display:flex;align-items:center;gap:7px;align-self:end;min-height:34px}
 label.check input{width:auto;margin:0;accent-color:var(--brand)}
+kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--kbdBg);color:var(--panelText);font:12px Consolas,"Courier New",monospace;text-align:center}
 .levelHist{width:100%;height:54px;display:block;border-radius:6px;background:var(--side2)}
 .dualRange{position:relative;height:30px;--range-low:0%;--range-high:100%;touch-action:none;cursor:pointer}
 .dualRange:before{content:"";position:absolute;left:7px;right:7px;top:13px;height:5px;border-radius:5px;background:linear-gradient(to right,var(--track) 0 var(--range-low),var(--brand) var(--range-low) var(--range-high),var(--track) var(--range-high) 100%)}
@@ -118,43 +130,70 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
 .dualThumb:focus-visible{outline:2px solid var(--focusRing);outline-offset:2px}
 .dualThumb:disabled{opacity:.45;cursor:not-allowed}
 .dualRange.dragging,.dualRange.dragging .dualThumb{cursor:grabbing}
-.dashboard{
-  height:100vh;width:100vw;display:grid;gap:2px;background:var(--frame);
+
+/* Frame: top bar, panel rail, side panel, workspace, status bar. */
+.app{
+  height:100vh;width:100%;display:grid;background:var(--frame);
   grid-template-areas:
-    "topbar topbar topbar"
-    "sidebar plane3d iso3d"
-    "sidebar slice2d slice2d";
-  grid-template-columns:360px minmax(0,1fr) minmax(0,1fr);
-  grid-template-rows:48px minmax(240px,1fr) minmax(240px,1fr);
+    "top top top"
+    "rail side work"
+    "status status status";
+  grid-template-columns:60px 312px minmax(0,1fr);
+  grid-template-rows:46px minmax(0,1fr) 28px;
 }
-.topbar{grid-area:topbar;background:var(--top);color:var(--topText);display:flex;align-items:center;gap:12px;padding:0 16px;min-width:0}
-.topbar-title{display:flex;align-items:center;gap:9px;min-width:0}
-.topbar-logo{width:30px;height:30px;border-radius:6px;background:var(--brand);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;flex:0 0 auto}
+.app[data-side="closed"]{grid-template-columns:60px 0 minmax(0,1fr)}
+.app[data-side="closed"] .side{display:none}
+.topbar{grid-area:top;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;min-width:0;background:var(--top);color:var(--topText);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;flex:0 0 auto}
+.topbar-logo{width:30px;height:30px;border-radius:7px;background:var(--brand);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;flex:0 0 auto}
 .topbar h1{margin:0;font-size:1rem;font-weight:600;white-space:nowrap}
 .topbar-subtitle{color:var(--subtle);font-weight:400}
-.topbar-meta{margin-left:auto;display:flex;gap:8px;align-items:center;min-width:0;overflow:hidden}
-.chip{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--boxBg);color:var(--chipText);border-radius:12px;padding:3px 10px;font-size:.78rem}
-.sidebar{grid-area:sidebar;min-width:0;min-height:0;overflow:auto;background:var(--side);color:var(--sideText)}
-.sidebar-scroll{padding:12px 10px 18px;display:flex;flex-direction:column;gap:12px}
-.section{display:flex;flex-direction:column;gap:8px;min-width:0}
-.section h2{margin:0 0 2px;color:var(--h2);font-size:.93rem;font-weight:600}
-.sidebar label{color:var(--subtle)}
-.sidebar input,.sidebar select{background:var(--side2);border-color:var(--line);color:var(--sideText)}
-.sidebar input[readonly]{background:var(--sideRoBg);color:var(--sideRoText)}
-.drop{position:relative;border:2px dashed var(--dropBorder);border-radius:8px;min-height:72px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;background:var(--dropBg);color:var(--dropText);cursor:pointer;font-size:.92rem}
-.drop.drag{border-color:var(--brand);background:var(--dropDragBg)}
+.openBtn{display:inline-flex;align-items:center;gap:7px;padding:6px 13px;flex:0 0 auto}
+.openBtn svg{width:16px;height:16px}
+.dataset{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;overflow:hidden;cursor:pointer}
+.chip{flex:0 1 auto;min-width:0;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--boxBg);color:var(--chipText);border-radius:12px;padding:3px 10px;font-size:.78rem}
+.chip.strong{color:var(--topText);font-weight:600}
+.topActions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.seg{display:inline-flex;padding:2px;gap:2px;border:1px solid var(--line);border-radius:8px;background:var(--boxBg)}
+.seg button{padding:4px 11px;border-radius:6px;background:transparent;color:var(--chipText);font-size:.8rem}
+.seg button:hover{background:var(--soft);color:var(--topText)}
+.seg button.on{background:var(--brand);color:#fff}
+
+.rail{grid-area:rail;display:flex;flex-direction:column;gap:4px;padding:8px 6px;min-height:0;overflow:auto;background:var(--rail);border-right:1px solid var(--line)}
+.rail button{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0 7px;border-radius:8px;background:transparent;color:var(--railText);font-size:.68rem;font-weight:600}
+.rail button svg{width:21px;height:21px}
+.rail button:hover{background:var(--soft);color:var(--railOn)}
+.rail button.on{background:var(--railOnBg);color:var(--railOn)}
+.rail button.on:before{content:"";position:absolute;left:-6px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--brand)}
+
+.side{grid-area:side;min-width:0;min-height:0;overflow:auto;background:var(--side);color:var(--sideText);border-right:1px solid var(--line)}
+.sideHead{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 8px 8px 14px;background:var(--side);border-bottom:1px solid var(--line)}
+.sideHead h2{margin:0;color:var(--h2);font-size:.95rem;font-weight:600}
+.page{display:none;flex-direction:column;gap:16px;padding:12px 12px 22px}
+.page.on{display:flex}
+.group{display:flex;flex-direction:column;gap:8px;min-width:0}
+.group>h3{margin:0;color:var(--muted);font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.group>p{margin:0}
+.side label{color:var(--subtle)}
+.side input,.side select{background:var(--side2);border-color:var(--line);color:var(--sideText)}
+.side input[readonly]{background:var(--sideRoBg);color:var(--sideRoText)}
+.drop{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px dashed var(--dropBorder);border-radius:9px;background:var(--dropBg);color:var(--dropText);cursor:pointer;font-size:.88rem}
+.drop:hover{border-color:var(--brand)}
+.drop svg{width:26px;height:26px;flex:0 0 auto;color:var(--brand)}
+.drop b{display:block;font-weight:600}
+.drop span{display:block;color:var(--subtle);font-size:.78rem}
 .meta{display:grid;grid-template-columns:96px 1fr;gap:5px 9px;font-size:.84rem;line-height:1.25}
 .meta .k{color:var(--metaK)}
+.meta>div{min-width:0;overflow-wrap:anywhere}
 .mono{font-family:Consolas,"Courier New",monospace}
 .fine{font-size:.78rem;color:var(--metaK)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
 .btns{display:flex;flex-wrap:wrap;gap:7px}
 .btns button{flex:1 1 108px}
-#status{min-height:34px;border-radius:6px;background:var(--statusBg);color:var(--statusText);padding:8px;font-size:.8rem}
-#status.ok{background:var(--okBg);color:var(--ok)}
-#status.warn{background:var(--warnBg);color:var(--warn)}
-#status.err{background:var(--errBg);color:var(--err)}
+.side button{padding:7px 10px;font-size:.84rem}
+.side .iconBtn{padding:0}
+.row3>button{align-self:end;min-height:34px}
 .toolbox{border:1px solid var(--line);border-radius:8px;background:var(--boxBg);overflow:hidden}
 .toolbox>summary{cursor:pointer;list-style:none;padding:9px 10px;font-weight:600;font-size:.88rem;color:var(--sideText)}
 .toolbox>summary::-webkit-details-marker{display:none}
@@ -162,66 +201,164 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
 .toolbox[open]>summary:before{transform:rotate(90deg)}
 .toolbody{padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
 .hidden{display:none !important}
-.area{min-width:0;min-height:0;overflow:hidden;background:var(--plot);display:flex;flex-direction:column}
-.area-plane3d{grid-area:plane3d}
-.area-iso3d{grid-area:iso3d}
-.area-slice2d{grid-area:slice2d}
-.panelHead{height:30px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;color:var(--panelText);background:var(--panelBg)}
-.panelHead h3{margin:0;font-size:.84rem;font-weight:600}
+
+/* Workspace: the 2-D map, a splitter and the 3-D dock. */
+.work{grid-area:work;display:flex;min-width:0;min-height:0;background:var(--frame);--dock-w:38%}
+.mapPanel{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--plot)}
+.splitV{flex:0 0 5px;cursor:col-resize;background:var(--frame);transition:background .12s}
+.splitH{flex:0 0 5px;cursor:row-resize;background:var(--frame);transition:background .12s}
+.splitV:hover,.splitV.drag,.splitH:hover,.splitH.drag{background:var(--brand)}
+.dock{flex:0 0 var(--dock-w);display:flex;flex-direction:column;min-width:260px;max-width:78%;min-height:0;background:var(--plot)}
+.work[data-layout="map"] .dock,.work[data-layout="map"] .splitV,
+.work[data-max="map"] .dock,.work[data-max="map"] .splitV,
+.work[data-max="dock"] .mapPanel,.work[data-max="dock"] .splitV{display:none}
+.work[data-max="dock"] .dock{flex:1 1 auto;max-width:none}
+.mapBar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:6px 8px;min-width:0;background:var(--toolbar);border-bottom:1px solid var(--line);color:var(--panelText)}
+.mapBar select{width:auto;max-width:200px;padding:4px 6px;font-size:.82rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
+.sliceBar{display:flex;align-items:center;min-height:38px;padding:5px 10px;background:var(--toolbar);border-top:1px solid var(--line);color:var(--panelText)}
+.navGroup{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
+.navGroup input[type=range]{flex:1 1 auto;min-width:80px}
+.navGroup .val{flex:0 1 auto;min-width:150px}
+.navLabel{color:var(--statsText);font-size:.78rem;white-space:nowrap}
+.val{min-width:0;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--panelText);font:12px Consolas,"Courier New",monospace}
+.val .of{margin-left:8px;color:var(--statsText)}
+.stepBtn{flex:0 0 auto;width:26px;height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--side2);color:var(--sideText);font-size:1.05rem;line-height:1}
+.stepBtn:hover{background:var(--soft)}
+.barRight{display:flex;align-items:center;gap:6px;margin-left:auto}
+.dockHead{height:36px;flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:var(--toolbar);border-bottom:1px solid var(--line)}
+.tabs{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--side2)}
+.tabs button{padding:4px 11px;border-radius:6px;background:transparent;color:var(--statsText);font-size:.8rem}
+.tabs button:hover{background:var(--soft);color:var(--panelText)}
+.tabs button.on{background:var(--brand);color:#fff}
+.grow{flex:1}
+.dockBody{flex:1;display:flex;flex-direction:column;min-height:0;--stack:50%}
+.view3d{flex:1 1 0;display:flex;flex-direction:column;min-height:0}
+.dockBody[data-show="both"] #viewPlane{flex:0 0 var(--stack)}
+.dockBody[data-show="plane"] #viewIso,.dockBody[data-show="plane"] .splitH,
+.dockBody[data-show="iso"] #viewPlane,.dockBody[data-show="iso"] .splitH{display:none}
+.viewHead{height:26px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 8px;background:var(--panelBg);color:var(--panelText)}
+.viewHead h3{margin:0;font-size:.78rem;font-weight:600;white-space:nowrap}
+.viewHead .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:var(--statsText);font:11px Consolas,"Courier New",monospace}
 .plotWrap,.canvasWrap{position:relative;flex:1;min-height:0;overflow:hidden;background:var(--plot)}
 #plot3dPlane,#plot3dIso{width:100%;height:100%}
 #heatmap{width:100%;height:100%;display:block;touch-action:none}
-.stats{min-height:28px;padding:6px 8px;background:var(--panelBg);color:var(--statsText);font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plotOverlay{position:absolute;inset:auto 10px 10px auto;display:flex;gap:6px;z-index:5}
 .mapOverlay{inset:auto auto 10px 10px}
 .mapReadout{position:absolute;left:0;top:0;z-index:6;pointer-events:none;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText);border-radius:6px;padding:5px 8px;font:12px Consolas,"Courier New",monospace;white-space:pre;line-height:1.4}
 .iconBtn{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText)}
 .iconBtn:hover{background:rgba(26,122,173,.65)}
+.iconBtn.ghost{background:transparent;border-color:transparent;color:var(--statsText)}
+.iconBtn.ghost:hover{background:var(--soft);border-color:var(--iconBorder);color:var(--panelText)}
+.iconBtn svg{width:16px;height:16px}
 .empty3d{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--subtle);font-family:Consolas,"Courier New",monospace;font-size:.9rem;pointer-events:none}
-@media(max-width:980px){
+.welcome{position:absolute;inset:0;z-index:7;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--plot)}
+.welcomeCard{max-width:520px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--panelText)}
+.welcomeCard>svg{width:58px;height:58px;color:var(--brand)}
+.welcomeCard h2{margin:0;color:var(--h2);font-size:1.35rem;font-weight:600}
+.welcomeCard p{margin:0;color:var(--statsText);font-size:.9rem;line-height:1.5}
+.welcomeCard .formats{font-size:.8rem}
+.welcomeCard button{padding:10px 22px;font-size:.95rem}
+.statusbar{grid-area:status;display:flex;align-items:center;gap:14px;padding:0 10px;min-width:0;background:var(--top);border-top:1px solid var(--line);color:var(--statsText);font-size:.78rem}
+#status{flex:0 1 auto;min-width:0;max-width:62%;padding:3px 8px;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--statusText);cursor:pointer}
+#status:hover{background:var(--soft)}
+#status:before{content:"";display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:50%;background:var(--muted)}
+#status.ok:before{background:var(--ok)}
+#status.warn{color:var(--warn)}
+#status.warn:before{background:var(--warn)}
+#status.err{color:var(--err)}
+#status.err:before{background:var(--err)}
+#sliceStats{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font:11px Consolas,"Courier New",monospace}
+.popover{position:fixed;left:10px;bottom:34px;z-index:40;width:min(580px,calc(100vw - 20px));max-height:52vh;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--side);color:var(--sideText);box-shadow:var(--shadow);font-size:.8rem}
+.popover h3{margin:4px 6px 6px;color:var(--muted);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
+.logItem{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:6px;border-radius:6px;line-height:1.4}
+.logItem+.logItem{border-top:1px solid var(--line)}
+.logItem time{color:var(--muted);font:11px Consolas,"Courier New",monospace;padding-top:2px}
+.logItem.warn .msg{color:var(--warn)}
+.logItem.err .msg{color:var(--err)}
+.dropOverlay{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:var(--overlay);pointer-events:none}
+.dropCard{padding:28px 46px;border:2px dashed var(--brand);border-radius:14px;background:var(--dropDragBg);color:var(--dropText);font-size:1.1rem;font-weight:600;box-shadow:var(--shadow)}
+dialog{width:min(660px,calc(100vw - 32px));padding:0;border:1px solid var(--line);border-radius:12px;background:var(--side);color:var(--sideText);box-shadow:var(--shadow)}
+dialog::backdrop{background:var(--overlay)}
+.dlgHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 10px 10px 16px;border-bottom:1px solid var(--line)}
+.dlgHead h2{margin:0;color:var(--h2);font-size:1rem}
+.dlgBody{display:grid;grid-template-columns:1fr 1fr;gap:18px 26px;padding:14px 16px 18px}
+.dlgBody h3{margin:0 0 6px;color:var(--muted);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
+.keyRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:.85rem}
+.keyRow span:last-child{display:flex;gap:4px;flex:0 0 auto}
+body.resizing{user-select:none;cursor:col-resize}
+body.resizing.rows{cursor:row-resize}
+body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
+@media(max-width:900px){
   html,body{overflow:auto}
-  .dashboard{height:auto;min-height:100vh;overflow:visible;grid-template-areas:"topbar" "sidebar" "plane3d" "iso3d" "slice2d";grid-template-columns:1fr;grid-template-rows:48px auto 38vh 38vh 45vh}
-  .sidebar{max-height:none}
-  .topbar-meta .chip:nth-child(n+3){display:none}
+  .app,.app[data-side="closed"]{height:auto;min-height:100vh;grid-template-areas:"top" "rail" "side" "work" "status";grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto auto 28px}
+  .topbar{flex-wrap:wrap;gap:8px;padding:6px 10px}
+  .topbar-subtitle{display:none}
+  .dataset{order:5;flex-basis:100%}
+  .rail{flex-direction:row;padding:4px 6px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .rail button{flex:1 0 62px}
+  .rail button.on:before{left:10px;right:10px;top:auto;bottom:-4px;width:auto;height:3px;border-radius:3px 3px 0 0}
+  .side{border-right:0;border-bottom:1px solid var(--line)}
+  .sideHead{position:static}
+  .work{flex-direction:column}
+  .mapPanel{flex:0 0 auto;height:72vh}
+  .splitV{display:none}
+  .dock{flex:0 0 auto;height:72vh;min-width:0;max-width:none}
+  .statusbar{position:sticky;bottom:0}
+  .dlgBody{grid-template-columns:1fr}
 }
 @media(max-width:520px){
   .row2,.row3{grid-template-columns:1fr}
   .topbar h1{font-size:.9rem}
+  .seg button{padding:4px 8px}
 }
 </style>
 <script>(function(){try{var t=localStorage.getItem("view3ds-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(_){}})();</script>
 </head>
 <body>
-<main class="dashboard">
+<div class="app" id="app" data-side="open">
   <header class="topbar">
-    <div class="topbar-title">
+    <div class="brand">
       <span class="topbar-logo">3DS</span>
       <h1>3DSView <span class="topbar-subtitle">3-D diffuse slices</span></h1>
     </div>
-    <div class="topbar-meta">
-      <button id="themeToggle" class="iconBtn" title="Toggle light / dark theme">☀️</button>
-      <span class="chip" id="tbFile">No file</span>
+    <button id="openFile" class="openBtn" title="Open a data file (O)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Open</button>
+    <div class="dataset" id="dataset" title="File details">
+      <span class="chip strong" id="tbFile">No file</span>
       <span class="chip" id="tbKind">Type -</span>
       <span class="chip" id="tbGrid">Grid -</span>
       <span class="chip" id="tbRange">Axes -</span>
     </div>
+    <div class="topActions">
+      <div class="seg" role="group" aria-label="Layout">
+        <button type="button" data-layout-btn="map" title="2-D map only (D shows or hides the 3-D views)">Map</button>
+        <button type="button" data-layout-btn="split" title="2-D map with the 3-D views">Map + 3-D</button>
+      </div>
+      <button id="themeToggle" class="iconBtn" title="Toggle light / dark theme (T)">☀️</button>
+      <button id="helpBtn" class="iconBtn" title="Keyboard shortcuts (?)">?</button>
+    </div>
   </header>
 
-  <aside class="sidebar">
-    <div class="sidebar-scroll">
-      <section class="section">
-        <h2>File Input</h2>
-        <div id="drop" class="drop" tabindex="0">Drop 3DS / calculator / NeXus data here or click<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5" hidden></div>
-        <div class="row2">
-          <label>Coordinates
-            <select id="coordMode" disabled>
-              <option value="auto" selected>Auto</option>
-              <option value="q">Use Q</option>
-              <option value="hkl">Use HKL</option>
-            </select>
-          </label>
-          <label>Detected format<input id="mFormat" type="text" value="-" readonly></label>
-        </div>
+  <nav class="rail" aria-label="Panels">
+    <button type="button" data-tab="data" title="File, metadata and unit cell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>Data</button>
+    <button type="button" data-tab="slice" title="Slice geometry and the shown volume"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>Slice</button>
+    <button type="button" data-tab="levels" title="Colour levels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>Levels</button>
+    <button type="button" data-tab="render" title="3-D rendering"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>3-D</button>
+    <button type="button" data-tab="export" title="Save images and volumes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Export</button>
+  </nav>
+
+  <aside class="side" id="side">
+    <div class="sideHead">
+      <h2 id="sideTitle">Data</h2>
+      <button id="sideClose" class="iconBtn ghost" title="Hide the panel (B)">&laquo;</button>
+    </div>
+
+    <section class="page" data-page="data">
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Open a data file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg>
+        <div><b>Open file&hellip;</b><span>or drop 3DS / calculator / NeXus data anywhere</span></div>
+      </div>
+      <div class="group">
+        <h3>File</h3>
         <div class="meta">
           <div class="k">File</div><div id="mFile">-</div>
           <div class="k">Data type</div><div id="mKind">-</div>
@@ -233,334 +370,401 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
           <div class="k" id="mIName">Intensity</div><div id="mI">-</div>
           <div class="k">Header</div><div id="mHeader">-</div>
         </div>
+      </div>
+      <div class="group">
+        <h3>Reading</h3>
+        <label>Detected format<input id="mFormat" type="text" value="-" readonly></label>
         <div class="row2">
+          <label>Coordinates
+            <select id="coordMode" disabled>
+              <option value="auto" selected>Auto</option>
+              <option value="q">Use Q</option>
+              <option value="hkl">Use HKL</option>
+            </select>
+          </label>
           <label class="check" title="RMCProfile marks voxels without data with 0; hide them and leave them out of levels and isosurfaces"><input id="zeroMask" type="checkbox" disabled>Treat 0 as no data</label>
-          <span id="zeroMaskInfo" class="fine" style="align-self:center"></span>
         </div>
+        <span id="zeroMaskInfo" class="fine"></span>
         <div class="btns hidden" id="swapAxesRow">
           <button id="swapAxes" class="alt" disabled title="The file does not record its axis order; transpose the data if the map looks mirrored">Swap H/L data order</button>
         </div>
-        <details class="toolbox" id="cellTool">
-          <summary>Unit Cell (optional override)</summary>
-          <div class="toolbody">
-            <div class="row3">
-              <label>a (Angstrom)<input id="cellA" type="number" min="0" step="any" placeholder="a"></label>
-              <label>b (Angstrom)<input id="cellB" type="number" min="0" step="any" placeholder="b"></label>
-              <label>c (Angstrom)<input id="cellC" type="number" min="0" step="any" placeholder="c"></label>
-            </div>
-            <div class="row3">
-              <label>alpha (deg)<input id="cellAlpha" type="number" min="0" max="180" step="any" placeholder="90"></label>
-              <label>beta (deg)<input id="cellBeta" type="number" min="0" max="180" step="any" placeholder="90"></label>
-              <label>gamma (deg)<input id="cellGamma" type="number" min="0" max="180" step="any" placeholder="90"></label>
-            </div>
-            <div class="btns">
-              <button id="cellApply" disabled>Apply Cell</button>
-              <button id="cellRestore" class="alt" disabled>Restore File Cell</button>
-            </div>
-            <div class="btns">
-              <button id="cellFromStructure" class="alt" disabled title="Parent cell from an .rmc6f configuration (supercell / dimensions) or a unified structure .h5">Cell from structure file</button>
-              <input id="structureFile" type="file" accept=".rmc6f,.h5,.hdf5" hidden>
-            </div>
-            <div class="fine" id="cellInfo">Load reciprocal-space data to inspect or enter its unit cell.</div>
-          </div>
-        </details>
-        <div id="status">Waiting for data file.</div>
-      </section>
-
-      <details class="toolbox" open>
-        <summary>Slice Tool</summary>
+      </div>
+      <details class="toolbox" id="cellTool">
+        <summary>Unit cell (optional override)</summary>
         <div class="toolbody">
-          <div class="row2">
-            <label>Slice mode
-              <select id="sliceMode" disabled>
-                <option value="axis" selected>Axis</option>
-                <option value="plane">Normal plane</option>
-                <option value="avgvol">Volume average</option>
-              </select>
-            </label>
-            <label>Display
-              <select id="scale" disabled>
-                <option value="log1p" selected>log10(value+1)</option>
-                <option value="log">log10(value)</option>
-                <option value="linear">Linear</option>
-                <option value="sqrt">signed sqrt(value)</option>
-              </select>
-            </label>
-          </div>
-
-          <div id="axisControls">
-            <div class="row2">
-              <label>Axis
-                <select id="axis" disabled>
-                  <option value="l" selected>Fix L, show H-K</option>
-                  <option value="h">Fix H, show K-L</option>
-                  <option value="k">Fix K, show H-L</option>
-                </select>
-              </label>
-              <label>Index
-                <input id="idx" type="range" min="0" max="0" value="0" disabled>
-              </label>
-            </div>
-            <div id="sliceVal" class="mono fine">Slice: -</div>
-          </div>
-
-          <div id="planeControls" class="hidden">
-            <div class="row3">
-              <label>nH<input id="pNH" type="number" value="1" step="any" disabled></label>
-              <label>nK<input id="pNK" type="number" value="0" step="any" disabled></label>
-              <label>nL<input id="pNL" type="number" value="0" step="any" disabled></label>
-            </div>
-            <div class="row3">
-              <label>oH<input id="pOH" type="number" value="0" step="any" disabled></label>
-              <label>oK<input id="pOK" type="number" value="0" step="any" disabled></label>
-              <label>oL<input id="pOL" type="number" value="0" step="any" disabled></label>
-            </div>
-            <div class="row3">
-              <label>cH<input id="pCH" type="number" value="" readonly disabled></label>
-              <label>cK<input id="pCK" type="number" value="" readonly disabled></label>
-              <label>cL<input id="pCL" type="number" value="" readonly disabled></label>
-            </div>
-            <label>Move along normal<input id="planeMove" type="range" min="0" max="400" value="200" disabled></label>
-            <div id="planeMoveVal" class="mono fine">Plane center: -</div>
-            <div class="row2">
-              <label>Resolution<input id="pRes" type="number" value="220" min="32" max="520" step="1" disabled></label>
-              <label>Plane scale<input id="pScale" type="number" value="1.35" min="0.2" max="4" step="0.05" disabled></label>
-            </div>
-            <div class="btns">
-              <button id="planeApply" class="alt" disabled>Set Plane</button>
-              <button id="planeReset" class="alt" disabled>Reset</button>
-            </div>
-          </div>
-
-          <div id="avgControls" class="hidden">
-            <div class="row3">
-              <label>nH<input id="avNH" type="number" value="1" step="any" disabled></label>
-              <label>nK<input id="avNK" type="number" value="0" step="any" disabled></label>
-              <label>nL<input id="avNL" type="number" value="0" step="any" disabled></label>
-            </div>
-            <div class="row3">
-              <label>oH<input id="avOH" type="number" value="0" step="any" disabled></label>
-              <label>oK<input id="avOK" type="number" value="0" step="any" disabled></label>
-              <label>oL<input id="avOL" type="number" value="0" step="any" disabled></label>
-            </div>
-            <div class="row3">
-              <label>cH<input id="avCH" type="number" value="" readonly disabled></label>
-              <label>cK<input id="avCK" type="number" value="" readonly disabled></label>
-              <label>cL<input id="avCL" type="number" value="" readonly disabled></label>
-            </div>
-            <label>Move slab center<input id="avgMove" type="range" min="0" max="400" value="200" disabled></label>
-            <div id="avgMoveVal" class="mono fine">Volume average: -</div>
-            <div class="row2">
-              <label>Resolution<input id="avRes" type="number" value="180" min="32" max="420" step="1" disabled></label>
-              <label>Plane scale<input id="avScale" type="number" value="1.2" min="0.2" max="4" step="0.05" disabled></label>
-            </div>
-            <div class="row2">
-              <label>Slab +/-<input id="slabWidth" type="number" value="0.25" min="0.001" max="20" step="0.01" disabled></label>
-              <label>Samples<input id="slabN" type="number" value="9" min="3" max="101" step="2" disabled></label>
-            </div>
-            <div class="btns">
-              <button id="avgApply" class="alt" disabled>Set Average</button>
-              <button id="avgReset" class="alt" disabled>Reset</button>
-            </div>
-          </div>
-        </div>
-      </details>
-
-      <details class="toolbox" open>
-        <summary>Shown Volume Limits</summary>
-        <div class="toolbody">
-          <div class="row2">
-            <label><span id="viewAxis0">Axis 1</span> min<input id="viewMin0" type="number" step="any" disabled></label>
-            <label><span id="viewAxis0b">Axis 1</span> max<input id="viewMax0" type="number" step="any" disabled></label>
-          </div>
-          <div class="dualRange" id="viewRange0">
-            <button id="viewMinSlider0" class="dualThumb" type="button" aria-label="Axis 1 lower limit" disabled></button>
-            <button id="viewMaxSlider0" class="dualThumb" type="button" aria-label="Axis 1 upper limit" disabled></button>
-          </div>
-          <div class="row2">
-            <label><span id="viewAxis1">Axis 2</span> min<input id="viewMin1" type="number" step="any" disabled></label>
-            <label><span id="viewAxis1b">Axis 2</span> max<input id="viewMax1" type="number" step="any" disabled></label>
-          </div>
-          <div class="dualRange" id="viewRange1">
-            <button id="viewMinSlider1" class="dualThumb" type="button" aria-label="Axis 2 lower limit" disabled></button>
-            <button id="viewMaxSlider1" class="dualThumb" type="button" aria-label="Axis 2 upper limit" disabled></button>
-          </div>
-          <div class="row2">
-            <label><span id="viewAxis2">Axis 3</span> min<input id="viewMin2" type="number" step="any" disabled></label>
-            <label><span id="viewAxis2b">Axis 3</span> max<input id="viewMax2" type="number" step="any" disabled></label>
-          </div>
-          <div class="dualRange" id="viewRange2">
-            <button id="viewMinSlider2" class="dualThumb" type="button" aria-label="Axis 3 lower limit" disabled></button>
-            <button id="viewMaxSlider2" class="dualThumb" type="button" aria-label="Axis 3 upper limit" disabled></button>
-          </div>
-          <div class="btns">
-            <button id="viewApply" class="alt" disabled>Apply Limits</button>
-            <button id="viewReset" class="alt" disabled>Show Full Volume</button>
-          </div>
-          <div id="viewInfo" class="mono fine">Load data to set the shown volume.</div>
-        </div>
-      </details>
-
-      <details class="toolbox" open>
-        <summary>Color Levels</summary>
-        <div class="toolbody">
-          <div class="row2">
-            <label>Color map
-              <select id="colorMap" disabled>
-                <optgroup label="Sequential">
-                  <option value="viridis" selected>Viridis</option>
-                  <option value="plasma">Plasma</option>
-                  <option value="inferno">Inferno</option>
-                  <option value="magma">Magma</option>
-                  <option value="cividis">Cividis</option>
-                  <option value="turbo">Turbo</option>
-                  <option value="gray">Gray</option>
-                </optgroup>
-                <optgroup label="Diverging (signed data)">
-                  <option value="rdbu">RdBu</option>
-                  <option value="coolwarm">Coolwarm</option>
-                </optgroup>
-              </select>
-            </label>
-            <label>Levels
-              <select id="levelMode" disabled>
-                <option value="slice" selected>Slice auto</option>
-                <option value="global">Global auto</option>
-                <option value="manual">Manual</option>
-              </select>
-            </label>
-          </div>
-          <div class="row2">
-            <label>Auto range
-              <select id="levelClip" disabled>
-                <option value="p995" selected>0.5 - 99.5 %</option>
-                <option value="p99">1 - 99 %</option>
-                <option value="p98">2 - 98 %</option>
-                <option value="minmax">Min - max</option>
-              </select>
-            </label>
-            <label class="check"><input id="levelSymmetric" type="checkbox" disabled>Symmetric about 0</label>
-          </div>
-          <div class="row2">
-            <label class="check"><input id="colorReverse" type="checkbox" disabled>Reverse colors</label>
-            <label>Empty voxels
-              <select id="nanColor" disabled>
-                <option value="transparent" selected>Transparent</option>
-                <option value="gray">Gray</option>
-                <option value="white">White</option>
-                <option value="black">Black</option>
-              </select>
-            </label>
+          <div class="row3">
+            <label>a (&Aring;)<input id="cellA" type="number" min="0" step="any" placeholder="a"></label>
+            <label>b (&Aring;)<input id="cellB" type="number" min="0" step="any" placeholder="b"></label>
+            <label>c (&Aring;)<input id="cellC" type="number" min="0" step="any" placeholder="c"></label>
           </div>
           <div class="row3">
-            <label>Min<input id="levelMin" type="number" step="any" disabled></label>
-            <label>Max<input id="levelMax" type="number" step="any" disabled></label>
-            <button id="resetLevels" class="alt" disabled>Reset</button>
+            <label>alpha (&deg;)<input id="cellAlpha" type="number" min="0" max="180" step="any" placeholder="90"></label>
+            <label>beta (&deg;)<input id="cellBeta" type="number" min="0" max="180" step="any" placeholder="90"></label>
+            <label>gamma (&deg;)<input id="cellGamma" type="number" min="0" max="180" step="any" placeholder="90"></label>
           </div>
-          <canvas id="levelHist" class="levelHist" title="Distribution of the shown slice values; the bright band is the display window"></canvas>
-          <div id="levelInfo" class="mono fine">Display levels: -</div>
-        </div>
-      </details>
-
-      <details class="toolbox" open>
-        <summary>3D Render</summary>
-        <div class="toolbody">
-          <div class="row2">
-            <label>Iso percentile<input id="isoPct" type="number" value="95" min="50" max="99.99" step="0.5" disabled></label>
-            <label>Surface count<input id="isoCount" type="number" value="4" min="1" max="12" step="1" disabled></label>
-          </div>
-          <div class="row2">
-            <label>Voxel cap<input id="voxelCap" type="number" value="220000" min="5000" step="1000" disabled></label>
-            <label>Auto refresh<select id="auto3d" disabled><option value="1" selected>ON</option><option value="0">OFF</option></select></label>
-          </div>
-          <div class="row2">
-            <label>Show plane<select id="showPlane3d" disabled><option value="1" selected>ON</option><option value="0">OFF</option></select></label>
-            <label>Show iso<select id="showIso3d" disabled><option value="1" selected>ON</option><option value="0">OFF</option></select></label>
-          </div>
-          <button id="render3d" class="alt" disabled>Render 3D</button>
-        </div>
-      </details>
-
-      <details class="toolbox" open>
-        <summary>Export</summary>
-        <div class="toolbody">
-          <div class="row2">
-            <label>File name<input id="exportName" type="text" placeholder="data file name" disabled></label>
-            <label class="check"><input id="exportTransparent" type="checkbox" disabled>Transparent background</label>
-          </div>
-          <div class="fine">2-D slice</div>
           <div class="btns">
-            <button id="savePng" class="alt" disabled>PNG</button>
-            <button id="saveSliceSvg" class="alt" disabled title="Vector axes and colour bar with the slice image embedded">SVG</button>
-            <button id="saveCsv" class="alt" disabled>CSV</button>
+            <button id="cellApply" disabled>Apply cell</button>
+            <button id="cellRestore" class="alt" disabled>Restore file cell</button>
           </div>
-          <div class="fine">3-D views</div>
           <div class="btns">
-            <button id="savePlaneSvg" class="alt" disabled>Plane SVG</button>
-            <button id="saveIsoSvg" class="alt" disabled>Iso SVG</button>
-            <button id="savePlaneHtml" class="alt" disabled>Plane HTML</button>
-            <button id="saveIsoHtml" class="alt" disabled>Iso HTML</button>
+            <button id="cellFromStructure" class="alt" disabled title="Parent cell from an .rmc6f configuration (supercell / dimensions) or a unified structure .h5">Cell from structure file</button>
           </div>
-          <div class="fine">Shown volume</div>
-          <div class="btns" id="volumeExports">
-            <button id="saveUnified" class="alt" disabled>Unified .h5</button>
-            <button id="saveYell" class="alt" disabled title="Yell 1.0 HDF5 (DISCUS, Yell, Meerkat)">Yell .h5</button>
-            <button id="saveOldDat" class="alt" disabled title="RMCProfile old 3-D diffuse text: i j k qx qy qz I, Cartesian Q">RMCProfile .dat</button>
-            <button id="saveVtk" class="alt" disabled title="Scatty-style VTK STRUCTURED_POINTS in Cartesian Q (axis-aligned grids)">VTK</button>
-            <button id="saveCube" class="alt" disabled title="Gaussian cube for ChimeraX / ParaView">Cube</button>
-            <button id="saveJson" class="alt" disabled title="3DSView JSON volume">JSON</button>
-          </div>
+          <div class="fine" id="cellInfo">Load reciprocal-space data to inspect or enter its unit cell.</div>
         </div>
       </details>
-    </div>
+    </section>
+
+    <section class="page" data-page="slice">
+      <div class="group" id="axisHelp">
+        <h3>Axis slices</h3>
+        <p class="fine">Choose the fixed axis above the map and step through the slices with the slider, the &lsaquo; &rsaquo; buttons or the <kbd>&larr;</kbd> <kbd>&rarr;</kbd> keys. Switch the mode there to cut a normal plane or average a slab.</p>
+      </div>
+      <div id="planeControls" class="group hidden">
+        <h3>Normal plane</h3>
+        <div class="row3">
+          <label>nH<input id="pNH" type="number" value="1" step="any" disabled></label>
+          <label>nK<input id="pNK" type="number" value="0" step="any" disabled></label>
+          <label>nL<input id="pNL" type="number" value="0" step="any" disabled></label>
+        </div>
+        <div class="row3">
+          <label>oH<input id="pOH" type="number" value="0" step="any" disabled></label>
+          <label>oK<input id="pOK" type="number" value="0" step="any" disabled></label>
+          <label>oL<input id="pOL" type="number" value="0" step="any" disabled></label>
+        </div>
+        <div class="row3">
+          <label>cH<input id="pCH" type="number" value="" readonly disabled></label>
+          <label>cK<input id="pCK" type="number" value="" readonly disabled></label>
+          <label>cL<input id="pCL" type="number" value="" readonly disabled></label>
+        </div>
+        <div class="row2">
+          <label>Resolution<input id="pRes" type="number" value="220" min="32" max="520" step="1" disabled></label>
+          <label>Plane scale<input id="pScale" type="number" value="1.35" min="0.2" max="4" step="0.05" disabled></label>
+        </div>
+        <div class="btns">
+          <button id="planeApply" class="alt" disabled>Set plane</button>
+          <button id="planeReset" class="alt" disabled>Reset</button>
+        </div>
+      </div>
+      <div id="avgControls" class="group hidden">
+        <h3>Volume average</h3>
+        <div class="row3">
+          <label>nH<input id="avNH" type="number" value="1" step="any" disabled></label>
+          <label>nK<input id="avNK" type="number" value="0" step="any" disabled></label>
+          <label>nL<input id="avNL" type="number" value="0" step="any" disabled></label>
+        </div>
+        <div class="row3">
+          <label>oH<input id="avOH" type="number" value="0" step="any" disabled></label>
+          <label>oK<input id="avOK" type="number" value="0" step="any" disabled></label>
+          <label>oL<input id="avOL" type="number" value="0" step="any" disabled></label>
+        </div>
+        <div class="row3">
+          <label>cH<input id="avCH" type="number" value="" readonly disabled></label>
+          <label>cK<input id="avCK" type="number" value="" readonly disabled></label>
+          <label>cL<input id="avCL" type="number" value="" readonly disabled></label>
+        </div>
+        <div class="row2">
+          <label>Resolution<input id="avRes" type="number" value="180" min="32" max="420" step="1" disabled></label>
+          <label>Plane scale<input id="avScale" type="number" value="1.2" min="0.2" max="4" step="0.05" disabled></label>
+        </div>
+        <div class="row2">
+          <label>Slab +/-<input id="slabWidth" type="number" value="0.25" min="0.001" max="20" step="0.01" disabled></label>
+          <label>Samples<input id="slabN" type="number" value="9" min="3" max="101" step="2" disabled></label>
+        </div>
+        <div class="btns">
+          <button id="avgApply" class="alt" disabled>Set average</button>
+          <button id="avgReset" class="alt" disabled>Reset</button>
+        </div>
+      </div>
+      <div class="group">
+        <h3>Shown volume</h3>
+        <div class="row2">
+          <label><span id="viewAxis0">Axis 1</span> min<input id="viewMin0" type="number" step="any" disabled></label>
+          <label><span id="viewAxis0b">Axis 1</span> max<input id="viewMax0" type="number" step="any" disabled></label>
+        </div>
+        <div class="dualRange" id="viewRange0">
+          <button id="viewMinSlider0" class="dualThumb" type="button" aria-label="Axis 1 lower limit" disabled></button>
+          <button id="viewMaxSlider0" class="dualThumb" type="button" aria-label="Axis 1 upper limit" disabled></button>
+        </div>
+        <div class="row2">
+          <label><span id="viewAxis1">Axis 2</span> min<input id="viewMin1" type="number" step="any" disabled></label>
+          <label><span id="viewAxis1b">Axis 2</span> max<input id="viewMax1" type="number" step="any" disabled></label>
+        </div>
+        <div class="dualRange" id="viewRange1">
+          <button id="viewMinSlider1" class="dualThumb" type="button" aria-label="Axis 2 lower limit" disabled></button>
+          <button id="viewMaxSlider1" class="dualThumb" type="button" aria-label="Axis 2 upper limit" disabled></button>
+        </div>
+        <div class="row2">
+          <label><span id="viewAxis2">Axis 3</span> min<input id="viewMin2" type="number" step="any" disabled></label>
+          <label><span id="viewAxis2b">Axis 3</span> max<input id="viewMax2" type="number" step="any" disabled></label>
+        </div>
+        <div class="dualRange" id="viewRange2">
+          <button id="viewMinSlider2" class="dualThumb" type="button" aria-label="Axis 3 lower limit" disabled></button>
+          <button id="viewMaxSlider2" class="dualThumb" type="button" aria-label="Axis 3 upper limit" disabled></button>
+        </div>
+        <div class="btns">
+          <button id="viewApply" class="alt" disabled>Apply limits</button>
+          <button id="viewReset" class="alt" disabled>Show full volume</button>
+        </div>
+        <div id="viewInfo" class="mono fine">Load data to set the shown volume.</div>
+      </div>
+    </section>
+
+    <section class="page" data-page="levels">
+      <div class="group">
+        <h3>Levels</h3>
+        <div class="row2">
+          <label>Levels
+            <select id="levelMode" disabled>
+              <option value="slice" selected>Slice auto</option>
+              <option value="global">Global auto</option>
+              <option value="manual">Manual</option>
+            </select>
+          </label>
+          <label>Auto range
+            <select id="levelClip" disabled>
+              <option value="p995" selected>0.5 - 99.5 %</option>
+              <option value="p99">1 - 99 %</option>
+              <option value="p98">2 - 98 %</option>
+              <option value="minmax">Min - max</option>
+            </select>
+          </label>
+        </div>
+        <div class="row3">
+          <label>Min<input id="levelMin" type="number" step="any" disabled></label>
+          <label>Max<input id="levelMax" type="number" step="any" disabled></label>
+          <button id="resetLevels" class="alt" disabled>Reset</button>
+        </div>
+        <canvas id="levelHist" class="levelHist" title="Distribution of the shown slice values; the bright band is the display window"></canvas>
+        <div id="levelInfo" class="mono fine">Display levels: -</div>
+        <label class="check"><input id="levelSymmetric" type="checkbox" disabled>Symmetric about 0</label>
+      </div>
+      <div class="group">
+        <h3>Colours</h3>
+        <div class="row2">
+          <label class="check"><input id="colorReverse" type="checkbox" disabled>Reverse colours</label>
+          <label>Empty voxels
+            <select id="nanColor" disabled>
+              <option value="transparent" selected>Transparent</option>
+              <option value="gray">Gray</option>
+              <option value="white">White</option>
+              <option value="black">Black</option>
+            </select>
+          </label>
+        </div>
+        <p class="fine">The value scale and the colour map sit above the map. Drag the handles on the colour bar to set the levels by hand.</p>
+      </div>
+    </section>
+
+    <section class="page" data-page="render">
+      <div class="group">
+        <h3>Isosurface</h3>
+        <div class="row2">
+          <label>Iso percentile<input id="isoPct" type="number" value="95" min="50" max="99.99" step="0.5" disabled></label>
+          <label>Surface count<input id="isoCount" type="number" value="4" min="1" max="12" step="1" disabled></label>
+        </div>
+        <div class="row2">
+          <label>Voxel cap<input id="voxelCap" type="number" value="220000" min="5000" step="1000" disabled></label>
+          <label>Auto refresh<select id="auto3d" disabled><option value="1" selected>On</option><option value="0">Off</option></select></label>
+        </div>
+        <button id="render3d" class="alt" disabled>Render 3-D</button>
+        <p class="fine">Only the 3-D views on screen are drawn. Pick them with the tabs above the 3-D dock, or hide the dock with <kbd>D</kbd>.</p>
+      </div>
+    </section>
+
+    <section class="page" data-page="export">
+      <div class="group">
+        <h3>Names</h3>
+        <label>File name<input id="exportName" type="text" placeholder="data file name" disabled></label>
+        <label class="check"><input id="exportTransparent" type="checkbox" disabled>Transparent background</label>
+      </div>
+      <div class="group">
+        <h3>2-D slice</h3>
+        <div class="btns">
+          <button id="savePng" class="alt" disabled>PNG</button>
+          <button id="saveSliceSvg" class="alt" disabled title="Vector axes and colour bar with the slice image embedded">SVG</button>
+          <button id="saveCsv" class="alt" disabled>CSV</button>
+        </div>
+      </div>
+      <div class="group">
+        <h3>3-D views</h3>
+        <div class="btns">
+          <button id="savePlaneSvg" class="alt" disabled>Plane SVG</button>
+          <button id="saveIsoSvg" class="alt" disabled>Iso SVG</button>
+          <button id="savePlaneHtml" class="alt" disabled>Plane HTML</button>
+          <button id="saveIsoHtml" class="alt" disabled>Iso HTML</button>
+        </div>
+      </div>
+      <div class="group">
+        <h3>Shown volume</h3>
+        <div class="btns" id="volumeExports">
+          <button id="saveUnified" class="alt" disabled>Unified .h5</button>
+          <button id="saveYell" class="alt" disabled title="Yell 1.0 HDF5 (DISCUS, Yell, Meerkat)">Yell .h5</button>
+          <button id="saveOldDat" class="alt" disabled title="RMCProfile old 3-D diffuse text: i j k qx qy qz I, Cartesian Q">RMCProfile .dat</button>
+          <button id="saveVtk" class="alt" disabled title="Scatty-style VTK STRUCTURED_POINTS in Cartesian Q (axis-aligned grids)">VTK</button>
+          <button id="saveCube" class="alt" disabled title="Gaussian cube for ChimeraX / ParaView">Cube</button>
+          <button id="saveJson" class="alt" disabled title="3DSView JSON volume">JSON</button>
+        </div>
+      </div>
+    </section>
   </aside>
 
-  <section class="area area-plane3d">
-    <div class="panelHead">
-      <h3>3D Slice Plane</h3>
-      <span id="plot3dStatus" class="mono fine">Idle</span>
-    </div>
-    <div class="plotWrap">
-      <div id="plot3dPlane"></div>
-      <div id="empty3dPlane" class="empty3d">No data loaded.</div>
-      <div class="plotOverlay">
-        <button class="iconBtn" id="planeZoomIn" title="Zoom in">+</button>
-        <button class="iconBtn" id="planeZoomOut" title="Zoom out">&minus;</button>
-        <button class="iconBtn" id="planeZoomReset" title="Reset camera">&#8634;</button>
+  <main class="work" id="work" data-layout="split">
+    <section class="mapPanel" id="mapPanel">
+      <div class="mapBar" id="mapBar">
+        <select id="sliceMode" disabled title="Slice mode">
+          <option value="axis" selected>Axis slice</option>
+          <option value="plane">Normal plane</option>
+          <option value="avgvol">Volume average</option>
+        </select>
+        <span id="axisPick">
+          <select id="axis" disabled title="Plane shown; the third axis is fixed (1, 2, 3)">
+            <option value="l" selected>H-K</option>
+            <option value="h">K-L</option>
+            <option value="k">H-L</option>
+          </select>
+        </span>
+        <div class="barRight">
+          <select id="scale" disabled title="Value scale">
+            <option value="log1p" selected>log10(value+1)</option>
+            <option value="log">log10(value)</option>
+            <option value="linear">Linear</option>
+            <option value="sqrt">signed sqrt(value)</option>
+          </select>
+          <select id="colorMap" disabled title="Colour map">
+            <optgroup label="Sequential">
+              <option value="viridis" selected>Viridis</option>
+              <option value="plasma">Plasma</option>
+              <option value="inferno">Inferno</option>
+              <option value="magma">Magma</option>
+              <option value="cividis">Cividis</option>
+              <option value="turbo">Turbo</option>
+              <option value="gray">Gray</option>
+            </optgroup>
+            <optgroup label="Diverging (signed data)">
+              <option value="rdbu">RdBu</option>
+              <option value="coolwarm">Coolwarm</option>
+            </optgroup>
+          </select>
+          <button type="button" id="mapMax" class="iconBtn ghost" title="Enlarge the map (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        </div>
       </div>
-    </div>
-  </section>
+      <div class="canvasWrap" id="mapWrap">
+        <canvas id="heatmap"></canvas>
+        <div id="mapReadout" class="mapReadout hidden" aria-live="off"></div>
+        <div class="plotOverlay mapOverlay">
+          <button class="iconBtn" id="mapZoomIn" title="Zoom in (+, or scroll on the map)">+</button>
+          <button class="iconBtn" id="mapZoomOut" title="Zoom out (-)">&minus;</button>
+          <button class="iconBtn" id="mapZoomReset" title="Show the whole slice (0, or double-click the map)">&#8634;</button>
+        </div>
+        <div id="welcome" class="welcome">
+          <div class="welcomeCard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M3.5 7.3L12 12l8.5-4.7M12 12v9.5"/><path d="M7.8 9.7v4.7l4.2 2.4 4.2-2.4V9.7" opacity=".55"/></svg>
+            <h2>Open a 3-D volume</h2>
+            <p>Drop a file anywhere in the window, or</p>
+            <button id="welcomeOpen" type="button">Open file&hellip;</button>
+            <p class="formats">3DS / RMCProfile .dat and h k l lists &middot; calculator text &middot; Scatty VTK &middot; JSON &middot; NeXus / Mantid .nxs &middot; unified and Yell HDF5</p>
+            <p class="formats">Press <kbd>?</kbd> for keyboard shortcuts.</p>
+          </div>
+        </div>
+      </div>
+      <div class="sliceBar" id="sliceBar">
+        <div id="axisControls" class="navGroup">
+          <button type="button" class="stepBtn" data-step="-1" title="Previous slice (&larr;)" disabled>&lsaquo;</button>
+          <input id="idx" type="range" min="0" max="0" value="0" disabled aria-label="Slice index">
+          <button type="button" class="stepBtn" data-step="1" title="Next slice (&rarr;)" disabled>&rsaquo;</button>
+          <span id="sliceVal" class="val">-</span>
+        </div>
+        <div id="planeMoveGroup" class="navGroup hidden">
+          <span class="navLabel">Along normal</span>
+          <button type="button" class="stepBtn" data-step="-1" title="Move back (&larr;)" disabled>&lsaquo;</button>
+          <input id="planeMove" type="range" min="0" max="400" value="200" disabled aria-label="Plane position along the normal">
+          <button type="button" class="stepBtn" data-step="1" title="Move forward (&rarr;)" disabled>&rsaquo;</button>
+          <span id="planeMoveVal" class="val">Plane center: -</span>
+        </div>
+        <div id="avgMoveGroup" class="navGroup hidden">
+          <span class="navLabel">Slab centre</span>
+          <button type="button" class="stepBtn" data-step="-1" title="Move back (&larr;)" disabled>&lsaquo;</button>
+          <input id="avgMove" type="range" min="0" max="400" value="200" disabled aria-label="Slab position along the normal">
+          <button type="button" class="stepBtn" data-step="1" title="Move forward (&rarr;)" disabled>&rsaquo;</button>
+          <span id="avgMoveVal" class="val">Volume average: -</span>
+        </div>
+      </div>
+    </section>
+    <div class="splitV" id="dockSplit" role="separator" aria-orientation="vertical" aria-label="Resize the 3-D views" tabindex="0" title="Drag to resize; double-click to reset"></div>
+    <section class="dock" id="dock">
+      <div class="dockHead">
+        <div class="tabs" role="group" aria-label="3-D views">
+          <button type="button" data-dock="plane">Slice plane</button>
+          <button type="button" data-dock="iso">Isosurface</button>
+          <button type="button" data-dock="both">Both</button>
+        </div>
+        <span class="grow"></span>
+        <button type="button" id="dockMax" class="iconBtn ghost" title="Enlarge the 3-D views"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <button type="button" id="dockHide" class="iconBtn ghost" title="Hide the 3-D views (D)">&times;</button>
+      </div>
+      <div class="dockBody" id="dockBody" data-show="both">
+        <section class="view3d" id="viewPlane">
+          <div class="viewHead"><h3>Slice plane</h3><span id="plot3dStatus" class="st">Idle</span></div>
+          <div class="plotWrap" id="planeWrap">
+            <div id="plot3dPlane"></div>
+            <div id="empty3dPlane" class="empty3d">No data loaded.</div>
+            <div class="plotOverlay">
+              <button class="iconBtn" id="planeZoomIn" title="Zoom in">+</button>
+              <button class="iconBtn" id="planeZoomOut" title="Zoom out">&minus;</button>
+              <button class="iconBtn" id="planeZoomReset" title="Reset camera">&#8634;</button>
+            </div>
+          </div>
+        </section>
+        <div class="splitH" id="stackSplit" role="separator" aria-orientation="horizontal" aria-label="Resize the two 3-D views" tabindex="0" title="Drag to resize; double-click to reset"></div>
+        <section class="view3d" id="viewIso">
+          <div class="viewHead"><h3>Isosurface</h3><span id="iso3dStatus" class="st">Idle</span></div>
+          <div class="plotWrap" id="isoWrap">
+            <div id="plot3dIso"></div>
+            <div id="empty3dIso" class="empty3d">No data loaded.</div>
+            <div class="plotOverlay">
+              <button class="iconBtn" id="isoZoomIn" title="Zoom in">+</button>
+              <button class="iconBtn" id="isoZoomOut" title="Zoom out">&minus;</button>
+              <button class="iconBtn" id="isoZoomReset" title="Reset camera">&#8634;</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
 
-  <section class="area area-iso3d">
-    <div class="panelHead">
-      <h3>3D Isosurface</h3>
-      <span id="iso3dStatus" class="mono fine">Idle</span>
-    </div>
-    <div class="plotWrap">
-      <div id="plot3dIso"></div>
-      <div id="empty3dIso" class="empty3d">No data loaded.</div>
-      <div class="plotOverlay">
-        <button class="iconBtn" id="isoZoomIn" title="Zoom in">+</button>
-        <button class="iconBtn" id="isoZoomOut" title="Zoom out">&minus;</button>
-        <button class="iconBtn" id="isoZoomReset" title="Reset camera">&#8634;</button>
-      </div>
-    </div>
-  </section>
+  <footer class="statusbar">
+    <div id="status" role="status" title="Recent messages">Waiting for data file.</div>
+    <div id="sliceStats">No data loaded.</div>
+  </footer>
+</div>
 
-  <section class="area area-slice2d">
-    <div class="panelHead"><h3>2D Slice Map</h3></div>
-    <div class="canvasWrap">
-      <canvas id="heatmap"></canvas>
-      <div id="mapReadout" class="mapReadout hidden" aria-live="off"></div>
-      <div class="plotOverlay mapOverlay">
-        <button class="iconBtn" id="mapZoomIn" title="Zoom in (or scroll on the map)">+</button>
-        <button class="iconBtn" id="mapZoomOut" title="Zoom out">&minus;</button>
-        <button class="iconBtn" id="mapZoomReset" title="Show the whole slice (or double-click the map)">&#8634;</button>
-      </div>
+<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5" hidden>
+<input id="structureFile" type="file" accept=".rmc6f,.h5,.hdf5" hidden>
+<div id="statusLog" class="popover hidden" role="log" aria-label="Recent messages"></div>
+<div id="dropOverlay" class="dropOverlay hidden"><div class="dropCard">Drop the file to open it</div></div>
+<dialog id="helpDialog" aria-labelledby="helpTitle">
+  <div class="dlgHead"><h2 id="helpTitle">Keyboard shortcuts</h2><button type="button" class="iconBtn ghost" id="helpClose" title="Close (Esc)">&times;</button></div>
+  <div class="dlgBody">
+    <div>
+      <h3>Slices</h3>
+      <div class="keyRow"><span>Previous / next slice</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd></span></div>
+      <div class="keyRow"><span>Ten slices at a time</span><span><kbd>Shift</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></span></div>
+      <div class="keyRow"><span>First / last slice</span><span><kbd>Home</kbd><kbd>End</kbd></span></div>
+      <div class="keyRow"><span>Fixed axis</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></div>
+      <div class="keyRow"><span>Zoom the map</span><span><kbd>+</kbd><kbd>&minus;</kbd></span></div>
+      <div class="keyRow"><span>Whole slice</span><span><kbd>0</kbd></span></div>
     </div>
-    <div id="sliceStats" class="stats">No data loaded.</div>
-  </section>
-</main>
+    <div>
+      <h3>Window</h3>
+      <div class="keyRow"><span>Open a file</span><span><kbd>O</kbd></span></div>
+      <div class="keyRow"><span>Enlarge the map</span><span><kbd>F</kbd></span></div>
+      <div class="keyRow"><span>Show / hide the 3-D views</span><span><kbd>D</kbd></span></div>
+      <div class="keyRow"><span>Show / hide the side panel</span><span><kbd>B</kbd></span></div>
+      <div class="keyRow"><span>Light / dark theme</span><span><kbd>T</kbd></span></div>
+      <div class="keyRow"><span>This help</span><span><kbd>?</kbd></span></div>
+    </div>
+  </div>
+</dialog>
 
 <script src="./js/unified_hdf5.js"></script>
 <script>
@@ -646,7 +850,12 @@ const state = {
   readoutPt:null,
   globalHist:null,
   autoSigned:false,
-  resizeTimer:0
+  resizeTimer:0,
+  statusLog:[],
+  ui:null,
+  stale3d:{plane:false, iso:false},
+  stepTimer:0,
+  axisIndex:{}
 };
 
 const COLOR_MAPS = {
@@ -673,11 +882,26 @@ function activeColorStops(){
 
 function status(msg, kind=""){
   const e = $("status");
+  if(!e) return;
   e.textContent = msg;
   e.className = kind || "";
+  e.title = msg;
+  // Progress messages come and go; outcomes are kept in the message log.
+  if(kind){
+    state.statusLog.unshift({time:new Date(), msg, kind});
+    if(state.statusLog.length > 40) state.statusLog.length = 40;
+    const log = $("statusLog");
+    if(log && !log.classList.contains("hidden")) renderStatusLog();
+  }
 }
-function set3dStatus(msg){ $("plot3dStatus").textContent = msg; }
-function setIsoStatus(msg){ $("iso3dStatus").textContent = msg; }
+function setTextWithTitle(id, text){
+  const e = $(id);
+  if(!e) return;
+  e.textContent = text;
+  e.title = text;
+}
+function set3dStatus(msg){ setTextWithTitle("plot3dStatus", msg); }
+function setIsoStatus(msg){ setTextWithTitle("iso3dStatus", msg); }
 function makeLoadProgress(file){
   let last = 0;
   return (info={}) => {
@@ -1166,9 +1390,11 @@ function updateAxisOptionText(){
   if($("swapAxes")) $("swapAxes").textContent = `Swap ${labels[0]}/${labels[2]} data order`;
   const opts = $("axis") ? $("axis").options : null;
   if(opts && opts.length >= 3){
-    opts[0].textContent = `Fix ${labels[2]}, show ${labels[0]}-${labels[1]}`;
-    opts[1].textContent = `Fix ${labels[0]}, show ${labels[1]}-${labels[2]}`;
-    opts[2].textContent = `Fix ${labels[1]}, show ${labels[0]}-${labels[2]}`;
+    const planes = [[0, 1, 2], [1, 2, 0], [0, 2, 1]];
+    planes.forEach(([a, b, fixed], n) => {
+      opts[n].textContent = `${labels[a]}-${labels[b]}`;
+      opts[n].title = `Fix ${labels[fixed]}, show ${labels[a]}-${labels[b]}`;
+    });
   }
   const fieldLabels = [
     ["pNH",`n${labels[0]}`],["pNK",`n${labels[1]}`],["pNL",`n${labels[2]}`],
@@ -4591,7 +4817,7 @@ function setPlaneInputs(){
   $("planeMove").max = String(Math.max(0, p.slider.length - 1));
   $("planeMove").value = String(p.sliderIndex);
   const t = p.slider[p.sliderIndex] || 0;
-  $("planeMoveVal").textContent = `Plane center: (${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) | t=${fmt(t)} | n=(${fmt(p.normalUnit[0],3)}, ${fmt(p.normalUnit[1],3)}, ${fmt(p.normalUnit[2],3)})`;
+  setTextWithTitle("planeMoveVal", `Plane center: (${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) | t=${fmt(t)} | n=(${fmt(p.normalUnit[0],3)}, ${fmt(p.normalUnit[1],3)}, ${fmt(p.normalUnit[2],3)})`);
 }
 
 function applyPlaneInputs(){
@@ -4687,7 +4913,7 @@ function setAvgVolInputs(){
   $("avgMove").value = String(p.sliderIndex);
   const t = p.slider[p.sliderIndex] || 0;
   const slab = Math.max(0.001, Number($("slabWidth").value) || 0.25);
-  $("avgMoveVal").textContent = `Volume average: c=(${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) | t=${fmt(t)} | slab=+/-${fmt(slab,3)}`;
+  setTextWithTitle("avgMoveVal", `Volume average: c=(${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) | t=${fmt(t)} | slab=+/-${fmt(slab,3)}`);
 }
 
 function applyAvgVolInputs(){
@@ -5310,11 +5536,8 @@ function prepareHeatmapCanvas(){
 
 function draw2d(options={}){
   if(!state.res){
-    const {ctx} = prepareHeatmapCanvas();
-    ctx.fillStyle = themePlot().mutedText;
-    ctx.font = "15px Consolas";
-    ctx.fillText("No data loaded.", 18, 32);
-    $("sliceStats").textContent = "No data loaded.";
+    prepareHeatmapCanvas();
+    setTextWithTitle("sliceStats", "No data loaded.");
     $("levelInfo").textContent = "Display levels: -";
     state.lastSlice = null;
     state.lastBar = null;
@@ -5362,7 +5585,7 @@ function draw2d(options={}){
   const validText = sl.type !== "axis" ? ` | valid=${sl.valid}/${sl.rows*sl.cols}` : "";
   const sampleText = sl.decimated ? ` | sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols} (${sl.strides.join("x")})` : "";
   const shown = `[${levels.min.toExponential(3)}, ${levels.max.toExponential(3)}]`;
-  $("sliceStats").textContent = `${sl.plane} | display=${mode} | slice min=${stats.min.toExponential(4)} max=${stats.max.toExponential(4)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`;
+  setTextWithTitle("sliceStats", `${sl.plane} | display=${mode} | slice min=${stats.min.toExponential(4)} max=${stats.max.toExponential(4)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`);
   const clipText = levels.clip && levels.clip !== "minmax" ? ` ${$("levelClip").selectedOptions[0].textContent.replace(/\s+/g, "")}` : "";
   $("levelInfo").textContent = `${levels.source}${clipText} levels ${shown} | range [${levels.rawMin.toExponential(3)}, ${levels.rawMax.toExponential(3)}]`;
   drawLevelHistogram(stats.hist, levels);
@@ -5680,12 +5903,18 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
 }
 
 function updateSliceValue(sl){
-  if(!state.res){ $("sliceVal").textContent = "Slice: -"; return; }
-  if(sl.type === "plane"){
-    $("sliceVal").textContent = sl.plane;
-  }else{
-    $("sliceVal").textContent = `Slice: ${sl.plane}`;
-  }
+  const out = $("sliceVal");
+  if(!out) return;
+  if(!state.res || !sl){ out.textContent = "-"; out.title = ""; return; }
+  if(sl.type !== "axis"){ setTextWithTitle("sliceVal", sl.plane); return; }
+  const m = /^(.*)\[\d+\] = (.*)$/.exec(sl.plane);
+  const n = state.res.shape[sl.fixedAxis];
+  const of = document.createElement("span");
+  of.className = "of";
+  of.textContent = `${sl.fixedIndex + 1} / ${n}`;
+  out.textContent = m ? `${m[1]} = ${m[2]}` : sl.plane;
+  out.append(of);
+  out.title = `${sl.plane}, slice ${sl.fixedIndex + 1} of ${n}`;
 }
 
 function gridRangeForLimits(axis, requestedMin, requestedMax){
@@ -5946,7 +6175,7 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -5973,6 +6202,12 @@ function syncControls(){
   $("axisControls").classList.toggle("hidden", !axisMode);
   $("planeControls").classList.toggle("hidden", !planeMode);
   $("avgControls").classList.toggle("hidden", !avgMode);
+  $("axisHelp").classList.toggle("hidden", !axisMode);
+  $("axisPick").classList.toggle("hidden", !axisMode);
+  $("planeMoveGroup").classList.toggle("hidden", !planeMode);
+  $("avgMoveGroup").classList.toggle("hidden", !avgMode);
+  for(const b of document.querySelectorAll(".stepBtn")) b.disabled = !has;
+  $("welcome").classList.toggle("hidden", has);
   updateAxisOptionText();
   if(has && axisMode) updateAxisIndexBounds();
   if(has && planeMode) setPlaneInputs();
@@ -6004,6 +6239,7 @@ function updateMeta(){
     $("tbKind").textContent = "Type -";
     $("tbGrid").textContent = "Grid -";
     $("tbRange").textContent = "Axes -";
+    chipTitles();
     return;
   }
   $("mFile").textContent = r.file;
@@ -6028,6 +6264,11 @@ function updateMeta(){
   $("tbKind").textContent = r.dataKind && r.dataKind.label ? r.dataKind.label : "Type -";
   $("tbGrid").textContent = `${r.shape[0]} x ${r.shape[1]} x ${r.shape[2]}`;
   $("tbRange").textContent = `${labels[0]} ${fmt(b.min[0],2)}..${fmt(b.max[0],2)} ${labels[1]} ${fmt(b.min[1],2)}..${fmt(b.max[1],2)} ${labels[2]} ${fmt(b.min[2],2)}..${fmt(b.max[2],2)}`;
+  chipTitles();
+}
+
+function chipTitles(){
+  for(const id of ["tbFile","tbKind","tbGrid","tbRange"]) $(id).title = $(id).textContent;
 }
 
 const CELL_INPUT_IDS = ["cellA","cellB","cellC","cellAlpha","cellBeta","cellGamma"];
@@ -6504,7 +6745,17 @@ function plotBoundsWithAxisOverlay(res=state.res){
   return {min,max};
 }
 
-function sceneLayout(title, camera){
+// Plotly frames a 3-D scene by the view height, so a tall, narrow view clips
+// its sides; the default camera backs off in proportion.
+function defaultSceneCamera(plotId){
+  const gd = plotId ? $(plotId) : null;
+  const r = gd && gd.getBoundingClientRect ? gd.getBoundingClientRect() : null;
+  if(!r || !r.width || !r.height || r.height <= r.width) return undefined;
+  const f = 1.25 * Math.min(2.2, r.height / r.width);
+  return {eye:{x:f, y:f, z:f}};
+}
+
+function sceneLayout(title, camera, plotId=null){
   const tc = themePlot();
   const b = plotBoundsWithAxisOverlay(state.res);
   const labels = renderAxisLabels();
@@ -6531,7 +6782,7 @@ function sceneLayout(title, camera){
       zaxis:sceneAxis(2),
       aspectmode:"manual",
       aspectratio:{x:span[0]/maxSpan, y:span[1]/maxSpan, z:span[2]/maxSpan},
-      camera:camera || undefined
+      camera:camera || defaultSceneCamera(plotId)
     },
     font:{color:tc.text}
   };
@@ -6686,7 +6937,7 @@ function makePlane3dTrace(sl, stats, levels){
 }
 
 async function updatePlane3dFast(){
-  if(!state.res || $("showPlane3d").value !== "1") return;
+  if(!state.res || !view3dShown("plane")) return;
   if(!window.Plotly && !state.plotlyPromise) return;
   state.planeFastQueued = true;
   if(state.planeFastBusy) return;
@@ -6695,7 +6946,7 @@ async function updatePlane3dFast(){
     const Plotly = await ensurePlotly();
     while(state.planeFastQueued){
       state.planeFastQueued = false;
-      if(!state.res || $("showPlane3d").value !== "1") break;
+      if(!state.res || !view3dShown("plane")) break;
       const resHint = fastMoveSliceResolution();
       const sl = currentSlice(resHint || 72, MAX_3D_SLICE_CELLS, true, {fast:true});
       const mode = $("scale").value;
@@ -6740,7 +6991,7 @@ async function updatePlane3dFast(){
           else await Plotly.restyle(gd, update, [0]);
         }
       }else{
-        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Slice Plane (${sl.type})`, keepCamera || liveCamera || state.cameras.plane), plotlyConfig());
+        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Slice Plane (${sl.type})`, keepCamera || liveCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
         wireCamera("plot3dPlane", "plane");
       }
       if(keepCamera) state.cameras.plane = cloneCamera(keepCamera);
@@ -6758,13 +7009,6 @@ async function renderPlane3d(Plotly){
   if(!state.res) return;
   const planeCamera = readSceneCamera("plot3dPlane") || state.cameras.plane;
   if(planeCamera) state.cameras.plane = planeCamera;
-  if($("showPlane3d").value !== "1"){
-    await Plotly.react("plot3dPlane", [], sceneLayout("Slice plane OFF", planeCamera || state.cameras.plane), plotlyConfig());
-    $("empty3dPlane").textContent = "Slice plane OFF.";
-    $("empty3dPlane").style.display = "flex";
-    set3dStatus("Plane off");
-    return;
-  }
   set3dStatus("Rendering plane...");
   const sl = currentSlice(180, MAX_3D_SLICE_CELLS, true);
   const mode = $("scale").value;
@@ -6790,13 +7034,13 @@ async function renderPlane3d(Plotly){
           ? `${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${transformedLabels[0]}=%{customdata[3]:.5g}<br>${transformedLabels[1]}=%{customdata[4]:.5g}<br>${transformedLabels[2]}=%{customdata[5]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`
           : `${labels[0]}=%{customdata[3]:.5g}<br>${labels[1]}=%{customdata[4]:.5g}<br>${labels[2]}=%{customdata[5]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`
       };
-      await Plotly.react("plot3dPlane", withHklAxisOverlay([trace]), sceneLayout(`Slice Points (${sl.type})`, planeCamera || state.cameras.plane), plotlyConfig());
+      await Plotly.react("plot3dPlane", withHklAxisOverlay([trace]), sceneLayout(`Slice Points (${sl.type})`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
       wireCamera("plot3dPlane", "plane");
       $("empty3dPlane").style.display = "none";
       const sampled = sl.decimated ? `, sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols}` : "";
       set3dStatus(`Rendered ${plot.x.length.toLocaleString()} slice points${sampled}`);
     }else{
-      await Plotly.react("plot3dPlane", [], sceneLayout("No valid slice plane cells", planeCamera || state.cameras.plane), plotlyConfig());
+      await Plotly.react("plot3dPlane", [], sceneLayout("No valid slice plane cells", planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
       $("empty3dPlane").textContent = "No valid values for 3D plane.";
       $("empty3dPlane").style.display = "flex";
       set3dStatus("No valid plane cells");
@@ -6824,7 +7068,7 @@ async function renderPlane3d(Plotly){
     flatshading:false,
     lighting:{ambient:0.9, diffuse:0.35, specular:0.05, roughness:0.9}
   };
-  await Plotly.react("plot3dPlane", withHklAxisOverlay([trace]), sceneLayout(`Slice Plane (${sl.type})`, planeCamera || state.cameras.plane), plotlyConfig());
+  await Plotly.react("plot3dPlane", withHklAxisOverlay([trace]), sceneLayout(`Slice Plane (${sl.type})`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
   wireCamera("plot3dPlane", "plane");
   captureSceneCamera("plot3dPlane", "plane");
   $("empty3dPlane").style.display = "none";
@@ -6838,17 +7082,10 @@ async function renderIso3d(Plotly){
   if(isoCamera) state.cameras.iso = isoCamera;
   if(dimensionLabel(state.res.shape) !== "3D"){
     const dim = dimensionLabel(state.res.shape);
-    await Plotly.react("plot3dIso", [], sceneLayout(`${dim} data: no 3D isosurface`, isoCamera || state.cameras.iso), plotlyConfig());
+    await Plotly.react("plot3dIso", [], sceneLayout(`${dim} data: no 3D isosurface`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
     $("empty3dIso").textContent = `${dim} data has no 3D isosurface.`;
     $("empty3dIso").style.display = "flex";
     setIsoStatus(`${dim} data`);
-    return;
-  }
-  if($("showIso3d").value !== "1"){
-    await Plotly.react("plot3dIso", [], sceneLayout("Isosurface OFF", isoCamera || state.cameras.iso), plotlyConfig());
-    $("empty3dIso").textContent = "Isosurface OFF.";
-    $("empty3dIso").style.display = "flex";
-    setIsoStatus("Iso off");
     return;
   }
   setIsoStatus("Sampling volume...");
@@ -6858,7 +7095,7 @@ async function renderIso3d(Plotly){
   const count = Math.max(1, Math.min(12, Math.floor(Number($("isoCount").value) || 4)));
   const sample = buildVolumeSample(state.res, mode, cap);
   if(!sample.count){
-    await Plotly.react("plot3dIso", [], sceneLayout("No finite isosurface values", isoCamera || state.cameras.iso), plotlyConfig());
+    await Plotly.react("plot3dIso", [], sceneLayout("No finite isosurface values", isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
     $("empty3dIso").textContent = "No finite values for isosurface.";
     $("empty3dIso").style.display = "flex";
     setIsoStatus("No finite values");
@@ -6927,7 +7164,7 @@ async function renderIso3d(Plotly){
         : `${labels[0]}=%{x:.5g}<br>${labels[1]}=%{y:.5g}<br>${labels[2]}=%{z:.5g}<br>${valLabel}=%{value:.5g}<extra></extra>`
     };
   }
-  await Plotly.react("plot3dIso", withHklAxisOverlay([trace]), sceneLayout(`Isosurface P${fmt(pct,2)} (${mode})`, isoCamera || state.cameras.iso), plotlyConfig());
+  await Plotly.react("plot3dIso", withHklAxisOverlay([trace]), sceneLayout(`Isosurface P${fmt(pct,2)} (${mode})`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
   wireCamera("plot3dIso", "iso");
   captureSceneCamera("plot3dIso", "iso");
   $("empty3dIso").style.display = "none";
@@ -6936,12 +7173,30 @@ async function renderIso3d(Plotly){
   setIsoStatus(`${trace.type === "scatter3d" ? "Rendered fallback cloud" : "Rendered"} P${fmt(pct,2)}, finite ${sample.count.toLocaleString()} / sampled ${sample.total.toLocaleString()} (${sample.strides.join("x")})${invalidText}${skippedText}`);
 }
 
-async function render3d(){
+// Draws the 3-D views on screen, or the ones named (an export of a hidden
+// view). Views left out of a general redraw are marked stale and drawn once
+// they are shown.
+async function render3d(which=null){
   if(!state.res) return;
   if(state.moveActive) return;
+  const views = which || ["plane", "iso"].filter(view3dShown);
+  if(!which) for(const v of ["plane", "iso"]) if(!views.includes(v)) state.stale3d[v] = true;
+  if(!views.length) return;
   const Plotly = await ensurePlotly();
-  await renderPlane3d(Plotly);
-  await renderIso3d(Plotly);
+  if(views.includes("plane")){ state.stale3d.plane = false; await renderPlane3d(Plotly); }
+  if(views.includes("iso")){ state.stale3d.iso = false; await renderIso3d(Plotly); }
+}
+
+function view3dShown(which){
+  const el = $(which === "plane" ? "viewPlane" : "viewIso");
+  return !!el && el.getClientRects().length > 0;
+}
+
+function refreshStale3d(){
+  if(!state.res || state.moveActive) return;
+  if($("auto3d") && $("auto3d").value !== "1") return;
+  const views = ["plane", "iso"].filter(v => state.stale3d[v] && view3dShown(v));
+  if(views.length) render3d(views).catch(err => status(`3D render failed: ${err.message}`, "err"));
 }
 
 function zoomPlot(plotId, key, factor){
@@ -7404,7 +7659,7 @@ function downloadDataUrl(name, dataUrl){
 async function savePlotSvg(plotId, tag){
   if(!state.res) return;
   try{
-    await render3d();
+    await render3d([plotId === "plot3dPlane" ? "plane" : "iso"]);
     const Plotly = await ensurePlotly();
     const fig = exportPlotFigure(plotId);
     if(!fig) throw new Error("Target 3D plot is empty.");
@@ -7463,7 +7718,7 @@ function exportPlotFigure(plotId){
 async function savePlotHtml(plotId, tag, title){
   if(!state.res) return;
   try{
-    await render3d();
+    await render3d([plotId === "plot3dPlane" ? "plane" : "iso"]);
     const fig = exportPlotFigure(plotId);
     if(!fig || !Array.isArray(fig.data) || !fig.data.length) throw new Error("Target 3D plot is empty.");
     const payload = JSON.stringify({fig, title, createdAt:new Date().toISOString()}).replace(/</g, "\\u003c");
@@ -7523,6 +7778,7 @@ async function onFile(file){
   resetAvgVolState();
   $("sliceMode").value = "axis";
   $("axis").value = "l";
+  state.axisIndex = {};
   // Widen the slider first: a range input clamps a value above its old max.
   $("idx").min = "0";
   $("idx").max = String(Math.max(0, parsed.shape[2] - 1));
@@ -7553,17 +7809,337 @@ async function onFile(file){
   scheduleRender3d(0);
 }
 
-function bind(){
-  const drop = $("drop"), file = $("file");
-  drop.addEventListener("click", () => file.click());
-  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("drag"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
-  drop.addEventListener("drop", e => {
-    e.preventDefault();
-    drop.classList.remove("drag");
-    onFile(e.dataTransfer.files && e.dataTransfer.files[0]).catch(err => status(`File load failed: ${err.message}`, "err"));
+// ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
+
+const UI_KEY = "view3ds-ui";
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5};
+const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", render:"3-D rendering", export:"Export"};
+
+function loadUiPrefs(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(UI_KEY) || "null"); }catch(_){}
+  const ui = {...UI_DEFAULTS, max:null};
+  if(saved && typeof saved === "object"){
+    if(["map", "split"].includes(saved.layout)) ui.layout = saved.layout;
+    if(["plane", "iso", "both"].includes(saved.dock)) ui.dock = saved.dock;
+    if(PAGE_TITLES[saved.tab]) ui.tab = saved.tab;
+    if(typeof saved.side === "boolean") ui.side = saved.side;
+    if(Number.isFinite(saved.dockW)) ui.dockW = clamp(saved.dockW, 0.2, 0.75);
+    if(Number.isFinite(saved.stack)) ui.stack = clamp(saved.stack, 0.15, 0.85);
+  }
+  return ui;
+}
+
+function saveUiPrefs(){
+  const {layout, dock, tab, side, dockW, stack} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack})); }catch(_){}
+}
+
+function applyUi(){
+  const ui = state.ui;
+  $("app").dataset.side = ui.side ? "open" : "closed";
+  const work = $("work");
+  work.dataset.layout = ui.layout;
+  work.dataset.max = ui.max || "";
+  work.style.setProperty("--dock-w", `${(ui.dockW * 100).toFixed(1)}%`);
+  const body = $("dockBody");
+  body.dataset.show = ui.dock;
+  body.style.setProperty("--stack", `${(ui.stack * 100).toFixed(1)}%`);
+  for(const b of document.querySelectorAll("[data-tab]")){
+    const on = ui.side && b.dataset.tab === ui.tab;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+  }
+  for(const p of document.querySelectorAll(".page")) p.classList.toggle("on", p.dataset.page === ui.tab);
+  $("sideTitle").textContent = PAGE_TITLES[ui.tab];
+  for(const b of document.querySelectorAll("[data-layout-btn]")) b.classList.toggle("on", b.dataset.layoutBtn === ui.layout);
+  for(const b of document.querySelectorAll("[data-dock]")) b.classList.toggle("on", b.dataset.dock === ui.dock);
+  $("mapMax").title = ui.max === "map" ? "Restore the layout (F or Esc)" : "Enlarge the map (F)";
+  $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
+  saveUiPrefs();
+}
+
+function setUi(patch){
+  Object.assign(state.ui, patch);
+  applyUi();
+}
+
+function showSidePage(tab){
+  if(state.ui) setUi({tab, side:true});
+}
+
+function openDataFile(file){
+  if(!file) return;
+  onFile(file).catch(err => status(`File load failed: ${err.message}`, "err"));
+}
+
+function activeSliceSlider(){
+  const mode = $("sliceMode").value;
+  return $(mode === "plane" ? "planeMove" : mode === "avgvol" ? "avgMove" : "idx");
+}
+
+// Moves the active slice slider as a drag would. The settling "change" step
+// waits until the steps stop, so a held key stays fast.
+function stepSlice(delta){
+  const el = activeSliceSlider();
+  if(!state.res || !el || el.disabled) return;
+  const lo = Number(el.min), hi = Number(el.max), cur = Number(el.value);
+  const next = delta === -Infinity ? lo : delta === Infinity ? hi : clamp(cur + delta, lo, hi);
+  if(next === cur) return;
+  el.value = String(next);
+  el.dispatchEvent(new Event("input", {bubbles:true}));
+  clearTimeout(state.stepTimer);
+  state.stepTimer = setTimeout(() => el.dispatchEvent(new Event("change", {bubbles:true})), 260);
+}
+
+function pickAxis(n){
+  const sel = $("axis");
+  if(!state.res || sel.disabled || $("sliceMode").value !== "axis") return;
+  if(n < 0 || n >= sel.options.length || sel.selectedIndex === n) return;
+  sel.selectedIndex = n;
+  sel.dispatchEvent(new Event("change", {bubbles:true}));
+}
+
+function renderStatusLog(){
+  const box = $("statusLog");
+  box.textContent = "";
+  const head = document.createElement("h3");
+  head.textContent = "Recent messages";
+  box.append(head);
+  if(!state.statusLog.length){
+    const row = document.createElement("div");
+    row.className = "logItem";
+    row.textContent = $("status").textContent;
+    box.append(row);
+    return;
+  }
+  for(const item of state.statusLog){
+    const row = document.createElement("div");
+    row.className = `logItem ${item.kind}`;
+    const time = document.createElement("time");
+    time.textContent = item.time.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+    const msg = document.createElement("div");
+    msg.className = "msg";
+    msg.textContent = item.msg;
+    row.append(time, msg);
+    box.append(row);
+  }
+}
+
+function toggleStatusLog(show){
+  const box = $("statusLog");
+  const open = show === undefined ? box.classList.contains("hidden") : show;
+  if(open) renderStatusLog();
+  box.classList.toggle("hidden", !open);
+}
+
+function openHelp(){
+  const dlg = $("helpDialog");
+  if(dlg && !dlg.open && typeof dlg.showModal === "function") dlg.showModal();
+}
+
+// Drag handle between two panes. onDrag gets the pointer event; arrow keys
+// call onKey with -1 or +1; a double click resets.
+function bindSplitter(el, {rows=false, onDrag, onKey, onReset}){
+  el.addEventListener("pointerdown", ev => {
+    if(ev.button !== 0) return;
+    ev.preventDefault();
+    try{ el.setPointerCapture(ev.pointerId); }catch(_){}
+    el.classList.add("drag");
+    document.body.classList.add("resizing");
+    document.body.classList.toggle("rows", rows);
+    const up = () => {
+      el.classList.remove("drag");
+      document.body.classList.remove("resizing", "rows");
+      el.removeEventListener("pointermove", onDrag);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      el.removeEventListener("lostpointercapture", up);
+    };
+    el.addEventListener("pointermove", onDrag);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    el.addEventListener("lostpointercapture", up);
   });
-  file.addEventListener("change", e => onFile(e.target.files && e.target.files[0]).catch(err => status(`File load failed: ${err.message}`, "err")));
+  el.addEventListener("dblclick", onReset);
+  el.addEventListener("keydown", ev => {
+    const d = {ArrowLeft:-1, ArrowUp:-1, ArrowRight:1, ArrowDown:1}[ev.key];
+    if(!d) return;
+    ev.preventDefault();
+    onKey(d);
+  });
+}
+
+// Repaints the map, the level histogram and the 3-D plots when their boxes
+// change size: window resizes, splitter drags, panels opening or closing.
+function observeViewSizes(){
+  const targets = {mapWrap:"map", levelHist:"hist", planeWrap:"plot3dPlane", isoWrap:"plot3dIso"};
+  const pending = new Set();
+  let raf = 0;
+  const flush = () => {
+    raf = 0;
+    if(pending.has("map")){
+      if(state.res && state.lastSlice) paint2d(); else draw2d();
+      hideReadout();
+    }
+    if(pending.has("hist") && state.lastSlice) drawLevelHistogram(state.lastSlice.transformed.hist, state.lastSlice.levels);
+    if(window.Plotly && Plotly.Plots){
+      for(const id of ["plot3dPlane", "plot3dIso"]){
+        const gd = $(id);
+        if(!pending.has(id) || !gd || !gd._fullLayout || !gd.getClientRects().length) continue;
+        try{ Promise.resolve(Plotly.Plots.resize(gd)).catch(() => {}); }catch(_){}
+      }
+    }
+    pending.clear();
+    refreshStale3d();
+  };
+  const onResize = entries => {
+    for(const entry of entries) pending.add(targets[entry.target.id]);
+    if(!raf) raf = requestAnimationFrame(flush);
+  };
+  if(typeof ResizeObserver === "function"){
+    const ro = new ResizeObserver(onResize);
+    for(const id of Object.keys(targets)) if($(id)) ro.observe($(id));
+  }else{
+    window.addEventListener("resize", () => onResize(Object.keys(targets).map(id => ({target:$(id)}))));
+  }
+}
+
+function onShortcut(ev){
+  if(ev.defaultPrevented || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const t = ev.target, tag = t && t.tagName;
+  if(t && t.isContentEditable) return;
+  if(tag === "TEXTAREA" || tag === "SELECT") return;
+  if(tag === "INPUT"){
+    // A focused slider keeps its own arrow keys; text fields keep every key.
+    if(t.type === "range"){ if(/^(Arrow|Page|Home|End)/.test(ev.key)) return; }
+    else if(!["checkbox", "radio", "button"].includes(t.type)) return;
+  }
+  if($("helpDialog").open) return;
+  const step = ev.shiftKey ? 10 : 1;
+  let handled = true;
+  switch(ev.key){
+    case "ArrowLeft": case "ArrowDown": stepSlice(-step); break;
+    case "ArrowRight": case "ArrowUp": stepSlice(step); break;
+    case "PageDown": stepSlice(-10); break;
+    case "PageUp": stepSlice(10); break;
+    case "Home": stepSlice(-Infinity); break;
+    case "End": stepSlice(Infinity); break;
+    case "1": case "2": case "3": pickAxis(Number(ev.key) - 1); break;
+    case "+": case "=": zoom2dCenter(1.4); break;
+    case "-": case "_": zoom2dCenter(1 / 1.4); break;
+    case "0": resetZoom2d(); break;
+    case "f": case "F": setUi({max:state.ui.max === "map" ? null : "map"}); break;
+    case "d": case "D": setUi({layout:state.ui.layout === "map" ? "split" : "map", max:null}); break;
+    case "b": case "B": setUi({side:!state.ui.side}); break;
+    case "o": case "O": $("file").click(); break;
+    case "t": case "T": setTheme(isLightTheme() ? "dark" : "light"); break;
+    case "?": openHelp(); break;
+    case "Escape":
+      if(!$("statusLog").classList.contains("hidden")) toggleStatusLog(false);
+      else if(state.ui.max) setUi({max:null});
+      else handled = false;
+      break;
+    default: handled = false;
+  }
+  if(handled) ev.preventDefault();
+}
+
+function bindLayout(){
+  state.ui = loadUiPrefs();
+  applyUi();
+
+  const pick = () => $("file").click();
+  $("openFile").addEventListener("click", pick);
+  $("welcomeOpen").addEventListener("click", pick);
+  $("drop").addEventListener("click", pick);
+  $("drop").addEventListener("keydown", ev => {
+    if(ev.key !== "Enter" && ev.key !== " ") return;
+    ev.preventDefault();
+    pick();
+  });
+  $("dataset").addEventListener("click", () => showSidePage("data"));
+
+  // Files can be dropped anywhere in the window.
+  const overlay = $("dropOverlay");
+  const hasFiles = ev => !!ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes("Files");
+  let dragDepth = 0;
+  window.addEventListener("dragenter", ev => {
+    if(!hasFiles(ev)) return;
+    ev.preventDefault();
+    dragDepth++;
+    overlay.classList.remove("hidden");
+  });
+  window.addEventListener("dragover", ev => {
+    if(!hasFiles(ev)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+  });
+  window.addEventListener("dragleave", ev => {
+    if(!hasFiles(ev)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if(!dragDepth) overlay.classList.add("hidden");
+  });
+  window.addEventListener("drop", ev => {
+    if(!hasFiles(ev)) return;
+    ev.preventDefault();
+    dragDepth = 0;
+    overlay.classList.add("hidden");
+    openDataFile(ev.dataTransfer.files && ev.dataTransfer.files[0]);
+  });
+
+  for(const b of document.querySelectorAll("[data-tab]")){
+    b.addEventListener("click", () => {
+      const tab = b.dataset.tab;
+      setUi(state.ui.side && state.ui.tab === tab ? {side:false} : {side:true, tab});
+    });
+  }
+  $("sideClose").addEventListener("click", () => setUi({side:false}));
+  for(const b of document.querySelectorAll("[data-layout-btn]")) b.addEventListener("click", () => setUi({layout:b.dataset.layoutBtn, max:null}));
+  for(const b of document.querySelectorAll("[data-dock]")) b.addEventListener("click", () => setUi({dock:b.dataset.dock, layout:"split"}));
+  $("mapMax").addEventListener("click", () => setUi({max:state.ui.max === "map" ? null : "map"}));
+  $("dockMax").addEventListener("click", () => setUi({max:state.ui.max === "dock" ? null : "dock"}));
+  $("dockHide").addEventListener("click", () => setUi({layout:"map", max:null}));
+  for(const b of document.querySelectorAll(".stepBtn")) b.addEventListener("click", () => stepSlice(Number(b.dataset.step)));
+
+  bindSplitter($("dockSplit"), {
+    onDrag:ev => {
+      const r = $("work").getBoundingClientRect();
+      setUi({dockW:clamp((r.right - ev.clientX) / Math.max(1, r.width), 0.2, 0.75)});
+    },
+    onKey:d => setUi({dockW:clamp(state.ui.dockW - 0.03 * d, 0.2, 0.75)}),
+    onReset:() => setUi({dockW:UI_DEFAULTS.dockW})
+  });
+  bindSplitter($("stackSplit"), {
+    rows:true,
+    onDrag:ev => {
+      const r = $("dockBody").getBoundingClientRect();
+      setUi({stack:clamp((ev.clientY - r.top) / Math.max(1, r.height), 0.15, 0.85)});
+    },
+    onKey:d => setUi({stack:clamp(state.ui.stack + 0.04 * d, 0.15, 0.85)}),
+    onReset:() => setUi({stack:UI_DEFAULTS.stack})
+  });
+
+  $("status").addEventListener("click", () => toggleStatusLog());
+  document.addEventListener("pointerdown", ev => {
+    const log = $("statusLog");
+    if(log.classList.contains("hidden") || log.contains(ev.target) || $("status").contains(ev.target)) return;
+    toggleStatusLog(false);
+  });
+  $("helpBtn").addEventListener("click", openHelp);
+  $("helpClose").addEventListener("click", () => $("helpDialog").close());
+  $("helpDialog").addEventListener("click", ev => { if(ev.target === $("helpDialog")) $("helpDialog").close(); });
+  document.addEventListener("keydown", onShortcut);
+  observeViewSizes();
+}
+
+function bind(){
+  $("file").addEventListener("change", e => {
+    const file = e.target.files && e.target.files[0];
+    // Clear the input so the same file can be opened again.
+    e.target.value = "";
+    openDataFile(file);
+  });
 
   $("coordMode").addEventListener("change", () => {
     updateAxisOptionText();
@@ -7636,9 +8212,24 @@ function bind(){
       applyShownVolumeSafely();
     });
   }
-  $("sliceMode").addEventListener("change", () => { syncControls(); draw2d(); scheduleRender3d(); });
-  $("axis").addEventListener("change", () => { updateAxisIndexBounds(); draw2d(); scheduleRender3d(); });
+  $("sliceMode").addEventListener("change", () => {
+    // Plane and slab cuts are set up in the Slice panel.
+    if($("sliceMode").value !== "axis") showSidePage("slice");
+    syncControls();
+    draw2d();
+    scheduleRender3d();
+  });
+  $("axis").addEventListener("change", () => {
+    // Each axis keeps its own slice; one not visited yet opens on its middle slice.
+    updateAxisIndexBounds();
+    const idx = $("idx"), lo = Number(idx.min), hi = Number(idx.max);
+    const saved = state.axisIndex[$("axis").value];
+    idx.value = String(Number.isFinite(saved) ? clamp(saved, lo, hi) : Math.round((lo + hi) / 2));
+    draw2d();
+    scheduleRender3d();
+  });
   $("idx").addEventListener("input", () => {
+    state.axisIndex[$("axis").value] = Number($("idx").value);
     startSliceMoveCameraLock();
     if(state.renderTimer){ clearTimeout(state.renderTimer); state.renderTimer = 0; }
     scheduleDraw2d({fast:true, sync3d:true});
@@ -7703,14 +8294,18 @@ function bind(){
   for(const id of ["avRes","avScale","slabWidth","slabN"]){
     $(id).addEventListener("change", () => { setAvgVolInputs(); draw2d(); scheduleRender3d(); });
   }
-  for(const id of ["isoPct","isoCount","voxelCap","showPlane3d","showIso3d"]){
+  for(const id of ["isoPct","isoCount","voxelCap"]){
     $(id).addEventListener("change", () => {
       if(id === "voxelCap") updateShownVolumeInputs();
       scheduleRender3d();
     });
   }
   $("auto3d").addEventListener("change", () => { if($("auto3d").value === "1") scheduleRender3d(0); });
-  $("render3d").addEventListener("click", () => render3d().catch(err => status(`3D render failed: ${err.message}`, "err")));
+  $("render3d").addEventListener("click", () => {
+    // Rendering draws the views on screen, so bring the 3-D dock back first.
+    if(state.ui && (state.ui.layout === "map" || state.ui.max === "map")) setUi({layout:"split", max:null});
+    render3d().catch(err => status(`3D render failed: ${err.message}`, "err"));
+  });
   $("savePng").addEventListener("click", savePng);
   $("saveSliceSvg").addEventListener("click", saveSliceSvg);
   $("saveCsv").addEventListener("click", saveCsv);
@@ -7730,24 +8325,15 @@ function bind(){
   $("planeZoomOut").addEventListener("click", () => zoomPlot("plot3dPlane", "plane", 1.22));
   $("planeZoomReset").addEventListener("click", () => {
     state.cameras.plane = null;
-    if(window.Plotly) Plotly.relayout($("plot3dPlane"), {"scene.camera":null});
+    if(window.Plotly) Plotly.relayout($("plot3dPlane"), {"scene.camera":defaultSceneCamera("plot3dPlane") || null});
   });
   $("isoZoomIn").addEventListener("click", () => zoomPlot("plot3dIso", "iso", 0.82));
   $("isoZoomOut").addEventListener("click", () => zoomPlot("plot3dIso", "iso", 1.22));
   $("isoZoomReset").addEventListener("click", () => {
     state.cameras.iso = null;
-    if(window.Plotly) Plotly.relayout($("plot3dIso"), {"scene.camera":null});
+    if(window.Plotly) Plotly.relayout($("plot3dIso"), {"scene.camera":defaultSceneCamera("plot3dIso") || null});
   });
-  window.addEventListener("resize", () => {
-    clearTimeout(state.resizeTimer);
-    state.resizeTimer = setTimeout(() => {
-      draw2d();
-      if(window.Plotly && Plotly.Plots){
-        Plotly.Plots.resize("plot3dPlane");
-        Plotly.Plots.resize("plot3dIso");
-      }
-    }, 120);
-  });
+  bindLayout();
   syncControls();
   draw2d();
 }
