@@ -666,6 +666,11 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <label>Voxel cap<input id="voxelCap" type="number" value="220000" min="5000" step="1000" disabled></label>
           <label>Auto refresh<select id="auto3d" disabled><option value="1" selected>On</option><option value="0">Off</option></select></label>
         </div>
+        <div class="row2">
+          <label>Samples<select id="isoSampling" disabled title="When the volume is thinned to the voxel cap: the mean of each block of voxels, or every n-th voxel"><option value="block" selected>Block means</option><option value="points">Every n-th voxel</option></select></label>
+          <label>Surface opacity<input id="isoOpacity" type="number" value="0.25" min="0.05" max="1" step="0.05" disabled></label>
+        </div>
+        <label class="check"><input id="isoSlices" type="checkbox" checked disabled>Show the slices in the isosurface view</label>
         <button id="render3d" class="alt" disabled>Render 3-D</button>
         <p class="fine">Only the 3-D views on screen are drawn. Pick them with the tabs above the 3-D dock, or hide the dock with <kbd>D</kbd>.</p>
       </div>
@@ -8357,8 +8362,8 @@ function updatePlotResInfo(){
   $("plotResPlane").textContent = r.plane || view3dShown("plane") ? samplingText(r.plane, unit) : "the 3-D slice plane is hidden";
   const size = displayIndexRanges(res).map(g => g[1] - g[0] + 1);
   const cap = Math.max(5000, Math.floor(Number($("voxelCap").value) || 220000));
-  const strides = chooseVolumeStrides(size, cap), counts = size.map((n, a) => Math.ceil(n / strides[a]));
-  const how = strides.every(s => s === 1) ? "every data point" : `stride ${strides.join(" x ")}`;
+  const strides = chooseVolumeStrides(size, cap), counts = volumePicks(res, displayIndexRanges(res), strides).map(p => p.length);
+  const how = strides.every(s => s === 1) ? "every data point" : `stride ${strides.join(" x ")}${isoBlockMeans(strides) ? ", block means" : ""}`;
   $("plotResIso").textContent = `${counts.join(" x ")} (~${(counts[0] * counts[1] * counts[2]).toLocaleString()} points), ${how}; ${isoSpacingText(res, strides)}`;
 }
 
@@ -8406,7 +8411,7 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","savePlanePng","saveIsoPng","res3dPlane","resIso","isoPct","isoCount","voxelCap","auto3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","savePlanePng","saveIsoPng","res3dPlane","resIso","isoPct","isoCount","voxelCap","auto3d","isoSampling","isoOpacity","isoSlices","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -9388,20 +9393,76 @@ function alignedPlotAxes(res){
   return map.includes(-1) || new Set(map).size !== 3 ? null : map;
 }
 
+// Sample indices along each axis at a stride, placed so that the grid point
+// nearest 0 is one of them; blocks then sit symmetrically about the origin.
+function volumePicks(res, ranges, strides){
+  return ranges.map((range, a) => {
+    const s = strides[a], z = clamp(indexNearestZero(res, a), range[0], range[1]);
+    const out = [];
+    for(let n=z - Math.floor((z - range[0]) / s) * s;n<=range[1];n+=s) out.push(n);
+    return out;
+  });
+}
+
+function isoBlockMeans(strides){
+  return strides.some(s => s > 1) && !($("isoSampling") && $("isoSampling").value === "points");
+}
+
+// The mean of the voxels with data in the block of strides around a sample
+// (centred for odd strides), within the shown volume.
+function blockMeanSampler(res, ranges, strides){
+  const [, n1, n2] = res.shape, I = res.I;
+  const before = strides.map(s => Math.floor((s - 1) / 2)), after = strides.map((s, a) => s - 1 - before[a]);
+  return (i, j, k) => {
+    const i0 = Math.max(ranges[0][0], i - before[0]), i1 = Math.min(ranges[0][1], i + after[0]);
+    const j0 = Math.max(ranges[1][0], j - before[1]), j1 = Math.min(ranges[1][1], j + after[1]);
+    const k0 = Math.max(ranges[2][0], k - before[2]), k1 = Math.min(ranges[2][1], k + after[2]);
+    let sum = 0, n = 0;
+    for(let a=i0;a<=i1;a++) for(let b=j0;b<=j1;b++){
+      const base = (a * n1 + b) * n2;
+      for(let c=k0;c<=k1;c++){
+        const v = I[base + c];
+        if(v === v){ sum += v; n++; }
+      }
+    }
+    return n ? sum / n : NaN;
+  };
+}
+
+function isoOpacity(){
+  return clamp(Number($("isoOpacity") && $("isoOpacity").value) || 0.25, 0.05, 1);
+}
+
+// The shown slices as planes in the isosurface view: the three linked
+// slices, or the current slice, in the isosurface's colours.
+function isoSliceTraces(mode, cmin, cmax){
+  const res = viewRes(), half = state.sliceHalf || 0;
+  const slices = triOn()
+    ? ["l", "k", "h"].map(axisName => buildAxisSlice(res, axisName, triIndexFor(axisName), 120 * 120, true, half))
+    : [currentSlice(120, 120 * 120, true)];
+  const out = [];
+  for(const sl of slices){
+    if(!sl || !sl.x3) continue;
+    const plot = plotMeshFromSlice(state.res, sl, sliceTransformed(sl, mode).values);
+    if(!plot.i.length) continue;
+    out.push({type:"mesh3d", x:plot.x, y:plot.y, z:plot.z, i:plot.i, j:plot.j, k:plot.k, intensity:plot.intensity, intensitymode:"vertex",
+      colorscale:plotlyColorscale(), cmin, cmax, showscale:false, opacity:0.85, flatshading:true, hoverinfo:"skip", name:sl.plane,
+      lighting:{ambient:0.95, diffuse:0.2, specular:0}});
+  }
+  return out;
+}
+
 function buildVolumeSample(res, mode, cap){
   const maxVox = Math.max(5000, Math.floor(cap || 220000));
   const ranges = displayIndexRanges(res);
   const shownShape = ranges.map(range => range[1] - range[0] + 1);
   const strides = chooseVolumeStrides(shownShape, maxVox);
-  const picks = ranges.map((range, a) => {
-    const out = [];
-    for(let n=range[0];n<=range[1];n+=strides[a]) out.push(n);
-    return out;
-  });
+  const picks = volumePicks(res, ranges, strides);
+  const valueAt = isoBlockMeans(strides) ? blockMeanSampler(res, ranges, strides) : (i, j, k) => res.I[idx3(res.shape, i, j, k)];
   const x = [], y = [], z = [], value = [], sorted = [], custom = [];
   let min = Infinity, max = -Infinity, finiteCount = 0, skippedGeometry = 0;
   const add = (i, j, k, q, p) => {
-    const v = transformedValue(res.I[idx3(res.shape, i, j, k)], mode);
+    const v = transformedValue(valueAt(i, j, k), mode);
     x.push(q[0]); y.push(q[1]); z.push(q[2]); value.push(v); custom.push([p[0], p[1], p[2], q[0], q[1], q[2]]);
     if(Number.isFinite(v)){
       sorted.push(v);
@@ -10015,7 +10076,16 @@ async function renderIso3d(Plotly){
   const cap = Math.max(5000, Math.floor(Number($("voxelCap").value) || 220000));
   const pct = Math.max(50, Math.min(99.99, Number($("isoPct").value) || 95));
   const count = Math.max(1, Math.min(12, Math.floor(Number($("isoCount").value) || 4)));
-  const sample = buildVolumeSample(viewRes(), mode, cap);
+  // The sample is kept while the data and the settings stay the same, so a
+  // slice move redraws the slices only.
+  const shown = viewRes();
+  const sampleKey = [mode, cap, $("isoSampling").value, JSON.stringify(displayIndexRanges(shown)), shown.filled, mode === "asinh" ? ASINH.s : ""].join("|");
+  let sample;
+  if(state.isoSample && state.isoSample.res === shown && state.isoSample.key === sampleKey) sample = state.isoSample.sample;
+  else{
+    sample = buildVolumeSample(shown, mode, cap);
+    state.isoSample = {res:shown, key:sampleKey, sample};
+  }
   if(!sample.count){
     await Plotly.react("plot3dIso", [], sceneLayout("No finite isosurface values", isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
     $("empty3dIso").textContent = "No finite values for isosurface.";
@@ -10059,7 +10129,7 @@ async function renderIso3d(Plotly){
       mode:"markers",
       x, y, z,
       customdata:custom,
-      marker:{size:2.2, opacity:0.26, color:val, colorscale:plotlyColorscale(), cmin:colorMin, cmax:colorMax},
+      marker:{size:2.2, opacity:isoOpacity(), color:val, colorscale:plotlyColorscale(), cmin:colorMin, cmax:colorMax},
       name:"Iso fallback cloud",
       hovertemplate:`${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${transformedLabels[0]}=%{customdata[3]:.5g}<br>${transformedLabels[1]}=%{customdata[4]:.5g}<br>${transformedLabels[2]}=%{customdata[5]:.5g}<br>${valLabel}=%{marker.color:.5g}<extra></extra>`
     };
@@ -10075,7 +10145,7 @@ async function renderIso3d(Plotly){
       isomax:isoMax,
       cmin:colorMin,
       cmax:colorMax,
-      opacity:0.24,
+      opacity:isoOpacity(),
       surface:{show:true, count, fill:0.92},
       caps:{x:{show:false}, y:{show:false}, z:{show:false}},
       colorscale:plotlyColorscale(),
@@ -10085,13 +10155,15 @@ async function renderIso3d(Plotly){
         : `${labels[0]}=%{x:.5g}<br>${labels[1]}=%{y:.5g}<br>${labels[2]}=%{z:.5g}<br>${valLabel}=%{value:.5g}<extra></extra>`
     };
   }
-  await Plotly.react("plot3dIso", withHklAxisOverlay([trace]), sceneLayout(`Isosurface P${fmt(pct,2)} (${mode})`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
+  const traces = [trace];
+  if($("isoSlices") && $("isoSlices").checked) traces.push(...isoSliceTraces(mode, colorMin, colorMax));
+  await Plotly.react("plot3dIso", withHklAxisOverlay(traces), sceneLayout(`Isosurface P${fmt(pct,2)} (${mode})`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
   wireCamera("plot3dIso", "iso");
   captureSceneCamera("plot3dIso", "iso");
   $("empty3dIso").style.display = "none";
   const invalidText = sample.invalid ? `, masked ${sample.invalid.toLocaleString()}` : "";
   const skippedText = sample.skippedGeometry ? `, skipped geometry ${sample.skippedGeometry.toLocaleString()}` : "";
-  setIsoStatus(`${trace.type === "scatter3d" ? "Rendered fallback cloud" : "Rendered"} P${fmt(pct,2)}, finite ${sample.count.toLocaleString()} / sampled ${sample.total.toLocaleString()} (stride ${sample.strides.join("x")}, ${isoSpacingText(state.res, sample.strides)})${invalidText}${skippedText}`);
+  setIsoStatus(`${trace.type === "scatter3d" ? "Rendered fallback cloud" : "Rendered"} P${fmt(pct,2)}, finite ${sample.count.toLocaleString()} / sampled ${sample.total.toLocaleString()} (stride ${sample.strides.join("x")}${isoBlockMeans(sample.strides) ? " block means" : ""}, ${isoSpacingText(state.res, sample.strides)})${invalidText}${skippedText}`);
 }
 
 // Draws the 3-D views on screen, or the ones named (an export of a hidden
@@ -11288,6 +11360,7 @@ function setShowMode(mode){
 // The data changed (mask, axis order, cell): symmetrized results no longer
 // fit it, and the other views are rebuilt.
 function dataChanged(){
+  state.isoSample = null;
   const hadSym = !!state.sym;
   state.sym = null;
   // The comparison stays on the grid (values and relabels keep voxel order); its fit follows the data.
@@ -12114,9 +12187,9 @@ function bind(){
   for(const id of ["avRes","avScale","slabWidth","slabN"]){
     $(id).addEventListener("change", () => { setAvgVolInputs(); draw2d(); scheduleRender3d(); });
   }
-  for(const id of ["isoPct","isoCount","voxelCap"]){
+  for(const id of ["isoPct","isoCount","voxelCap","isoSampling","isoOpacity","isoSlices"]){
     $(id).addEventListener("change", () => {
-      if(id === "voxelCap") updateShownVolumeInputs();
+      if(id === "voxelCap" || id === "isoSampling") updateShownVolumeInputs();
       scheduleRender3d();
     });
   }

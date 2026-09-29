@@ -258,3 +258,18 @@ test("the three linked slices share one point, one index per axis", () => {
   app.state.axisIndex.k = 40;
   assert.equal(app.context.triIndexFor("k"), 8, "and kept inside the grid");
 });
+
+test("isosurface samples sit about the origin and average their blocks", () => {
+  const app = loadApp();
+  const ax = Array.from({length:11}, (_, i) => -5 + i);                       // 0 at index 5
+  const values = Float64Array.from({length:11 ** 3}, (_, p) => p % 11);      // the value is the l index
+  const res = app.context.makeVolumeResult("iso.h5", [11, 11, 11], ax, ax, ax, values, "test", "hkl");
+  const ranges = [[0, 10], [0, 10], [0, 10]];
+  assert.deepEqual(Array.from(app.context.volumePicks(res, ranges, [3, 3, 3])[0]), [2, 5, 8], "the origin is a sample");
+  assert.deepEqual(Array.from(app.context.volumePicks(res, ranges, [1, 1, 1])[2]).length, 11, "stride 1 keeps every point");
+  const mean = app.context.blockMeanSampler(res, ranges, [3, 3, 3]);
+  assert.equal(mean(5, 5, 5), 5, "the block l = 4..6 averages to 5");
+  assert.equal(mean(5, 5, 0), 0.5, "blocks stop at the edge: l = 0..1");
+  res.I[(5 * 11 + 5) * 11 + 4] = NaN;
+  assertClose(app.context.blockMeanSampler(res, ranges, [3, 3, 3])(5, 5, 5), (9 * (4 + 5 + 6) - 4) / 26, 1e-12, "empty voxels stay out");
+});

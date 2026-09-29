@@ -217,8 +217,17 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **3-D camera tools** (the compass button on each 3-D view): look along a*, b*, c*, a,
   b or c, or along a typed [hkl] or [uvw] direction. Roll, tilt and turn in steps of a
   chosen angle, and switch to an orthographic projection; the choice is remembered.
-- **3-D render controls**: isosurface percentile and surface count, voxel cap and an
-  auto-refresh toggle. Grids whose axes run along x, y and z in the plot get a true
+- **3-D render controls**: isosurface percentile and surface count, voxel cap, surface
+  opacity and an auto-refresh toggle.
+  - When the voxel cap thins the volume, each sample is by default the mean of its block
+    of voxels (empty voxels left out) rather than every n-th voxel. The samples are
+    placed so that one block is centred on the origin, which keeps symmetric data
+    symmetric.
+  - The current slice, or all three linked slices, can be drawn inside the isosurface
+    view.
+  - The sample is kept while the data and these settings stay the same, so moving a
+    slice does not rebuild it.
+  - Grids whose axes run along x, y and z in the plot get a true
   isosurface, even when the file's UB matrix carries rounding noise; rotated or skewed
   grids are shown as a point cloud. The camera is preserved across slice updates, with
   zoom and reset buttons on each view, and its distance follows the view's shape so the
