@@ -6018,6 +6018,7 @@ async function savePlotHtml(plotId, tag, title){
     const fig = exportPlotFigure(plotId);
     if(!fig || !Array.isArray(fig.data) || !fig.data.length) throw new Error("Target 3D plot is empty.");
     const payload = JSON.stringify({fig, title, createdAt:new Date().toISOString()}).replace(/</g, "\\u003c");
+    const tx = themePlot();
     const html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><script src="${PLOTLY_CDN}"><\/script><style>body{margin:0;background:${tx.bg};color:${tx.text};font-family:Segoe UI,Tahoma,sans-serif}main{padding:12px;display:grid;gap:10px}#plot{min-height:720px;border:1px solid ${tx.grid};background:${tx.bg}}</style></head><body><main><h2 style="margin:0">${title}</h2><div id="plot"></div></main><script>const payload=${payload};Plotly.newPlot("plot",(payload.fig&&payload.fig.data)||[],(payload.fig&&payload.fig.layout)||{},{responsive:true,displaylogo:false});<\/script></body></html>`;
     saveText(`${baseName()}_${tag}.html`, html, "text/html;charset=utf-8");
     status(`Saved ${tag} HTML.`, "ok");
