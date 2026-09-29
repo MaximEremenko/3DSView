@@ -209,3 +209,17 @@ test("orthogonal Q grids convert to separable HKL axes", async () => {
   assertClose(res.h[1] - res.h[0], dq * 4 / (2 * Math.PI), 1e-9, "H step");
   assertClose(res.l[1] - res.l[0], dq * 6 / (2 * Math.PI), 1e-9, "L step");
 });
+
+test("Fortran numbers that lose the E of a three-digit exponent keep their row intact", () => {
+  const app = loadApp();
+  const t = app.context.tokenNumber;
+  assert.equal(t("0.1234-101"), 0.1234e-101);
+  assert.equal(t("-0.5+100"), -0.5e100);
+  assert.equal(t("0.25D+01"), 2.5);
+  assert.ok(Number.isNaN(t("abc")));
+  assert.deepEqual(Array.from(app.context.parseNumbers("1 2 3 0.5E+01 0.1234-101")), [1, 2, 3, 5, 0.1234e-101]);
+  // The parallel parser's worker carries its own copy.
+  const worker = new Function("self", `${app.context.indexedWorkerSource()}\nreturn tokenNumber;`)({});
+  assert.equal(worker("0.1234-101"), 0.1234e-101);
+  assert.equal(worker("0.1234E-01"), 0.01234);
+});

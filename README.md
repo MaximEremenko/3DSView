@@ -26,6 +26,29 @@ and slab-average slicing with linked 2-D and 3-D views.
   splitter positions are remembered between visits.
 - **Files**: drop a file anywhere in the window, or use **Open**. The status bar shows the
   latest message and the slice statistics; click the message to see recent messages.
+  Several files can be opened or dropped together, or a whole run folder opened (see
+  *Compare*). A file opens on the middle slice, or on the nearest slice holding data
+  when the middle falls in a gap of a block grid.
+- **Compare with a calculation** (Compare page):
+  - **Placing the calculation:** it is put on the data grid by coordinates. It can be on
+    the same grid (voxel for voxel), on a shifted or smaller grid, or in Q against HKL
+    through the cell. Friedel pairs, I(−Q) = I(Q), fill in half-space calculations, and
+    trilinear interpolation is available for different steps.
+  - **Scale:** least squares for scale and offset (the default) or scale alone, weighted
+    by 1/σ² if you choose. The alternatives are the calculation header's values (RMCProfile
+    writes its fitted scale and offset there, exp ≈ scale·calc + offset, but they can be
+    stale) or none.
+  - **Agreement:** R = Σ|y − m| / Σ|y|, wR with 1/σ² weights when σ is known, χ²/N with σ,
+    and Σ(y − m)²/Σy², the figure RMCProfile logs. Each is given over the volume and for
+    the current axis slice. Voxels without data on either side are left out; with
+    *Treat 0 as no data* on, this is RMCProfile's own mask.
+  - **Views:** Show offers the scaled comparison, data − comparison, data / comparison and
+    (data − comparison)/σ. The scaled comparison shares the data's colour levels, and
+    <kbd>C</kbd> flips between the two.
+  - **Run folders:** an experimental file `X.dat` is paired with `X_calc.dat`, and
+    RMCProfile's amplitude files are listed alongside. An input grid that holds one value
+    everywhere (a calculation-only run) gives way to the calculation, and an `.rmc6f`
+    supplies the parent cell.
 - **Keyboard shortcuts** (press <kbd>?</kbd> for the list): <kbd>←</kbd>/<kbd>→</kbd> step
   through the slices (<kbd>Shift</kbd> for ten, <kbd>Home</kbd>/<kbd>End</kbd> for the
   ends), <kbd>1</kbd>–<kbd>3</kbd> pick the plane shown, <kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd>
@@ -143,8 +166,9 @@ and slab-average slicing with linked 2-D and 3-D views.
 
 ## Supported formats
 
-Text formats (`.dat`, `.txt`, `.csv`) — comment lines starting with `#`, `!` or `;` and
-Fortran `D` exponents are handled:
+Text formats (`.dat`, `.txt`, `.csv`) — comment lines starting with `#`, `!` or `;`,
+Fortran `D` exponents, and Fortran's E-less three-digit exponents (`0.1234-101`) are
+handled:
 
 - **RMCProfile 3DS indexed text**: rows of `i j k`, one coordinate triplet per symmetry
   section, then the intensity, with an optional `points sections scale offset` header.

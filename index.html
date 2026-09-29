@@ -342,6 +342,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
     <button type="button" data-tab="data" title="File, metadata and unit cell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>Data</button>
     <button type="button" data-tab="slice" title="Slice geometry and the shown volume"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>Slice</button>
     <button type="button" data-tab="levels" title="Colour levels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>Levels</button>
+    <button type="button" data-tab="compare" title="Compare with a calculation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M7 20h10"/><path d="M5 7h14"/><path d="M5 7l-3 6a3 3 0 0 0 6 0z"/><path d="M19 7l-3 6a3 3 0 0 0 6 0z"/></svg>Compare</button>
     <button type="button" data-tab="render" title="3-D rendering"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>3-D</button>
     <button type="button" data-tab="process" title="Symmetry and other processing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="M9 7l-5 5 5 5z"/><path d="M15 7l5 5-5 5z"/></svg>Process</button>
     <button type="button" data-tab="export" title="Save images and volumes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Export</button>
@@ -357,6 +358,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div id="drop" class="drop" tabindex="0" role="button" aria-label="Open a data file">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg>
         <div><b>Open file&hellip;</b><span>or drop 3DS / calculator / NeXus data anywhere</span></div>
+      </div>
+      <div class="btns">
+        <button id="openFolder" class="alt" type="button" title="Pairs an experimental file with its _calc file and takes the cell from an .rmc6f">Open run folder&hellip;</button>
       </div>
       <div class="group">
         <h3>File</h3>
@@ -556,6 +560,38 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       </div>
     </section>
 
+    <section class="page" data-page="compare">
+      <div class="group">
+        <h3>Comparison</h3>
+        <div class="btns">
+          <button id="cmpLoad" disabled>Load calculation&hellip;</button>
+          <button id="cmpClear" class="alt" disabled>Clear</button>
+        </div>
+        <div id="cmpInfo" class="fine">Load data first, then a calculation to compare with it.</div>
+        <label class="check"><input id="cmpFriedel" type="checkbox" checked disabled>Use Friedel pairs, I(&minus;Q) = I(Q), where the calculation has no point</label>
+        <label class="check"><input id="cmpInterp" type="checkbox" disabled>Interpolate between grid points</label>
+      </div>
+      <div class="group">
+        <h3>Scale</h3>
+        <label>Model
+          <select id="cmpScale" disabled>
+            <option value="scale+offset" selected>Least squares: scale and offset</option>
+            <option value="scale">Least squares: scale only</option>
+            <option value="header">Scale and offset from the calculation header</option>
+            <option value="none">As written (1 and 0)</option>
+          </select>
+        </label>
+        <label class="check"><input id="cmpWeighted" type="checkbox" disabled>Weight by 1/&sigma;&sup2;</label>
+        <div id="cmpFitInfo" class="mono fine"></div>
+      </div>
+      <div class="group">
+        <h3>Agreement</h3>
+        <div id="cmpStats" class="mono fine"></div>
+        <div id="cmpSliceStats" class="mono fine"></div>
+        <p class="fine">Voxels without data on either side stay out. R = &Sigma;|y &minus; m| / &Sigma;|y|, wR = &radic;(&Sigma;w(y &minus; m)&sup2; / &Sigma;wy&sup2;) with w = 1/&sigma;&sup2; when &sigma; is known, &chi;&sup2;/N uses &sigma;, and &Sigma;(y &minus; m)&sup2;/&Sigma;y&sup2; is the figure RMCProfile logs. Pick the comparison views in Show above the map; <kbd>C</kbd> flips between the data and the comparison.</p>
+      </div>
+    </section>
+
     <section class="page" data-page="render">
       <div class="group">
         <h3>Isosurface</h3>
@@ -645,6 +681,10 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="mapBar" id="mapBar">
         <select id="showMode" disabled title="Values shown: the data, or a volume derived from it">
           <option value="data" selected>Data</option>
+          <option value="cmp">Comparison (scaled)</option>
+          <option value="diff">Data &minus; comparison</option>
+          <option value="ratio">Data / comparison</option>
+          <option value="resid">(Data &minus; comparison)/&sigma;</option>
           <option value="sym">Symmetrized</option>
           <option value="symdev">Data &minus; symmetrized</option>
           <option value="symcount">Equivalents found</option>
@@ -778,7 +818,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
   </footer>
 </div>
 
-<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5" hidden>
+<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5,.rmc6f" multiple hidden>
+<input id="cmpFile" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5" hidden>
+<input id="folderFile" type="file" webkitdirectory hidden>
 <input id="structureFile" type="file" accept=".rmc6f,.h5,.hdf5" hidden>
 <div id="statusLog" class="popover hidden" role="log" aria-label="Recent messages"></div>
 <div id="dropOverlay" class="dropOverlay hidden"><div class="dropCard">Drop the file to open it</div></div>
@@ -792,6 +834,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="keyRow"><span>First / last slice</span><span><kbd>Home</kbd><kbd>End</kbd></span></div>
       <div class="keyRow"><span>Fixed axis</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></div>
       <div class="keyRow"><span>Zoom the map</span><span><kbd>+</kbd><kbd>&minus;</kbd></span></div>
+      <div class="keyRow"><span>Data / comparison</span><span><kbd>C</kbd></span></div>
       <div class="keyRow"><span>Whole slice</span><span><kbd>0</kbd></span></div>
     </div>
     <div>
@@ -902,7 +945,11 @@ const state = {
   sym:null,
   symBusy:false,
   viewDisplaySaved:null,
-  laueGuess:null
+  laueGuess:null,
+  cmpFile:null,
+  cmpAlign:null,
+  cmpFor:null,
+  cmpExtras:[]
 };
 
 const COLOR_MAPS = {
@@ -1472,7 +1519,7 @@ function parseNumbers(line){
   let strict = true;
   for(let i=0;i<parts.length;i++){
     const token = parts[i];
-    const v = token.indexOf("D") >= 0 || token.indexOf("d") >= 0 ? Number(token.replace(/D/i, "E")) : Number(token);
+    const v = tokenNumber(token);
     if(!Number.isFinite(v)){ strict = false; break; }
     nums[i] = v;
   }
@@ -1489,7 +1536,7 @@ function parseStrictDelimitedNumbers(line){
   const nums = new Array(parts.length);
   for(let i=0;i<parts.length;i++){
     const token = parts[i];
-    const v = token.indexOf("D") >= 0 || token.indexOf("d") >= 0 ? Number(token.replace(/D/i, "E")) : Number(token);
+    const v = tokenNumber(token);
     if(!Number.isFinite(v)) return null;
     nums[i] = v;
   }
@@ -1516,13 +1563,22 @@ function indexedFormat(format, amplitude){
   return amplitude ? `${format} (amplitude |A| from Re, Im)` : format;
 }
 
+// Fortran writes D exponents, and drops the E of a three-digit exponent
+// (0.1234-101); both would otherwise read as NaN or as two numbers.
+function tokenNumber(token){
+  if(token.indexOf("D") >= 0 || token.indexOf("d") >= 0) return Number(token.replace(/D/i, "E"));
+  const v = Number(token);
+  if(v === v || token.length < 5) return v;
+  const m = /^([-+]?(?:\d+\.\d*|\.\d+))([-+]\d{3})$/.exec(token);
+  return m ? Number(m[1] + "E" + m[2]) : v;
+}
+
 function numberToken(token){
-  return token && (token.indexOf("D") >= 0 || token.indexOf("d") >= 0) ? Number(token.replace(/D/i, "E")) : Number(token);
+  return tokenNumber(token || "");
 }
 
 function numberTokenSlice(line, start, end){
-  const token = line.slice(start, end);
-  return token.indexOf("D") >= 0 || token.indexOf("d") >= 0 ? Number(token.replace(/D/i, "E")) : Number(token);
+  return tokenNumber(line.slice(start, end));
 }
 
 function tokenBoundsAt(line, targetIndex){
@@ -2191,7 +2247,7 @@ function parseStrictDelimitedNumbers(line){
   const nums = new Array(parts.length);
   for(let i=0;i<parts.length;i++){
     const token = parts[i];
-    const v = token.indexOf("D") >= 0 || token.indexOf("d") >= 0 ? Number(token.replace(/D/i, "E")) : Number(token);
+    const v = tokenNumber(token);
     if(!Number.isFinite(v)) return null;
     nums[i] = v;
   }
@@ -2204,9 +2260,15 @@ function indexedIntensityFromNums(nums, ampMode){
   }
   return nums[nums.length - 1];
 }
+function tokenNumber(token){
+  if(token.indexOf("D") >= 0 || token.indexOf("d") >= 0) return Number(token.replace(/D/i, "E"));
+  const v = Number(token);
+  if(v === v || token.length < 5) return v;
+  const m = /^([-+]?(?:\\d+\\.\\d*|\\.\\d+))([-+]\\d{3})$/.exec(token);
+  return m ? Number(m[1] + "E" + m[2]) : v;
+}
 function numberTokenSlice(text, start, end){
-  const token = text.slice(start, end);
-  return token.indexOf("D") >= 0 || token.indexOf("d") >= 0 ? Number(token.replace(/D/i, "E")) : Number(token);
+  return tokenNumber(text.slice(start, end));
 }
 function firstContentCharRange(text, start, end){
   for(let i=start;i<end;i++) if(text.charCodeAt(i) > 32) return text[i];
@@ -4256,6 +4318,29 @@ function setZeroMask(res, on){
   return res.zeroMasked || 0;
 }
 
+// The index nearest to target along an axis whose slice holds data, so a
+// block grid does not open on one of its empty gaps.
+function nearestSliceWithData(res, axis, target, range=[0, res.shape[axis] - 1]){
+  const [n0, n1, n2] = res.shape, I = res.I;
+  const has = idx => {
+    if(axis === 0){
+      for(let v=idx * n1 * n2, end=v + n1 * n2; v<end; v++) if(I[v] === I[v]) return true;
+    }else if(axis === 1){
+      for(let i=0;i<n0;i++) for(let v=(i * n1 + idx) * n2, end=v + n2; v<end; v++) if(I[v] === I[v]) return true;
+    }else{
+      for(let r=0;r<n0 * n1;r++) if(I[r * n2 + idx] === I[r * n2 + idx]) return true;
+    }
+    return false;
+  };
+  const reach = Math.max(target - range[0], range[1] - target);
+  for(let d=0;d<=reach;d++){
+    for(const idx of d ? [target - d, target + d] : [target]){
+      if(idx >= range[0] && idx <= range[1] && has(idx)) return idx;
+    }
+  }
+  return target;
+}
+
 function zeroFraction(res){
   let zeros = 0, finite = 0;
   for(let i=0;i<res.I.length;i++){
@@ -4310,7 +4395,8 @@ function buildView(mode, res=state.res){
   }
   const b = finiteBounds(out);
   const view = {...res, I:out, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma:null,
-    valueName:VIEW_NAMES[mode], columnName:VIEW_COLUMNS[mode], fileTag:`_${mode}`, viewMode:mode};
+    valueName:VIEW_NAMES[mode], columnName:VIEW_COLUMNS[mode], fileTag:`_${mode}`, viewMode:mode,
+    levelsFrom:mode === "cmp" ? res : null};
   view.global = computeGlobalDisplayBounds(view);
   return view;
 }
@@ -4402,33 +4488,7 @@ function nativeLaueOps(res, cls){
 // others are skipped: a swap of two axes needs equal steps and matching
 // ranges on them, and a sign flip needs a grid centred on zero.
 function gridSymmetryMaps(res, cls){
-  const shape = res.shape, o = pointAtIndex(res, 0, 0, 0);
-  const G = [0, 1, 2].map(a => {
-    if(shape[a] < 2) return null;
-    const at = [0, 0, 0];
-    at[a] = 1;
-    const p = pointAtIndex(res, at[0], at[1], at[2]);
-    return p.map((v, c) => v - o[c]);
-  });
-  const known = G.filter(Boolean);
-  const size = known.length ? known.reduce((s, v) => s + normVec(v), 0) / known.length : 1;
-  for(let a=0;a<3;a++){
-    if(G[a]) continue;
-    // A single-point axis gets a step of the usual size across the other two.
-    const others = G.filter((v, b) => v && b !== a);
-    let d = others.length === 2 ? cross(others[0], others[1]) : null;
-    if(!d || normVec(d) < 1e-12) d = [0, 1, 2].map(c => (c === a ? 1 : 0));
-    const n = normVec(d);
-    G[a] = d.map(v => v / n * size);
-  }
-  let Gi;
-  try{ Gi = inv3(G); }catch(_){ throw new Error("The grid steps are degenerate."); }
-  const corners = [[0,0,0], [shape[0]-1,0,0], [0,shape[1]-1,0], [0,0,shape[2]-1], [shape[0]-1,shape[1]-1,shape[2]-1]];
-  for(const corner of corners){
-    const p = pointAtIndex(res, corner[0], corner[1], corner[2]);
-    const idx = mul(p.map((v, c) => v - o[c]), Gi);
-    if(idx.some((v, c) => Math.abs(v - corner[c]) > 0.05)) throw new Error("Symmetrizing needs a regular grid; the steps along an axis are uneven.");
-  }
+  const {o, G, Gi, corners} = gridFrame(res);
   const mapped = (idx, A, t) => [0, 1, 2].map(c => t[c] + idx[0] * A[0][c] + idx[1] * A[1][c] + idx[2] * A[2][c]);
   const ops = nativeLaueOps(res, cls), maps = [];
   for(const M of ops){
@@ -4575,9 +4635,251 @@ function buildSymView(mode, res){
   }
   const b = finiteBounds(I);
   const view = {...res, I, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma,
-    valueName, columnName, fileTag:{sym:"_sym", symdev:"_symdev", symcount:"_symcount"}[mode], viewMode:mode};
+    valueName, columnName, fileTag:{sym:"_sym", symdev:"_symdev", symcount:"_symcount"}[mode], viewMode:mode,
+    levelsFrom:mode === "sym" ? res : null};
   view.global = computeGlobalDisplayBounds(view);
   return view;
+}
+
+// ---- Comparison with a second dataset (experiment against calculation)
+
+// Origin, step vectors (rows of G) and G⁻¹ of a regular grid in its own
+// coordinates: p = o + idx·G. A single-point axis gets a step of the usual
+// size across the other two. Throws for grids with uneven steps.
+function gridFrame(res){
+  const shape = res.shape, o = pointAtIndex(res, 0, 0, 0);
+  const G = [0, 1, 2].map(a => {
+    if(shape[a] < 2) return null;
+    const at = [0, 0, 0];
+    at[a] = 1;
+    const p = pointAtIndex(res, at[0], at[1], at[2]);
+    return p.map((v, c) => v - o[c]);
+  });
+  const known = G.filter(Boolean);
+  const size = known.length ? known.reduce((s, v) => s + normVec(v), 0) / known.length : 1;
+  for(let a=0;a<3;a++){
+    if(G[a]) continue;
+    const others = G.filter((v, b) => v && b !== a);
+    let d = others.length === 2 ? cross(others[0], others[1]) : null;
+    if(!d || normVec(d) < 1e-12) d = [0, 1, 2].map(c => (c === a ? 1 : 0));
+    const n = normVec(d);
+    G[a] = d.map(v => v / n * size);
+  }
+  let Gi;
+  try{ Gi = inv3(G); }catch(_){ throw new Error("The grid steps are degenerate."); }
+  const corners = [[shape[0]-1,0,0], [0,shape[1]-1,0], [0,0,shape[2]-1], [shape[0]-1,shape[1]-1,shape[2]-1]];
+  for(const corner of corners){
+    const p = pointAtIndex(res, corner[0], corner[1], corner[2]);
+    const idx = mul(p.map((v, c) => v - o[c]), Gi);
+    if(idx.some((v, c) => Math.abs(v - corner[c]) > 0.05)) throw new Error("This needs a regular grid; the steps along an axis are uneven.");
+  }
+  return {o, G, Gi, corners:[[0,0,0], ...corners]};
+}
+
+// Matrix taking the comparison's own coordinates to the data's, p = p'·T,
+// or null when both use the same frame. Q and HKL meet through a cell.
+function comparisonFrame(data, cmp){
+  const kind = res => (isRealSpaceData(res) ? "direct" : String(res.coordKind || "q").toLowerCase());
+  const dk = kind(data), ck = kind(cmp);
+  if(dk === ck) return null;
+  if(dk === "hkl" && ck === "q" && validMatrix3(data.Bq)) return inv3(data.Bq);
+  if(dk === "q" && ck === "hkl" && validMatrix3(cmp.Bq)) return cmp.Bq;
+  throw new Error(`The data are on a${dk === "hkl" ? "n HKL" : dk === "q" ? " Q" : " real-space"} grid and the comparison on a${ck === "hkl" ? "n HKL" : ck === "q" ? " Q" : " real-space"} grid${dk !== "direct" && ck !== "direct" ? "; give the data a unit cell first" : ""}.`);
+}
+
+// Places a second dataset on the data grid. Each data voxel takes the value
+// at the same coordinates: the comparison voxel there when one lies within a
+// small fraction of a step, or with interpolate a trilinear value from the
+// voxels around it. With friedel, a point the comparison does not hold is
+// looked up at -Q, since I(-Q) = I(Q); that completes half-space
+// calculations.
+function alignComparison(data, cmp, {friedel=true, interpolate=false}={}){
+  const fd = gridFrame(data), fc = gridFrame(cmp);
+  const T = comparisonFrame(data, cmp), Ti = T ? inv3(T) : null;
+  const toCmp = p => (Ti ? mul(p, Ti) : p);
+  // Fractional comparison index of data index idx: f = t + idx·A, and of the
+  // Friedel mate: f' = tF - idx·A.
+  const A = fd.G.map(row => mul(toCmp(row), fc.Gi));
+  const od = toCmp(fd.o);
+  const t = mul(od.map((v, c) => v - fc.o[c]), fc.Gi);
+  const tF = mul(od.map((v, c) => -v - fc.o[c]), fc.Gi);
+  const [n0, n1, n2] = data.shape, [m0, m1, m2] = cmp.shape, C = cmp.I;
+  const at = (f0, f1, f2) => {
+    if(!interpolate){
+      const r0 = Math.round(f0), r1 = Math.round(f1), r2 = Math.round(f2);
+      if(Math.abs(f0 - r0) > 0.05 || Math.abs(f1 - r1) > 0.05 || Math.abs(f2 - r2) > 0.05) return NaN;
+      if(r0 < 0 || r0 >= m0 || r1 < 0 || r1 >= m1 || r2 < 0 || r2 >= m2) return NaN;
+      return C[(r0 * m1 + r1) * m2 + r2];
+    }
+    // Trilinear over the corners that hold values; empty corners drop out
+    // and the rest are renormalized when they carry most of the weight.
+    const b0 = Math.floor(f0), b1 = Math.floor(f1), b2 = Math.floor(f2);
+    const w0 = f0 - b0, w1 = f1 - b1, w2 = f2 - b2;
+    let sum = 0, weight = 0;
+    for(let d0=0;d0<2;d0++){
+      const i = b0 + d0;
+      if(i < 0 || i >= m0) continue;
+      const a0 = d0 ? w0 : 1 - w0;
+      if(!a0) continue;
+      for(let d1=0;d1<2;d1++){
+        const j = b1 + d1;
+        if(j < 0 || j >= m1) continue;
+        const a1 = a0 * (d1 ? w1 : 1 - w1);
+        if(!a1) continue;
+        for(let d2=0;d2<2;d2++){
+          const k = b2 + d2;
+          if(k < 0 || k >= m2) continue;
+          const a2 = a1 * (d2 ? w2 : 1 - w2);
+          if(!a2) continue;
+          const v = C[(i * m1 + j) * m2 + k];
+          if(v !== v) continue;
+          sum += a2 * v;
+          weight += a2;
+        }
+      }
+    }
+    return weight > 0.5 ? sum / weight : NaN;
+  };
+  const values = new Float64Array(n0 * n1 * n2);
+  let direct = 0, mirrored = 0, missing = 0, v = 0;
+  for(let i=0;i<n0;i++){
+    for(let j=0;j<n1;j++){
+      let f0 = t[0] + i * A[0][0] + j * A[1][0], f1 = t[1] + i * A[0][1] + j * A[1][1], f2 = t[2] + i * A[0][2] + j * A[1][2];
+      for(let k=0;k<n2;k++, v++, f0 += A[2][0], f1 += A[2][1], f2 += A[2][2]){
+        let x = at(f0, f1, f2);
+        if(x === x){ direct++; values[v] = x; continue; }
+        if(friedel){
+          x = at(tF[0] - (f0 - t[0]), tF[1] - (f1 - t[1]), tF[2] - (f2 - t[2]));
+          if(x === x){ mirrored++; values[v] = x; continue; }
+        }
+        values[v] = NaN;
+        missing++;
+      }
+    }
+  }
+  // Same grid, voxel for voxel.
+  const identity = !T && [0, 1, 2].every(c => Math.abs(t[c]) < 1e-6) && A.every((row, a) => row.every((x, c) => Math.abs(x - (a === c ? 1 : 0)) < 1e-6)) && n0 === m0 && n1 === m1 && n2 === m2;
+  const onGrid = [...A.flat(), ...t].every(x => Math.abs(x - Math.round(x)) < 1e-6);
+  return {values, direct, mirrored, missing, identity, onGrid, interpolated:!!interpolate};
+}
+
+// Scale of the comparison to the data, fitted by least squares over the
+// voxels where both hold values (optionally weighted by 1/σ²), taken from
+// the calculation's header, or none. The model is scale·comparison + offset.
+function fitComparison(data, aligned, {mode="scale+offset", weighted=false, header=null}={}){
+  const I = data.I, C = aligned, sig = weighted && data.sigma ? data.sigma : null;
+  let Sw = 0, Sc = 0, Si = 0, Scc = 0, Sci = 0, n = 0;
+  for(let v=0;v<I.length;v++){
+    const y = I[v], x = C[v];
+    if(y !== y || x !== x) continue;
+    let w = 1;
+    if(sig){
+      const s = sig[v];
+      if(!(s > 0)) continue;
+      w = 1 / (s * s);
+    }
+    Sw += w; Sc += w * x; Si += w * y; Scc += w * x * x; Sci += w * x * y; n++;
+  }
+  let scale = 1, offset = 0;
+  if(mode === "scale+offset"){
+    const det = Sw * Scc - Sc * Sc;
+    if(det > 0){
+      scale = (Sw * Sci - Sc * Si) / det;
+      offset = (Si - scale * Sc) / Sw;
+    }
+  }else if(mode === "scale"){
+    if(Scc > 0) scale = Sci / Scc;
+  }else if(mode === "header"){
+    if(!header || !Number.isFinite(header.scale)) throw new Error("The calculation's header holds no scale.");
+    scale = header.scale;
+    offset = Number.isFinite(header.offset) ? header.offset : 0;
+  }
+  return {mode, weighted:!!sig, scale, offset, n, ...comparisonAgreement(data, aligned, scale, offset)};
+}
+
+// Agreement between the data y and the model m = scale·c + offset over the
+// voxels where both hold values, or over the voxels listed by each(visit):
+// R = Σ|y - m| / Σ|y|; wR = sqrt(Σ w (y - m)² / Σ w y²) with w = 1/σ² when σ
+// is known, else 1; χ²/N = Σ ((y - m)/σ)² / N, with σ only.
+function comparisonAgreement(data, aligned, scale, offset, each=null){
+  const I = data.I, C = aligned, sig = data.sigma || null;
+  let n = 0, absDiff = 0, absData = 0, wDiff2 = 0, wData2 = 0, chi2 = 0, nSig = 0, diff2 = 0, data2 = 0;
+  const visit = v => {
+    const y = I[v], x = C[v];
+    if(y !== y || x !== x) return;
+    const d = y - (scale * x + offset);
+    n++;
+    absDiff += Math.abs(d);
+    absData += Math.abs(y);
+    diff2 += d * d;
+    data2 += y * y;
+    let w = 1;
+    if(sig){
+      const s = sig[v];
+      if(s > 0){ w = 1 / (s * s); chi2 += d * d * w; nSig++; }
+      else w = 0;
+    }
+    wDiff2 += w * d * d;
+    wData2 += w * y * y;
+  };
+  if(each) each(visit);
+  else for(let v=0;v<I.length;v++) visit(v);
+  return {
+    n,
+    R:absData > 0 ? absDiff / absData : NaN,
+    wR:wData2 > 0 ? Math.sqrt(wDiff2 / wData2) : NaN,
+    chi2:nSig ? chi2 / nSig : NaN,
+    // RMCProfile logs Σ(e - m)²/Σe² for its 3-D diffuse data.
+    rmc:data2 > 0 ? diff2 / data2 : NaN
+  };
+}
+
+// Visits the voxels of the current axis slice within the shown volume; null
+// for plane and slab slices, which are resampled.
+function axisSliceVoxels(res, sl){
+  if(!res || !sl || sl.type !== "axis") return null;
+  const ranges = displayIndexRanges(res), [, n1, n2] = res.shape;
+  const axes = [0, 1, 2].filter(a => a !== sl.fixedAxis);
+  return visit => {
+    const idx = [0, 0, 0];
+    idx[sl.fixedAxis] = sl.fixedIndex;
+    for(let a=ranges[axes[0]][0];a<=ranges[axes[0]][1];a++){
+      idx[axes[0]] = a;
+      for(let b=ranges[axes[1]][0];b<=ranges[axes[1]][1];b++){
+        idx[axes[1]] = b;
+        visit((idx[0] * n1 + idx[1]) * n2 + idx[2]);
+      }
+    }
+  };
+}
+
+// Several files at once. An experimental file X and its calculation X_calc
+// are paired, with RMCProfile's amplitude files (X_*amp_calc,
+// X_*interf_calc) noted alongside; an .rmc6f supplies the parent cell.
+// Anything else is left for the single-file path.
+const AMPLITUDE_CALC = /_(?:aver_amp|aver_interf|total_amp|amp|interf)_calc$/i;
+function planFileSet(files){
+  const stem = f => f.name.replace(/\.[^.]+$/, "");
+  const volumes = files.filter(f => /\.(dat|txt|csv|json|vtk|nx|nx5|nxs|h5|hdf5)$/i.test(f.name));
+  const structure = files.find(f => /\.rmc6f$/i.test(f.name)) || null;
+  let best = null;
+  for(const f of volumes){
+    const s = stem(f);
+    if(/_calc$/i.test(s)) continue;
+    const calc = volumes.find(g => stem(g).toLowerCase() === `${s}_calc`.toLowerCase());
+    if(!calc) continue;
+    const amplitudes = volumes.filter(g => g !== calc && stem(g).toLowerCase().startsWith(`${s}_`.toLowerCase()) && AMPLITUDE_CALC.test(stem(g)));
+    if(!best || f.size > best.exp.size) best = {exp:f, calc, amplitudes};
+  }
+  if(best) return {...best, structure};
+  const calcs = volumes.filter(f => /_calc$/i.test(stem(f)) && !AMPLITUDE_CALC.test(stem(f)));
+  return {exp:null, calc:calcs[0] || null, amplitudes:[], structure, single:volumes.length === 1 ? volumes[0] : null};
+}
+
+// A placeholder grid: every voxel holds the same value (RMCProfile runs that
+// only calculate use 1.0), so there is nothing to compare.
+function isControlGrid(res){
+  return !!res && res.filled > 1 && res.rawMin === res.rawMax;
 }
 
 // Reinterprets the value order between the first and last axes, for files
@@ -5681,7 +5983,7 @@ function histogramQuantile(hist, q){
 
 // Histogram of the whole volume in the given display scale, built on first use.
 function globalHistogram(mode){
-  const res = viewRes();
+  const shown = viewRes(), res = shown && shown.levelsFrom || shown;
   if(!res || !res.global || !res.global[mode]) return null;
   if(!state.globalHist || state.globalHist.res !== res) state.globalHist = {res, byMode:{}};
   const cache = state.globalHist.byMode;
@@ -5692,7 +5994,7 @@ function globalHistogram(mode){
 const AUTO_RANGES = {p995:[0.005, 0.995], p99:[0.01, 0.99], p98:[0.02, 0.98], minmax:[0, 1]};
 
 function levelBoundsForMode(slStats, mode, levelMode){
-  const res = viewRes();
+  const shown = viewRes(), res = shown && shown.levelsFrom || shown;
   if(levelMode === "global" && res && res.global[mode]) return res.global[mode];
   if(levelMode === "manual"){
     const b = state.manualLevelBounds;
@@ -6063,6 +6365,9 @@ function draw2d(options={}){
   setTextWithTitle("sliceStats", `${sl.plane} | display=${mode} | slice min=${stats.min.toExponential(4)} max=${stats.max.toExponential(4)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`);
   const clipText = levels.clip && levels.clip !== "minmax" ? ` ${$("levelClip").selectedOptions[0].textContent.replace(/\s+/g, "")}` : "";
   $("levelInfo").textContent = `${levels.source}${clipText} levels ${shown} | range [${levels.rawMin.toExponential(3)}, ${levels.rawMax.toExponential(3)}]`;
+  const agree = sliceAgreement();
+  if(agree) setTextWithTitle("sliceStats", `${$("sliceStats").textContent} | slice R=${fmt(agree.R, 4)} wR=${fmt(agree.wR, 4)}`);
+  updateSliceAgreement();
   drawLevelHistogram(stats.hist, levels);
   if($("levelMode").value !== "manual"){
     $("levelMin").value = fmt(levels.min, 7);
@@ -8458,7 +8763,7 @@ async function onFile(file){
   // Widen the slider first: a range input clamps a value above its old max.
   $("idx").min = "0";
   $("idx").max = String(Math.max(0, parsed.shape[2] - 1));
-  $("idx").value = String(Math.floor((parsed.shape[2] - 1) / 2));
+  $("idx").value = String(nearestSliceWithData(parsed, 2, Math.floor((parsed.shape[2] - 1) / 2)));
   // Levels stay global while slicing unless per-slice levels were chosen.
   $("levelMode").value = autoLevelMode();
   resetViewsForNewData(parsed);
@@ -8492,7 +8797,7 @@ async function onFile(file){
 
 const UI_KEY = "view3ds-ui";
 const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global"};
-const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", render:"3-D rendering", process:"Process", export:"Export"};
+const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
   let saved = null;
@@ -8715,6 +9020,10 @@ function onShortcut(ev){
     case "b": case "B": setUi({side:!state.ui.side}); break;
     case "o": case "O": $("file").click(); break;
     case "t": case "T": setTheme(isLightTheme() ? "dark" : "light"); break;
+    case "c": case "C":
+      if(comparisonReady()) setShowMode(state.showMode === "cmp" ? "data" : "cmp");
+      else handled = false;
+      break;
     case "?": openHelp(); break;
     case "Escape":
       if(!$("statusLog").classList.contains("hidden")) toggleStatusLog(false);
@@ -8767,7 +9076,7 @@ function bindLayout(){
     ev.preventDefault();
     dragDepth = 0;
     overlay.classList.add("hidden");
-    openDataFile(ev.dataTransfer.files && ev.dataTransfer.files[0]);
+    openFiles(ev.dataTransfer.files);
   });
 
   for(const b of document.querySelectorAll("[data-tab]")){
@@ -8823,7 +9132,11 @@ const SHOW_NEEDS = {
   symdev:res => !!(state.sym && state.sym.res === res),
   symcount:res => !!(state.sym && state.sym.res === res),
   sigma:res => !!(res && res.sigma),
-  snr:res => !!(res && res.sigma)
+  snr:res => !!(res && res.sigma),
+  cmp:res => comparisonReady(res),
+  diff:res => comparisonReady(res),
+  ratio:res => comparisonReady(res),
+  resid:res => comparisonReady(res) && !!res.sigma
 };
 
 function syncShowOptions(){
@@ -8843,7 +9156,7 @@ function syncShowOptions(){
 // symmetric levels, and counts on a linear scale; the previous settings come
 // back when a plain view is shown again.
 function applyViewDisplay(prev, next){
-  const special = mode => SIGNED_VIEWS.has(mode) || mode === "symcount";
+  const special = mode => SIGNED_VIEWS.has(mode) || mode === "symcount" || mode === "ratio";
   if(special(next)){
     if(!state.viewDisplaySaved) state.viewDisplaySaved = {scale:$("scale").value, colorMap:$("colorMap").value, symmetric:$("levelSymmetric").checked};
     $("scale").value = "linear";
@@ -8870,9 +9183,13 @@ function setShowMode(mode){
   state.showMode = next;
   state.view = view;
   applyViewDisplay(prev, next);
-  // Levels start from auto for the new values.
-  state.manualLevelBounds = null;
-  if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
+  // Levels start from auto for new kinds of values; the data, the
+  // symmetrized data and the comparison share them.
+  const family = mode => (["data", "sym", "cmp"].includes(mode) ? "intensity" : mode);
+  if(family(prev) !== family(next)){
+    state.manualLevelBounds = null;
+    if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
+  }
   syncShowOptions();
   syncControls();
   draw2d();
@@ -8884,6 +9201,8 @@ function setShowMode(mode){
 function dataChanged(){
   const hadSym = !!state.sym;
   state.sym = null;
+  // The comparison stays on the grid (values and relabels keep voxel order); its fit follows the data.
+  if(comparisonReady()) refitComparison();
   const mode = state.showMode || "data";
   state.view = mode === "data" ? null : buildView(mode);
   if(mode !== "data" && !state.view){
@@ -8976,18 +9295,217 @@ function resetViewsForNewData(res){
   state.sym = null;
   state.view = null;
   state.showMode = "data";
+  if(state.cmp || state.cmpAligned) clearComparison(false);
   const guess = suggestLaueClass(res);
   if($("laueClass")) $("laueClass").value = guess.cls;
   state.laueGuess = guess;
 }
 
+// ---- The Compare page
+
+function comparisonReady(res=state.res){
+  return !!(res && state.cmpAligned && state.cmpFor === res);
+}
+
+async function loadComparisonFile(file){
+  const res = state.res;
+  if(!res || !file) return false;
+  status(`Reading the comparison ${file.name} ...`);
+  await nextFrame();
+  const cmp = await parseFile(file, makeLoadProgress(file));
+  // A file loaded meanwhile takes over.
+  if(state.res !== res) return false;
+  state.cmp = cmp;
+  state.cmpFile = file;
+  realignComparison();
+  const a = state.cmpAlign;
+  const where = a.identity ? "on the same grid" : `${a.direct.toLocaleString()} voxels matched${a.mirrored ? `, ${a.mirrored.toLocaleString()} through Friedel pairs` : ""}`;
+  status(`Comparing with ${file.name}: ${where}; R = ${fmt(state.cmpFit.R, 4)} after the ${state.cmpFit.mode === "none" ? "unscaled" : "fitted"} scale.`, a.direct + a.mirrored ? "ok" : "warn");
+  return true;
+}
+
+// Aligns the comparison to the data again (grid options changed) and refits.
+function realignComparison(){
+  const res = state.res, cmp = state.cmp;
+  if(!res || !cmp) return;
+  try{
+    const align = alignComparison(res, cmp, {friedel:$("cmpFriedel").checked, interpolate:$("cmpInterp").checked});
+    state.cmpAligned = align.values;
+    state.cmpAlign = align;
+    state.cmpFor = res;
+  }catch(err){
+    state.cmpAligned = null;
+    state.cmpAlign = null;
+    state.cmpFor = null;
+    status(`Comparison: ${err.message}`, "err");
+  }
+  refitComparison();
+}
+
+function refitComparison(){
+  const res = state.res;
+  if(comparisonReady(res)){
+    const header = state.cmp && state.cmp.header;
+    try{
+      state.cmpFit = fitComparison(res, state.cmpAligned, {mode:$("cmpScale").value, weighted:$("cmpWeighted").checked && !!res.sigma, header});
+    }catch(err){
+      status(`Comparison scale: ${err.message}`, "err");
+      $("cmpScale").value = "scale+offset";
+      state.cmpFit = fitComparison(res, state.cmpAligned, {mode:"scale+offset", weighted:$("cmpWeighted").checked && !!res.sigma});
+    }
+  }else{
+    state.cmpFit = null;
+  }
+  if(COMPARE_VIEWS.has(state.showMode)){
+    state.view = buildView(state.showMode);
+    if(!state.view) setShowMode("data");
+  }
+  syncShowOptions();
+  updateCompareInfo();
+}
+
+const COMPARE_VIEWS = new Set(["cmp", "diff", "ratio", "resid"]);
+
+function clearComparison(note=true){
+  state.cmp = null;
+  state.cmpFile = null;
+  state.cmpAligned = null;
+  state.cmpAlign = null;
+  state.cmpFit = null;
+  state.cmpFor = null;
+  state.cmpExtras = [];
+  if(COMPARE_VIEWS.has(state.showMode)) setShowMode("data");
+  syncShowOptions();
+  updateCompareInfo();
+  if(note) status("Cleared the comparison.", "ok");
+}
+
+function updateCompareInfo(){
+  const info = $("cmpInfo");
+  if(!info) return;
+  const res = state.res, ready = comparisonReady(res);
+  $("cmpLoad").disabled = !res;
+  $("cmpClear").disabled = !state.cmp;
+  for(const id of ["cmpFriedel", "cmpInterp", "cmpScale"]) $(id).disabled = !state.cmp;
+  $("cmpWeighted").disabled = !state.cmp || !(res && res.sigma);
+  if(!res){
+    info.textContent = "Load data first, then a calculation to compare with it.";
+  }else if(!state.cmp){
+    info.textContent = "Load a calculation to compare with the data. Opening or dropping an experimental file together with its _calc file, or a whole run folder, pairs them.";
+  }else if(!ready){
+    info.textContent = `${state.cmp.file}: could not be placed on the data grid.`;
+  }else{
+    const a = state.cmpAlign, total = a.direct + a.mirrored + a.missing;
+    const grid = a.identity ? "Same grid, voxel for voxel."
+      : `${a.interpolated ? "Interpolated" : "Matched"} ${a.direct.toLocaleString()} of ${total.toLocaleString()} data voxels${a.mirrored ? `, ${a.mirrored.toLocaleString()} more through Friedel pairs` : ""}${a.missing ? `; ${a.missing.toLocaleString()} have no comparison value` : ""}.`;
+    const extras = state.cmpExtras && state.cmpExtras.length ? ` Also in the set: ${state.cmpExtras.join(", ")} (amplitudes, not compared).` : "";
+    info.textContent = `${state.cmp.file}. ${grid}${extras}`;
+  }
+  const fit = ready ? state.cmpFit : null;
+  $("cmpFitInfo").textContent = fit
+    ? `model = ${fmt(fit.scale, 6)} × comparison ${fit.offset < 0 ? "−" : "+"} ${fmt(Math.abs(fit.offset), 6)}${fit.weighted ? ", weighted by 1/σ²" : ""}`
+    : "";
+  $("cmpStats").textContent = fit ? agreementText(fit) : "";
+  updateSliceAgreement();
+}
+
+function agreementText(a){
+  const parts = [`${a.n.toLocaleString()} voxels`, `R ${fmt(a.R, 4)}`, `wR ${fmt(a.wR, 4)}`];
+  if(Number.isFinite(a.chi2)) parts.push(`χ²/N ${fmt(a.chi2, 4)}`);
+  if(Number.isFinite(a.rmc)) parts.push(`Σ(y−m)²/Σy² ${fmt(a.rmc, 4)}`);
+  return parts.join(" · ");
+}
+
+// Agreement over the axis slice on show, for the status line and the Compare page.
+function sliceAgreement(){
+  const res = state.res, sl = state.lastSlice && state.lastSlice.slice, fit = state.cmpFit;
+  if(!comparisonReady(res) || !fit) return null;
+  const each = axisSliceVoxels(res, sl);
+  return each ? comparisonAgreement(res, state.cmpAligned, fit.scale, fit.offset, each) : null;
+}
+
+function updateSliceAgreement(){
+  const out = $("cmpSliceStats");
+  if(!out) return;
+  const a = sliceAgreement();
+  out.textContent = a ? `This slice: ${agreementText(a)}` : comparisonReady() ? "This slice: agreement is given for axis slices." : "";
+}
+
+// Parent cell from an .rmc6f or a unified structure file, applied to the data.
+async function applyStructureFile(file){
+  if(!file || !state.res) return;
+  try{
+    const {cell, supercell} = await structureFileCell(file);
+    populateCellInputs(cell);
+    const cells = supercell ? `, supercell ${supercell.join(" x ")}` : "";
+    applyManualCell(`parent cell of ${file.name}${cells}`);
+  }catch(err){
+    status(`Structure file ${file.name}: ${err.message}`, "err");
+  }
+}
+
+// Files opened or dropped together: an experimental file is paired with its
+// _calc file, a control grid gives way to the calculation, and an .rmc6f
+// supplies the cell. A single file opens as before.
+async function openFiles(list){
+  const files = Array.from(list || []).filter(Boolean);
+  if(!files.length) return;
+  if(files.length === 1){
+    if(/\.rmc6f$/i.test(files[0].name) && state.res) return applyStructureFile(files[0]);
+    return openDataFile(files[0]);
+  }
+  const plan = planFileSet(files);
+  if(!plan.exp && !plan.calc){
+    const first = plan.single || files.find(f => /\.(dat|txt|csv|json|vtk|nx|nx5|nxs|h5|hdf5)$/i.test(f.name));
+    if(first) return openDataFile(first);
+    status("None of the files is a volume this viewer reads.", "warn");
+    return;
+  }
+  try{
+    let note = "";
+    if(plan.exp){
+      await onFile(plan.exp);
+      if(isControlGrid(state.res)){
+        note = `${plan.exp.name} holds one value everywhere (a placeholder grid for the calculation), so ${plan.calc.name} is shown instead.`;
+        await onFile(plan.calc);
+      }else{
+        await loadComparisonFile(plan.calc);
+        state.cmpExtras = plan.amplitudes.map(f => f.name);
+        updateCompareInfo();
+        showSidePage("compare");
+      }
+    }else{
+      await onFile(plan.calc);
+    }
+    if(plan.structure && state.res && state.res.coordKind === "q" && !isRealSpaceData(state.res)) await applyStructureFile(plan.structure);
+    if(note) status(`${note} ${$("status").textContent}`, "warn");
+  }catch(err){
+    status(`File load failed: ${err.message}`, "err");
+  }
+}
+
 function bind(){
   $("file").addEventListener("change", e => {
-    const file = e.target.files && e.target.files[0];
+    const files = Array.from(e.target.files || []);
     // Clear the input so the same file can be opened again.
     e.target.value = "";
-    openDataFile(file);
+    openFiles(files);
   });
+  $("folderFile").addEventListener("change", e => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    openFiles(files);
+  });
+  $("openFolder").addEventListener("click", () => $("folderFile").click());
+  $("cmpLoad").addEventListener("click", () => $("cmpFile").click());
+  $("cmpFile").addEventListener("change", e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if(file) loadComparisonFile(file).then(ok => { if(ok) showSidePage("compare"); }).catch(err => status(`Comparison failed: ${err.message}`, "err"));
+  });
+  $("cmpClear").addEventListener("click", () => clearComparison());
+  for(const id of ["cmpFriedel", "cmpInterp"]) $(id).addEventListener("change", () => { realignComparison(); draw2d(); scheduleRender3d(0); });
+  for(const id of ["cmpScale", "cmpWeighted"]) $(id).addEventListener("change", () => { refitComparison(); draw2d(); scheduleRender3d(0); });
 
   $("coordMode").addEventListener("change", () => {
     updateAxisOptionText();
@@ -9031,18 +9549,10 @@ function bind(){
     }
   });
   $("cellFromStructure").addEventListener("click", () => $("structureFile").click());
-  $("structureFile").addEventListener("change", async ev => {
+  $("structureFile").addEventListener("change", ev => {
     const file = ev.target.files && ev.target.files[0];
     ev.target.value = "";
-    if(!file || !state.res) return;
-    try{
-      const {cell, supercell} = await structureFileCell(file);
-      populateCellInputs(cell);
-      const cells = supercell ? `, supercell ${supercell.join(" x ")}` : "";
-      applyManualCell(`parent cell of ${file.name}${cells}`);
-    }catch(err){
-      status(`Structure file ${file.name}: ${err.message}`, "err");
-    }
+    applyStructureFile(file);
   });
   $("cellRestore").addEventListener("click", () => {
     try{ restoreFileCell(); }catch(err){ status(`Cell restore failed: ${err.message}`, "err"); }
@@ -9073,8 +9583,8 @@ function bind(){
     // Each axis keeps its own slice; one not visited yet opens on its middle slice.
     updateAxisIndexBounds();
     const idx = $("idx"), lo = Number(idx.min), hi = Number(idx.max);
-    const saved = state.axisIndex[$("axis").value];
-    idx.value = String(Number.isFinite(saved) ? clamp(saved, lo, hi) : Math.round((lo + hi) / 2));
+    const saved = state.axisIndex[$("axis").value], fixed = {h:0, k:1, l:2}[$("axis").value];
+    idx.value = String(Number.isFinite(saved) ? clamp(saved, lo, hi) : nearestSliceWithData(state.res, fixed, Math.round((lo + hi) / 2), [lo, hi]));
     draw2d();
     scheduleRender3d();
   });
