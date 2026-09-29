@@ -60,10 +60,15 @@ Fortran `D` exponents are handled:
   optional axis arrays.
 - **Legacy VTK structured points** (`.vtk`).
 
-HDF5 formats (`.h5`, `.hdf5`, `.nx`, `.nxs`), read with h5wasm:
+HDF5 formats (`.h5`, `.hdf5`, `.nx`, `.nx5`, `.nxs`, or any file that starts with the
+HDF5 signature), read with h5wasm:
 
 - **Unified diffuse-scattering HDF5** (`/scattering/data`) as used by the
-  DiffuseDevelopers data contract.
+  DiffuseDevelopers data contract. Both disk layouts in use are read: C order
+  `[H,K,L]` (the DiffuseDevelopers Python writer, NeXus files with `h_indices`) and
+  `[L,K,H]` with H fastest (3DSConvert and Fortran writers). The layout is taken from
+  NeXus `*_indices` attributes or the axis lengths; when a cubic file records neither,
+  `[L,K,H]` is assumed and a **Swap H/L data order** button is offered.
 - **RMCProfile / DiffuseCode Fortran unified HDF5** (`/entry/data/data_values` with
   corner and increment-vector grid metadata).
 - **DISCUS / Yell 1.0 HDF5** (`/data` with `lower_limits`, `step_sizes` and `is_direct`;

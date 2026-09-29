@@ -175,3 +175,12 @@ test("cubic 3DSConvert file with both layouts is read from /entry/data", async (
   assert.ok(!res.axisOrderAmbiguous);
   assert.match(res.format, /RMCProfile\/DiffuseCode unified HDF5/);
 });
+
+test("HDF5 files are recognised by signature, whatever their extension", async () => {
+  const app = loadApp();
+  const shape = [3, 4, 5];
+  for(const name of ["challenge.nx5", "discus_output"]){
+    const file = await scatteringFile(app, name, {shape, order:"c", vectors:DIAGONAL, attrs:{h_indices:0, k_indices:1, l_indices:2}});
+    assertValues(await app.parseFile(file), shape);
+  }
+});

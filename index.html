@@ -206,7 +206,7 @@ input[type=range]{padding:0;border:0;accent-color:var(--brand)}
     <div class="sidebar-scroll">
       <section class="section">
         <h2>File Input</h2>
-        <div id="drop" class="drop" tabindex="0">Drop 3DS / calculator / NeXus data here or click<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nxs,.h5,.hdf5" hidden></div>
+        <div id="drop" class="drop" tabindex="0">Drop 3DS / calculator / NeXus data here or click<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5" hidden></div>
         <div class="row2">
           <label>Coordinates
             <select id="coordMode" disabled>
@@ -3306,11 +3306,23 @@ async function readWholeTextFile(file){
   }
 }
 
+const HDF5_SIGNATURE = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a];
+
+// The HDF5 superblock starts at byte 0 or after a user block of 512, 1024,
+// 2048, ... bytes; this catches .nx5 and extensionless DISCUS files.
+async function hasHdf5Signature(file){
+  for(let offset=0; offset + 8 <= file.size && offset <= 65536; offset = offset ? offset * 2 : 512){
+    const head = new Uint8Array(await file.slice(offset, offset + 8).arrayBuffer());
+    if(HDF5_SIGNATURE.every((b, i) => head[i] === b)) return true;
+  }
+  return false;
+}
+
 async function parseFile(file, progress=null){
   const cached = await readCachedResult(file, progress);
   if(cached) return cached;
   let parsed;
-  if(/\.(nx|nxs|h5|hdf5)$/i.test(file.name)){
+  if(/\.(nx|nx5|nxs|h5|hdf5)$/i.test(file.name) || await hasHdf5Signature(file)){
     parsed = await parseNexusFile(file);
     queueCacheSave(file, parsed);
     return parsed;
