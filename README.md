@@ -149,6 +149,13 @@ and slab-average slicing with linked 2-D and 3-D views.
   which RMCProfile uses for "no data". The zero mask switches on automatically when at
   least 1 % of values are zero and can be toggled with **Treat 0 as no data**. Exports
   keep the original zeros.
+- **Cutaway view**: the Slice plane view can show the block of the shown volume cut open
+  at the current axis slice instead of the slice alone. The block has its cut face, a cap
+  and four walls, each coloured like the map, and empty voxels leave holes. ⇅ shows the
+  other side of the cut.
+- **3-D camera tools** (the compass button on each 3-D view): look along a*, b*, c*, a,
+  b or c, or along a typed [hkl] or [uvw] direction. Roll, tilt and turn in steps of a
+  chosen angle, and switch to an orthographic projection; the choice is remembered.
 - **3-D render controls**: isosurface percentile and surface count, voxel cap and an
   auto-refresh toggle. Grids whose axes run along x, y and z in the plot get a true
   isosurface, even when the file's UB matrix carries rounding noise; rotated or skewed

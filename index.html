@@ -236,6 +236,18 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 #profileChart{width:100%;height:100%}
 .iconBtn.wide{width:auto;padding:0 8px;font-size:.74rem;font-weight:700}
 .iconBtn.on,.iconBtn.ghost.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.viewHead select.mini{width:auto;padding:1px 4px;font-size:.72rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
+.iconBtn.mini{width:22px;height:22px;font-size:.85rem}
+.camMenu{width:250px;left:auto;bottom:auto;padding:8px 10px 10px}
+.camMenu h3{margin:6px 0 6px}
+.camGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.camGrid button{padding:4px 0;font-size:.78rem}
+.camRow{display:flex;align-items:center;gap:6px;margin-top:6px}
+.camRow input[type=text]{flex:1;padding:4px 6px;font-size:.8rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
+.camRow input[type=number]{width:58px;padding:3px 5px;font-size:.8rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
+.camRow button{padding:4px 8px;font-size:.78rem}
+.camRow label{display:inline-flex;align-items:center;gap:5px;color:var(--statsText);font-size:.78rem}
+.camRow label.check{min-height:0}
 .dockHead{height:36px;flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:var(--toolbar);border-bottom:1px solid var(--line)}
 .tabs{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--side2)}
 .tabs button{padding:4px 11px;border-radius:6px;background:transparent;color:var(--statsText);font-size:.8rem}
@@ -824,7 +836,13 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       </div>
       <div class="dockBody" id="dockBody" data-show="both">
         <section class="view3d" id="viewPlane">
-          <div class="viewHead"><h3>Slice plane</h3><span id="plot3dStatus" class="st">Idle</span></div>
+          <div class="viewHead"><h3>Slice plane</h3>
+            <select id="planeStyle" class="mini" title="Show the slice alone, or the block of the volume cut open at the slice">
+              <option value="plane">Plane</option>
+              <option value="cutaway">Cutaway</option>
+            </select>
+            <button type="button" id="cutawayFlip" class="iconBtn ghost mini hidden" title="Show the other side of the cut">&#8645;</button>
+            <span id="plot3dStatus" class="st">Idle</span></div>
           <div class="plotWrap" id="planeWrap">
             <div id="plot3dPlane"></div>
             <div id="empty3dPlane" class="empty3d">No data loaded.</div>
@@ -832,6 +850,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
               <button class="iconBtn" id="planeZoomIn" title="Zoom in">+</button>
               <button class="iconBtn" id="planeZoomOut" title="Zoom out">&minus;</button>
               <button class="iconBtn" id="planeZoomReset" title="Reset camera">&#8634;</button>
+              <button class="iconBtn" data-camera-for="plane" title="Camera: view along a*, b*, c*, a, b, c or [hkl]; roll, tilt, turn; orthographic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg></button>
             </div>
           </div>
         </section>
@@ -845,6 +864,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
               <button class="iconBtn" id="isoZoomIn" title="Zoom in">+</button>
               <button class="iconBtn" id="isoZoomOut" title="Zoom out">&minus;</button>
               <button class="iconBtn" id="isoZoomReset" title="Reset camera">&#8634;</button>
+              <button class="iconBtn" data-camera-for="iso" title="Camera: view along a*, b*, c*, a, b, c or [hkl]; roll, tilt, turn; orthographic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg></button>
             </div>
           </div>
         </section>
@@ -863,6 +883,25 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
 <input id="folderFile" type="file" webkitdirectory hidden>
 <input id="structureFile" type="file" accept=".rmc6f,.h5,.hdf5" hidden>
 <div id="statusLog" class="popover hidden" role="log" aria-label="Recent messages"></div>
+<div id="cameraMenu" class="popover camMenu hidden" role="dialog" aria-label="Camera">
+  <h3>View along</h3>
+  <div class="camGrid">
+    <button type="button" class="alt" data-view="a*">a*</button><button type="button" class="alt" data-view="b*">b*</button><button type="button" class="alt" data-view="c*">c*</button>
+    <button type="button" class="alt" data-view="a">a</button><button type="button" class="alt" data-view="b">b</button><button type="button" class="alt" data-view="c">c</button>
+  </div>
+  <div class="camRow"><input id="camHkl" type="text" placeholder="h k l" aria-label="Reciprocal direction"><button type="button" class="alt" id="camHklGo" title="Look along h a* + k b* + l c*">[hkl]</button></div>
+  <div class="camRow"><input id="camUvw" type="text" placeholder="u v w" aria-label="Direct direction"><button type="button" class="alt" id="camUvwGo" title="Look along u a + v b + w c">[uvw]</button></div>
+  <h3>Turn</h3>
+  <div class="camGrid">
+    <button type="button" class="alt" data-nudge="roll" data-sign="-1" title="Roll anticlockwise">Roll &#10226;</button><button type="button" class="alt" data-nudge="roll" data-sign="1" title="Roll clockwise">Roll &#10227;</button>
+    <button type="button" class="alt" data-nudge="tilt" data-sign="1">Tilt &uarr;</button><button type="button" class="alt" data-nudge="tilt" data-sign="-1">Tilt &darr;</button>
+    <button type="button" class="alt" data-nudge="turn" data-sign="-1">Turn &larr;</button><button type="button" class="alt" data-nudge="turn" data-sign="1">Turn &rarr;</button>
+  </div>
+  <div class="camRow">
+    <label>Step <input id="camStep" type="number" value="5" min="0.5" max="90" step="0.5"> &deg;</label>
+    <label class="check"><input id="camOrtho" type="checkbox">Orthographic</label>
+  </div>
+</div>
 <div id="dropOverlay" class="dropOverlay hidden"><div class="dropCard">Drop the file to open it</div></div>
 <dialog id="helpDialog" aria-labelledby="helpTitle">
   <div class="dlgHead"><h2 id="helpTitle">Keyboard shortcuts</h2><button type="button" class="iconBtn ghost" id="helpClose" title="Close (Esc)">&times;</button></div>
@@ -5124,6 +5163,203 @@ function radialProfile(res, {bins=null, model=null, ranges=displayIndexRanges(re
   return {kind:"q", bins:nb, width, x:xs, y, n:count, ym, R, voxels, qmax};
 }
 
+
+// ---- Cutaway block and camera tools for the 3-D views
+
+// Faces of the block of the shown volume that runs along the fixed axis from
+// the start of the shown range to the current axis slice ("below"), or from
+// the slice to the end ("above"): the cut face, the cap at the far end and
+// four walls. Each face is block-averaged to at most maxCells cells, its
+// values transformed for display; empty blocks leave holes.
+function cutawayMesh(res, sl, mode, {maxCells=150 * 150, keep="below"}={}){
+  if(!sl || sl.type !== "axis") return null;
+  const ranges = displayIndexRanges(res), a = sl.fixedAxis, f = clamp(sl.fixedIndex, ranges[a][0], ranges[a][1]);
+  const [b, c] = [0, 1, 2].filter(x => x !== a);
+  const span = keep === "above" ? [f, ranges[a][1]] : [ranges[a][0], f];
+  const cap = keep === "above" ? ranges[a][1] : ranges[a][0];
+  const faces = [{fix:a, at:f, u:b, ur:ranges[b], v:c, vr:ranges[c]}];
+  if(cap !== f) faces.push({fix:a, at:cap, u:b, ur:ranges[b], v:c, vr:ranges[c]});
+  if(span[1] > span[0]){
+    faces.push({fix:b, at:ranges[b][0], u:a, ur:span, v:c, vr:ranges[c]}, {fix:b, at:ranges[b][1], u:a, ur:span, v:c, vr:ranges[c]});
+    faces.push({fix:c, at:ranges[c][0], u:a, ur:span, v:b, vr:ranges[b]}, {fix:c, at:ranges[c][1], u:a, ur:span, v:b, vr:ranges[b]});
+  }
+  const [, n1, n2] = res.shape, I = res.I;
+  const x = [], y = [], z = [], intensity = [], custom = [], ti = [], tj = [], tk = [];
+  for(const face of faces){
+    const nu = face.ur[1] - face.ur[0] + 1, nv = face.vr[1] - face.vr[0] + 1;
+    const step = Math.max(1, Math.ceil(Math.sqrt(nu * nv / maxCells)));
+    const cu = Math.ceil(nu / step), cv = Math.ceil(nv / step);
+    const index = new Int32Array(cu * cv).fill(-1);
+    for(let p=0;p<cu;p++){
+      for(let q=0;q<cv;q++){
+        const u0 = face.ur[0] + p * step, v0 = face.vr[0] + q * step;
+        const u1 = Math.min(face.ur[1], u0 + step - 1), v1 = Math.min(face.vr[1], v0 + step - 1);
+        let s = 0, n = 0;
+        const at = [0, 0, 0];
+        at[face.fix] = face.at;
+        for(let u=u0;u<=u1;u++) for(let v=v0;v<=v1;v++){
+          at[face.u] = u;
+          at[face.v] = v;
+          const value = I[(at[0] * n1 + at[1]) * n2 + at[2]];
+          if(value === value){ s += value; n++; }
+        }
+        if(!n) continue;
+        const raw = s / n, shown = transformedValue(raw, mode);
+        if(!Number.isFinite(shown)) continue;
+        const frac = [0, 0, 0];
+        frac[face.fix] = face.at;
+        frac[face.u] = (u0 + u1) / 2;
+        frac[face.v] = (v0 + v1) / 2;
+        const pn = nativeAtFraction(res, frac), pq = plotPoint(res, pn[0], pn[1], pn[2]);
+        if(!pq.every(Number.isFinite)) continue;
+        index[p * cv + q] = x.length;
+        x.push(pq[0]); y.push(pq[1]); z.push(pq[2]);
+        intensity.push(shown);
+        custom.push([pn[0], pn[1], pn[2], pq[0], pq[1], pq[2], raw]);
+      }
+    }
+    for(let p=0;p<cu-1;p++) for(let q=0;q<cv-1;q++){
+      const i00 = index[p * cv + q], i01 = index[p * cv + q + 1], i10 = index[(p + 1) * cv + q], i11 = index[(p + 1) * cv + q + 1];
+      if(i00 >= 0 && i01 >= 0 && i11 >= 0){ ti.push(i00); tj.push(i01); tk.push(i11); }
+      if(i00 >= 0 && i11 >= 0 && i10 >= 0){ ti.push(i00); tj.push(i11); tk.push(i10); }
+    }
+  }
+  return {x, y, z, intensity, custom, i:ti, j:tj, k:tk, faces:faces.length, transformed:usePlotBasis(res)};
+}
+
+// The cutaway as a Plotly mesh on the map's colour scale and levels.
+function cutawayTrace(sl, mode, levels, maxCells){
+  const plot = cutawayMesh(viewRes(), sl, mode, {maxCells, keep:state.ui && state.ui.cutawayKeep || "below"});
+  if(!plot || !plot.i.length) return null;
+  const nativeLabels = nativeAxisLabels(state.res), valLabel = valueLabel(viewRes());
+  const q = useBasisToQ(state.res) ? ["Qx", "Qy", "Qz"] : ["X", "Y", "Z"];
+  return {
+    plot,
+    trace:{
+      type:"mesh3d", x:plot.x, y:plot.y, z:plot.z, i:plot.i, j:plot.j, k:plot.k,
+      intensity:plot.intensity, intensitymode:"vertex", customdata:plot.custom,
+      hovertemplate:plot.transformed
+        ? `${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${q[0]}=%{customdata[3]:.5g}<br>${q[1]}=%{customdata[4]:.5g}<br>${q[2]}=%{customdata[5]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`
+        : `${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`,
+      colorscale:plotlyColorscale(), cmin:levels.min, cmax:levels.max, showscale:true,
+      flatshading:true, lighting:{ambient:0.95, diffuse:0.2, specular:0, roughness:1}
+    }
+  };
+}
+
+function cutawayOn(sl){
+  return !!(state.ui && state.ui.planeStyle === "cutaway" && sl && sl.type === "axis");
+}
+
+// Lattice directions in the plot frame: reciprocal a*, b*, c* and direct a,
+// b, c. Without a basis the plot axes stand in for both.
+function latticeDirections(res=state.res){
+  const I3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  if(!res) return {recip:I3, direct:I3};
+  if(isRealSpaceData(res)){
+    const direct = I3.map(e => plotVector(res, e));
+    let recip = I3;
+    try{ recip = transpose3(inv3(direct)); }catch(_){}
+    return {recip, direct};
+  }
+  const Bq = unprojectedBq(res);
+  if(validMatrix3(Bq) && (useBasisToQ(res) || res.coordKind === "q")){
+    let direct = I3;
+    try{ direct = transpose3(inv3(Bq)); }catch(_){}
+    return {recip:Bq, direct};
+  }
+  return {recip:I3, direct:I3};
+}
+
+const unit3 = v => { const n = normVec(v); return n > 0 ? v.map(x => x / n) : [0, 0, 1]; };
+
+// Rodrigues rotation of v about the unit axis k by angle t (radians).
+function rotateAbout(v, k, t){
+  const c = Math.cos(t), s = Math.sin(t), kv = dot(k, v), kxv = cross(k, v);
+  return [0, 1, 2].map(i => v[i] * c + kxv[i] * s + k[i] * kv * (1 - c));
+}
+
+function plotIdFor(key){ return key === "plane" ? "plot3dPlane" : "plot3dIso"; }
+
+function currentCamera(key){
+  const plotId = plotIdFor(key);
+  const cam = readSceneCamera(plotId) || state.cameras[key] || {};
+  const f = viewAspectFit(plotId);
+  return {
+    eye:cam.eye || {x:1.25 * f, y:1.25 * f, z:1.25 * f},
+    up:cam.up || {x:0, y:0, z:1},
+    center:cam.center || {x:0, y:0, z:0}
+  };
+}
+
+function applyCamera(key, cam){
+  const gd = $(plotIdFor(key)), type = state.ui && state.ui.ortho ? "orthographic" : "perspective";
+  const next = {eye:cam.eye, up:cam.up, center:cam.center, projection:{type}};
+  state.cameras[key] = next;
+  if(!window.Plotly || !gd || !gd._fullLayout) return;
+  // Plotly applies a projection switch only on its own: an update that also
+  // moves the camera is dropped. Switch first, then move.
+  const scene = gd._fullLayout.scene, live = scene && scene.camera && scene.camera.projection;
+  const first = live && live.type !== type ? Plotly.relayout(gd, {"scene.camera.projection.type":type}) : Promise.resolve();
+  Promise.resolve(first)
+    .then(() => Plotly.relayout(gd, {"scene.camera.eye":next.eye, "scene.camera.up":next.up, "scene.camera.center":next.center}))
+    .catch(() => {});
+}
+
+// Looks along dir (plot frame) from its tip toward the centre; up is taken
+// from upHint made square to the line of sight.
+function viewAlong(key, dir, upHint){
+  const cam = currentCamera(key), e = cam.eye;
+  const dist = Math.hypot(e.x, e.y, e.z) || 2;
+  const d = unit3(dir);
+  let up = upHint ? upHint.map((v, i) => v - dot(upHint, d) * d[i]) : null;
+  if(!up || normVec(up) < 1e-6){
+    const trial = Math.abs(d[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+    up = trial.map((v, i) => v - dot(trial, d) * d[i]);
+  }
+  up = unit3(up);
+  applyCamera(key, {eye:{x:d[0] * dist, y:d[1] * dist, z:d[2] * dist}, up:{x:up[0], y:up[1], z:up[2]}, center:{x:0, y:0, z:0}});
+}
+
+// Named views: a*, b*, c*, a, b, c; up is c* (or b* when looking along c*).
+function viewAlongLattice(key, name){
+  const {recip, direct} = latticeDirections();
+  const star = name.endsWith("*"), i = "abc".indexOf(name[0]);
+  const dir = (star ? recip : direct)[i];
+  const upHint = i === 2 ? (star ? recip : direct)[1] : (star ? recip : direct)[2];
+  viewAlong(key, dir, upHint);
+}
+
+// A typed direction: [h k l] in reciprocal units or [u v w] in direct units.
+function viewAlongIndices(key, text, kind){
+  const nums = String(text || "").replace(/[\[\]\(\),]/g, " ").trim().split(/\s+/).map(Number);
+  if(nums.length !== 3 || !nums.every(Number.isFinite) || nums.every(v => v === 0)) throw new Error("Enter three numbers, e.g. 1 1 0.");
+  const {recip, direct} = latticeDirections();
+  const basis = kind === "uvw" ? direct : recip;
+  const dir = [0, 1, 2].map(c => nums[0] * basis[0][c] + nums[1] * basis[1][c] + nums[2] * basis[2][c]);
+  viewAlong(key, dir, recip[2]);
+}
+
+// Roll turns the view about the line of sight, tilt raises or lowers the eye,
+// turn swings it about the vertical; steps are in degrees.
+function nudgeCamera(key, kind, degrees){
+  const cam = currentCamera(key), t = degrees * Math.PI / 180;
+  const c = [cam.center.x, cam.center.y, cam.center.z];
+  let eye = [cam.eye.x - c[0], cam.eye.y - c[1], cam.eye.z - c[2]], up = [cam.up.x, cam.up.y, cam.up.z];
+  const sight = unit3(eye);
+  if(kind === "roll") up = rotateAbout(up, sight, t);
+  else if(kind === "tilt"){
+    // A positive tilt raises the eye.
+    const side = unit3(cross(up, sight));
+    eye = rotateAbout(eye, side, -t);
+    up = rotateAbout(up, side, -t);
+  }else{
+    const axis = unit3(up);
+    eye = rotateAbout(eye, axis, t);
+  }
+  applyCamera(key, {eye:{x:eye[0] + c[0], y:eye[1] + c[1], z:eye[2] + c[2]}, up:{x:up[0], y:up[1], z:up[2]}, center:cam.center});
+}
+
 // The comparison and its fit, for profiles of the data it was aligned to.
 function comparisonModel(res){
   if(!comparisonReady(res) || !state.cmpFit) return null;
@@ -8053,11 +8289,11 @@ function refitCamera(plotId, key){
 }
 
 function resetCamera(plotId, key){
-  state.cameras[key] = null;
   const gd = $(plotId);
-  if(!window.Plotly || !gd) return;
+  if(!window.Plotly || !gd || !gd._fullLayout) return;
   gd._camFit = viewAspectFit(plotId);
-  Plotly.relayout(gd, {"scene.camera":defaultSceneCamera(plotId) || null});
+  const f = viewAspectFit(plotId);
+  applyCamera(key, {eye:{x:1.25 * f, y:1.25 * f, z:1.25 * f}, up:{x:0, y:0, z:1}, center:{x:0, y:0, z:0}});
 }
 
 function sceneLayout(title, camera, plotId=null){
@@ -8087,7 +8323,7 @@ function sceneLayout(title, camera, plotId=null){
       zaxis:sceneAxis(2),
       aspectmode:"manual",
       aspectratio:{x:span[0]/maxSpan, y:span[1]/maxSpan, z:span[2]/maxSpan},
-      camera:camera || defaultSceneCamera(plotId)
+      camera:{...(camera || defaultSceneCamera(plotId) || {}), projection:{type:state.ui && state.ui.ortho ? "orthographic" : "perspective"}}
     },
     font:{color:tc.text}
   };
@@ -8193,6 +8429,10 @@ function wireCamera(plotId, key){
 }
 
 function makePlane3dTrace(sl, stats, levels){
+  if(cutawayOn(sl)){
+    const built = cutawayTrace(sl, $("scale").value, levels, 60 * 60);
+    if(built) return built;
+  }
   const plot = plotMeshFromSlice(state.res, sl, stats.values);
   const labels = renderAxisLabels(state.res);
   const nativeLabels = nativeAxisLabels(state.res);
@@ -8321,6 +8561,17 @@ async function renderPlane3d(Plotly){
   const mode = $("scale").value;
   const stats = sliceTransformed(sl, mode);
   const levels = displayLevels(stats, mode);
+  if(cutawayOn(sl)){
+    const built = cutawayTrace(sl, mode, levels, 150 * 150);
+    if(built){
+      await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Cutaway ${state.ui.cutawayKeep === "above" ? "above" : "below"} ${sl.plane}`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
+      wireCamera("plot3dPlane", "plane");
+      captureSceneCamera("plot3dPlane", "plane");
+      $("empty3dPlane").style.display = "none";
+      set3dStatus(`Cutaway: ${built.plot.faces} faces, ${built.plot.i.length.toLocaleString()} triangles`);
+      return;
+    }
+  }
   const plot = plotMeshFromSlice(state.res, sl, stats.values);
   const labels = renderAxisLabels(state.res);
   const nativeLabels = nativeAxisLabels(state.res);
@@ -9125,7 +9376,7 @@ async function onFile(file){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
@@ -9143,13 +9394,16 @@ function loadUiPrefs(){
     if(typeof saved.profile === "boolean") ui.profile = saved.profile;
     if(["line", "q"].includes(saved.profileKind)) ui.profileKind = saved.profileKind;
     if(Number.isFinite(saved.profileH)) ui.profileH = clamp(saved.profileH, 0.15, 0.7);
+    if(["plane", "cutaway"].includes(saved.planeStyle)) ui.planeStyle = saved.planeStyle;
+    if(["below", "above"].includes(saved.cutawayKeep)) ui.cutawayKeep = saved.cutawayKeep;
+    if(typeof saved.ortho === "boolean") ui.ortho = saved.ortho;
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho})); }catch(_){}
 }
 
 function applyUi(){
@@ -9179,6 +9433,10 @@ function applyUi(){
   $("cutFields").classList.toggle("hidden", ui.profileKind !== "line");
   $("profileToggle").classList.toggle("on", !!ui.profile);
   $("profileToggle").setAttribute("aria-pressed", String(!!ui.profile));
+  $("planeStyle").value = ui.planeStyle;
+  $("cutawayFlip").classList.toggle("hidden", ui.planeStyle !== "cutaway");
+  $("cutawayFlip").title = ui.cutawayKeep === "above" ? "Showing the block above the slice; show the part below" : "Showing the block below the slice; show the part above";
+  $("camOrtho").checked = !!ui.ortho;
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
   saveUiPrefs();
 }
@@ -9371,6 +9629,7 @@ function onShortcut(ev){
     case "?": openHelp(); break;
     case "Escape":
       if(!$("statusLog").classList.contains("hidden")) toggleStatusLog(false);
+      else if(!$("cameraMenu").classList.contains("hidden")) $("cameraMenu").classList.add("hidden");
       else if(state.cutMode) setCutMode(false);
       else if(state.ui.max) setUi({max:null});
       else handled = false;
@@ -10238,6 +10497,37 @@ function bind(){
   });
   $("showMode").addEventListener("change", () => setShowMode($("showMode").value));
   $("cutTool").addEventListener("click", () => setCutMode(!state.cutMode));
+  $("planeStyle").addEventListener("change", () => { setUi({planeStyle:$("planeStyle").value}); scheduleRender3d(0, true); });
+  $("cutawayFlip").addEventListener("click", () => { setUi({cutawayKeep:state.ui.cutawayKeep === "above" ? "below" : "above"}); scheduleRender3d(0, true); });
+  const camMenu = $("cameraMenu");
+  for(const b of document.querySelectorAll("[data-camera-for]")){
+    b.addEventListener("click", ev => {
+      ev.stopPropagation();
+      const open = !camMenu.classList.contains("hidden") && state.cameraKey === b.dataset.cameraFor;
+      camMenu.classList.toggle("hidden", open);
+      if(open) return;
+      state.cameraKey = b.dataset.cameraFor;
+      const r = b.getBoundingClientRect();
+      camMenu.style.left = `${Math.max(8, Math.min(window.innerWidth - 262, r.right - 250))}px`;
+      camMenu.style.top = `${Math.max(8, r.top - camMenu.offsetHeight - 8)}px`;
+    });
+  }
+  document.addEventListener("pointerdown", ev => {
+    if(camMenu.classList.contains("hidden") || camMenu.contains(ev.target) || (ev.target.closest && ev.target.closest("[data-camera-for]"))) return;
+    camMenu.classList.add("hidden");
+  });
+  const camKey = () => state.cameraKey || "plane";
+  for(const b of camMenu.querySelectorAll("[data-view]")) b.addEventListener("click", () => viewAlongLattice(camKey(), b.dataset.view));
+  for(const b of camMenu.querySelectorAll("[data-nudge]")) b.addEventListener("click", () => nudgeCamera(camKey(), b.dataset.nudge, Number(b.dataset.sign) * (Number($("camStep").value) || 5)));
+  const typed = (input, kind) => { try{ viewAlongIndices(camKey(), $(input).value, kind); }catch(err){ status(err.message, "warn"); } };
+  $("camHklGo").addEventListener("click", () => typed("camHkl", "hkl"));
+  $("camUvwGo").addEventListener("click", () => typed("camUvw", "uvw"));
+  $("camHkl").addEventListener("keydown", ev => { if(ev.key === "Enter") typed("camHkl", "hkl"); });
+  $("camUvw").addEventListener("keydown", ev => { if(ev.key === "Enter") typed("camUvw", "uvw"); });
+  $("camOrtho").addEventListener("change", () => {
+    setUi({ortho:$("camOrtho").checked});
+    for(const key of ["plane", "iso"]) if($(plotIdFor(key))._fullLayout) applyCamera(key, currentCamera(key));
+  });
   $("profileToggle").addEventListener("click", () => setProfileOpen(!profileOpen()));
   $("profileClose").addEventListener("click", () => { setCutMode(false); setProfileOpen(false); });
   for(const b of document.querySelectorAll("[data-profile]")) b.addEventListener("click", () => setProfileOpen(true, b.dataset.profile));

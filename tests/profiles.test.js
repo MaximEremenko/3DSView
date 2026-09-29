@@ -108,3 +108,33 @@ test("thick axis slices average the neighbouring slices, leaving empty voxels ou
   app.context.axisSliceVoxels(res, thick)(() => n++);
   assert.equal(n, 3 * 25, "the agreement covers the three slices");
 });
+
+test("the cutaway block has a cut face, a cap and four walls, with holes where data are missing", () => {
+  const app = loadApp();
+  const ax = axis(5, -1, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax, value:lin});
+  res.I[(2 * 5 + 2) * 5 + 2] = NaN;   // the centre of the cut face at l = 0
+  const sl = {type:"axis", fixedAxis:2, fixedIndex:2};
+  const below = app.context.cutawayMesh(res, sl, "linear", {keep:"below"});
+  assert.equal(below.faces, 6);
+  // Cut face 25 - 1 hole, cap 25, four walls of 3 x 5 cells.
+  assert.equal(below.x.length, 24 + 25 + 4 * 15);
+  assert.ok(!below.custom.some(c => c[0] === 0 && c[1] === 0 && c[2] === 0), "the empty voxel leaves a hole");
+  assert.ok(below.custom.every(c => c[2] <= 0 + 1e-12), "the block stays below the cut");
+  assert.ok(below.i.length > 0);
+  const above = app.context.cutawayMesh(res, sl, "linear", {keep:"above"});
+  assert.ok(above.custom.every(c => c[2] >= -1e-12), "the other side");
+  const top = app.context.cutawayMesh(res, {type:"axis", fixedAxis:2, fixedIndex:4}, "linear", {keep:"above"});
+  assert.equal(top.faces, 1, "at the end of the range only the cut face is left");
+});
+
+test("lattice directions and rotations for the camera", () => {
+  const app = loadApp();
+  const ax = axis(3, -0.5, 0.5), s = 2 * Math.PI / 4;
+  const res = volume(app, {h:ax, k:ax, l:ax, value:lin, meta:{Bq:[[s, 0, 0], [0, s, 0], [0, 0, 2 * Math.PI / 6]]}});
+  const {recip, direct} = app.context.latticeDirections(res);
+  assertClose(recip[2][2], 2 * Math.PI / 6, 1e-12, "c* along z");
+  assertClose(app.context.dot(direct[0], recip[1]), 0, 1e-12, "a is square to b*");
+  const r = app.context.rotateAbout([1, 0, 0], [0, 0, 1], Math.PI / 2);
+  [0, 1, 0].forEach((v, i) => assertClose(r[i], v, 1e-12, `rotated ${i}`));
+});
