@@ -92,3 +92,29 @@ test("swapping H/L keeps the zero mask aligned with the data", async () => {
   app.context.setZeroMask(res, false);
   for(let n=0;n<res.I.length;n++) assert.ok(Number.isFinite(res.I[n]), `voxel ${n} restored after the swap`);
 });
+
+test("the map readout reports the voxel under the cursor, with Q and d", async () => {
+  const app = loadApp();
+  const shape = [5, 4, 3];
+  const code = (i, j, k) => 1 + i + 10 * j + 100 * k;
+  const lines = ["# h k l intensity"];
+  for(let i=0;i<5;i++) for(let j=0;j<4;j++) for(let k=0;k<3;k++) lines.push(`${-1 + 0.5 * i} ${0.25 * j} ${k} ${code(i, j, k)}`);
+  const res = await app.parseFile(textFile("calc.dat", lines.join("\n")));
+  res.Bq = [[2 * Math.PI / 4, 0, 0], [0, 2 * Math.PI / 4, 0], [0, 0, 2 * Math.PI / 4]];   // cubic a = 4
+  app.state.res = app.finalizeResult(res);
+  const ctx = app.context;
+  const sl = ctx.buildAxisSlice(app.state.res, "l", 1, 1e6, false);
+  const layout = ctx.slice2dLayout(sl, 900, 600);
+  app.state.lastSlice = {slice:sl, layout};
+  // Voxel H[2] = 0, K[3] = 0.75 on the L[1] = 1 slice; aim slightly off-centre.
+  const [X, Y] = layout.toCanvas(res.k[3] - 0.05, res.h[2] + 0.1);
+  const r = ctx.sliceReadout({x:X, y:Y});
+  assert.deepEqual(Array.from(r.index), [2, 3, 1]);
+  assert.equal(r.value, code(2, 3, 1));
+  assert.deepEqual(Array.from(r.native), [0, 0.75, 1]);
+  const q = Math.hypot(...r.q);
+  assert.ok(Math.abs(q - 2 * Math.PI / 4 * Math.hypot(0.75, 1)) < 1e-12);
+  // Outside the slice there is nothing to report.
+  const [Xo, Yo] = layout.toCanvas(res.k[3] + 2, res.h[2]);
+  assert.equal(ctx.sliceReadout({x:Xo, y:Yo}), null);
+});

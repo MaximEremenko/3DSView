@@ -174,6 +174,7 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
 .stats{min-height:28px;padding:6px 8px;background:var(--panelBg);color:var(--statsText);font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plotOverlay{position:absolute;inset:auto 10px 10px auto;display:flex;gap:6px;z-index:5}
 .mapOverlay{inset:auto auto 10px 10px}
+.mapReadout{position:absolute;left:0;top:0;z-index:6;pointer-events:none;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText);border-radius:6px;padding:5px 8px;font:12px Consolas,"Courier New",monospace;white-space:pre;line-height:1.4}
 .iconBtn{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText)}
 .iconBtn:hover{background:rgba(26,122,173,.65)}
 .empty3d{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--subtle);font-family:Consolas,"Courier New",monospace;font-size:.9rem;pointer-events:none}
@@ -529,6 +530,7 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
     <div class="panelHead"><h3>2D Slice Map</h3></div>
     <div class="canvasWrap">
       <canvas id="heatmap"></canvas>
+      <div id="mapReadout" class="mapReadout hidden" aria-live="off"></div>
       <div class="plotOverlay mapOverlay">
         <button class="iconBtn" id="mapZoomIn" title="Zoom in (or scroll on the map)">+</button>
         <button class="iconBtn" id="mapZoomOut" title="Zoom out">&minus;</button>
@@ -615,6 +617,7 @@ const state = {
   cameras:{plane:null, iso:null},
   view2d:null,
   pan2d:null,
+  readoutPt:null,
   globalHist:null,
   autoSigned:false,
   resizeTimer:0
@@ -4629,7 +4632,7 @@ function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, inc
         }
       }
     }
-    return {type:"axis", rows, cols, d, x3, y3, z3, plane:`${labels[0]}[${fixed}] = ${fmt(res.h[fixed])}`, xLabel:labels[2], yLabel:labels[1], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.k[ranges[1][0]], yMax:res.k[ranges[1][1]], xVec:gridVector(res,2), yVec:gridVector(res,1), ...smp};
+    return {type:"axis", fixedAxis:0, fixedIndex:fixed, rowAxis:1, colAxis:2, rows, cols, d, x3, y3, z3, plane:`${labels[0]}[${fixed}] = ${fmt(res.h[fixed])}`, xLabel:labels[2], yLabel:labels[1], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.k[ranges[1][0]], yMax:res.k[ranges[1][1]], xVec:gridVector(res,2), yVec:gridVector(res,1), ...smp};
   }
   if(axisName === "k"){
     fixed = clamp(fixed, ranges[1][0], ranges[1][1]);
@@ -4649,7 +4652,7 @@ function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, inc
         }
       }
     }
-    return {type:"axis", rows, cols, d, x3, y3, z3, plane:`${labels[1]}[${fixed}] = ${fmt(res.k[fixed])}`, xLabel:labels[2], yLabel:labels[0], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,2), yVec:gridVector(res,0), ...smp};
+    return {type:"axis", fixedAxis:1, fixedIndex:fixed, rowAxis:0, colAxis:2, rows, cols, d, x3, y3, z3, plane:`${labels[1]}[${fixed}] = ${fmt(res.k[fixed])}`, xLabel:labels[2], yLabel:labels[0], xMin:res.l[ranges[2][0]], xMax:res.l[ranges[2][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,2), yVec:gridVector(res,0), ...smp};
   }
   fixed = clamp(fixed, ranges[2][0], ranges[2][1]);
   const fullH = ranges[0][1] - ranges[0][0] + 1, fullK = ranges[1][1] - ranges[1][0] + 1;
@@ -4668,7 +4671,7 @@ function buildAxisSlice(res, axisName, fixed, maxCells=MAX_AXIS_SLICE_CELLS, inc
         }
       }
     }
-  return {type:"axis", rows, cols, d, x3, y3, z3, plane:`${labels[2]}[${fixed}] = ${fmt(res.l[fixed])}`, xLabel:labels[1], yLabel:labels[0], xMin:res.k[ranges[1][0]], xMax:res.k[ranges[1][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,1), yVec:gridVector(res,0), ...smp};
+  return {type:"axis", fixedAxis:2, fixedIndex:fixed, rowAxis:0, colAxis:1, rows, cols, d, x3, y3, z3, plane:`${labels[2]}[${fixed}] = ${fmt(res.l[fixed])}`, xLabel:labels[1], yLabel:labels[0], xMin:res.k[ranges[1][0]], xMax:res.k[ranges[1][1]], yMin:res.h[ranges[0][0]], yMax:res.h[ranges[0][1]], xVec:gridVector(res,1), yVec:gridVector(res,0), ...smp};
 }
 
 function buildNormalPlaneSlice(res, resOverride=null, include3d=true){
@@ -5061,6 +5064,8 @@ function onHeatmapPointerMove(ev){
     return;
   }
   const pan = state.pan2d, layout = view2dArea();
+  if(pan || (state.levelDrag && state.levelDrag.active)) hideReadout();
+  else showReadout(pointInMapArea(pt) ? pt : null);
   if(pan && layout){
     const v = layout.view;
     state.view2d = clampView2d({key:v.key, zoom:v.zoom, panX:pan.panX + (pt.x - pan.x) / layout.area.w, panY:pan.panY + (pt.y - pan.y) / layout.area.h});
@@ -5235,6 +5240,7 @@ function draw2d(options={}){
     $("levelMax").value = fmt(levels.max, 7);
   }
   updateSliceValue(sl);
+  if(state.readoutPt) showReadout(state.readoutPt);
 }
 
 // Draws the last computed slice image with the current zoom and pan; cheap
@@ -5306,6 +5312,79 @@ function zoom2dCenter(factor){
 function resetZoom2d(){
   if(state.view2d) state.view2d = {key:state.view2d.key, zoom:1, panX:0, panY:0};
   paint2d();
+}
+
+// What lies under a canvas point of the 2-D map: native coordinates, Q, and
+// the value of the voxel there (axis slices, at full resolution even when
+// the drawn slice is sampled) or of the drawn cell (plane and slab slices).
+function sliceReadout(pt){
+  const last = state.lastSlice, res = state.res;
+  if(!res || !last || !last.layout || !pointInMapArea(pt)) return null;
+  const sl = last.slice, [xv, yv] = last.layout.toSlice(pt.x, pt.y), ext = last.layout.ext;
+  if(!(xv >= ext.x0 && xv <= ext.x1 && yv >= ext.y0 && yv <= ext.y1)) return null;
+  const out = {};
+  if(sl.type === "axis"){
+    const axes = [res.h, res.k, res.l], metas = [res.axes.h, res.axes.k, res.axes.l];
+    const idx = [0, 0, 0];
+    idx[sl.fixedAxis] = sl.fixedIndex;
+    idx[sl.rowAxis] = Math.round(axisToFraction(axes[sl.rowAxis], metas[sl.rowAxis], yv));
+    idx[sl.colAxis] = Math.round(axisToFraction(axes[sl.colAxis], metas[sl.colAxis], xv));
+    if(idx.some((v, a) => !(v >= 0 && v < res.shape[a]))) return null;
+    out.index = idx;
+    out.native = pointAtIndex(res, idx[0], idx[1], idx[2]);
+    out.value = res.I[idx3(res.shape, idx[0], idx[1], idx[2])];
+  }else{
+    const p = sl.type === "plane" ? state.plane : state.avgvol;
+    if(!p) return null;
+    out.uv = [xv, yv];
+    out.native = [0, 1, 2].map(c => p.center[c] + sl.xVec[c] * xv + sl.yVec[c] * yv);
+    const c = Math.round((xv - sl.xMin) / ((sl.xMax - sl.xMin) || 1) * (sl.cols - 1));
+    const r = Math.round((yv - sl.yMin) / ((sl.yMax - sl.yMin) || 1) * (sl.rows - 1));
+    out.value = r >= 0 && r < sl.rows && c >= 0 && c < sl.cols ? sl.d[r * sl.cols + c] : NaN;
+  }
+  if(useBasisToQ(res)) out.q = hklToQ(out.native[0], out.native[1], out.native[2], res.Bq);
+  else if(res.coordKind === "q" && !isRealSpaceData(res)) out.q = out.native.slice();
+  return out;
+}
+
+function readoutNumber(v){
+  if(!Number.isFinite(v)) return "-";
+  const a = Math.abs(v);
+  return a !== 0 && (a >= 1e5 || a < 1e-3) ? v.toExponential(4) : Number(v.toPrecision(5)).toString();
+}
+
+function readoutText(o){
+  const res = state.res, labels = nativeAxisLabels(res);
+  const lines = [labels.map((l, i) => `${l} ${readoutNumber(o.native[i])}`).join("   ")];
+  if(o.uv) lines.push(`u ${readoutNumber(o.uv[0])}   v ${readoutNumber(o.uv[1])}`);
+  if(o.q){
+    const qn = normVec(o.q);
+    const vec = useBasisToQ(res) ? `Q (${o.q.map(readoutNumber).join(", ")}) \u00c5\u207b\u00b9\n` : "";
+    lines.push(`${vec}|Q| ${readoutNumber(qn)} \u00c5\u207b\u00b9   d ${qn > 0 ? readoutNumber(2 * Math.PI / qn) : "-"} \u00c5`);
+  }
+  lines.push(`${valueLabel(res)} ${Number.isFinite(o.value) ? readoutNumber(o.value) : "no data"}`);
+  return lines.join("\n");
+}
+
+function showReadout(pt){
+  const box = $("mapReadout");
+  state.readoutPt = pt;
+  const o = pt ? sliceReadout(pt) : null;
+  if(!o){ box.classList.add("hidden"); return; }
+  box.textContent = readoutText(o);
+  box.classList.remove("hidden");
+  const wrap = box.parentElement.getBoundingClientRect();
+  const w = box.offsetWidth, h = box.offsetHeight;
+  let x = pt.x + 16, y = pt.y + 16;
+  if(x + w > wrap.width - 4) x = pt.x - w - 12;
+  if(y + h > wrap.height - 4) y = pt.y - h - 12;
+  box.style.left = `${Math.max(4, x)}px`;
+  box.style.top = `${Math.max(4, y)}px`;
+}
+
+function hideReadout(){
+  state.readoutPt = null;
+  $("mapReadout").classList.add("hidden");
 }
 
 function pointInMapArea(pt){
@@ -7106,6 +7185,7 @@ function bind(){
   $("heatmap").addEventListener("pointermove", onHeatmapPointerMove);
   $("heatmap").addEventListener("pointerup", onHeatmapPointerUp);
   $("heatmap").addEventListener("pointercancel", onHeatmapPointerUp);
+  $("heatmap").addEventListener("pointerleave", hideReadout);
   $("heatmap").addEventListener("wheel", ev => {
     const pt = canvasPoint(ev);
     if(!state.res || !pointInMapArea(pt)) return;

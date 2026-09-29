@@ -15,6 +15,10 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **Three linked views**: a 3-D rendering of the current slice plane, a 3-D isosurface of
   the whole volume (both Plotly), and a 2-D slice heatmap drawn on a canvas with live
   statistics.
+- **Cursor readout**: hovering over the 2-D map shows the coordinates under the cursor
+  (H K L, Q or X Y Z), plus Q, |Q| and the d-spacing when a reciprocal basis is known,
+  and the value. On axis slices the value is the voxel itself, at full resolution; on
+  plane and slab slices it is the value drawn there.
 - **2-D zoom and pan**: zoom the map with the mouse wheel (about the cursor) or the +/−
   buttons, and drag to pan; double-click or ↺ shows the whole slice again. Ticks follow
   the visible region, skewed grids keep their shape, and each cell is centred on its
