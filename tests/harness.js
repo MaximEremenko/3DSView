@@ -42,7 +42,7 @@ function fakeElement(){
 
 function createContext(){
   const ctx = {
-    console, TextDecoder, TextEncoder, URL, Blob, File, WebAssembly,
+    console, TextDecoder, TextEncoder, URL, URLSearchParams, Blob, File, WebAssembly,
     setTimeout, clearTimeout, performance, crypto, structuredClone,
     navigator:{hardwareConcurrency:2},
     requestAnimationFrame:cb => setTimeout(cb, 0),

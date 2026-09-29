@@ -30,6 +30,10 @@ and slab-average slicing with linked 2-D and 3-D views.
   splitter positions are remembered between visits.
 - **Files**: drop a file anywhere in the window, or use **Open**. The status bar shows the
   latest message and the slice statistics; click the message to see recent messages.
+  The page address can name files to open on start, e.g.
+  `index.html?url=data/run.nxs&compare=data/run_calc.dat&structure=data/run.rmc6f`.
+  Relative addresses resolve against the page; files on another host open when that
+  host allows cross-origin requests.
   Several files can be opened or dropped together, or a whole run folder opened (see
   *Compare*). A file opens on the slice at 0 (such as HK0, or r = 0 of a ΔPDF map), on
   the middle slice when the axis does not reach 0, and on the nearest slice holding data

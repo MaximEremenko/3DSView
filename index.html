@@ -12337,6 +12337,51 @@ function bind(){
   bindLevelHistogram();
   syncControls();
   draw2d();
+  openFromUrlParams();
+}
+
+// A file named in the page address opens on start, e.g.
+// index.html?url=data/run.nxs&compare=data/run_calc.dat&structure=run.rmc6f.
+// Relative addresses resolve against the page; other hosts must allow
+// cross-origin requests.
+function urlParamFiles(search){
+  let params;
+  try{ params = new URLSearchParams(search || ""); }catch(_){ return {}; }
+  const pick = key => (params.get(key) || "").trim() || null;
+  return {url:pick("url"), compare:pick("compare"), structure:pick("structure")};
+}
+
+async function fetchAsFile(address){
+  const target = new URL(address, location.href);
+  status(`Downloading ${target.href} ...`);
+  const response = await fetch(target.href);
+  if(!response.ok) throw new Error(`${target.href} answered ${response.status} ${response.statusText}`.trim());
+  const blob = await response.blob();
+  const name = decodeURIComponent(target.pathname.split("/").pop() || "data");
+  return new File([blob], name, {lastModified:Date.parse(response.headers.get("last-modified") || "") || 0});
+}
+
+async function openFromUrlParams(){
+  const want = urlParamFiles(typeof location === "object" ? location.search : "");
+  if(!want.url && !want.structure) return;
+  let current = "";
+  try{
+    if(want.url){
+      current = want.url;
+      await onFile(await fetchAsFile(want.url));
+    }
+    if(want.compare && state.res){
+      current = want.compare;
+      await loadComparisonFile(await fetchAsFile(want.compare));
+      showSidePage("compare");
+    }
+    if(want.structure){
+      current = want.structure;
+      await applyStructureFile(await fetchAsFile(want.structure));
+    }
+  }catch(err){
+    status(`Could not open ${current}: ${err.message}. A file on another host opens only when that host allows cross-origin requests.`, "err");
+  }
 }
 
 bind();

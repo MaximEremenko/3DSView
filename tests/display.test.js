@@ -273,3 +273,12 @@ test("isosurface samples sit about the origin and average their blocks", () => {
   res.I[(5 * 11 + 5) * 11 + 4] = NaN;
   assertClose(app.context.blockMeanSampler(res, ranges, [3, 3, 3])(5, 5, 5), (9 * (4 + 5 + 6) - 4) / 26, 1e-12, "empty voxels stay out");
 });
+
+test("files named in the page address", () => {
+  const app = loadApp();
+  const want = app.context.urlParamFiles("?url=data/run.nxs&compare=data%2Frun_calc.dat&structure=");
+  assert.equal(want.url, "data/run.nxs");
+  assert.equal(want.compare, "data/run_calc.dat");
+  assert.equal(want.structure, null, "an empty value is no file");
+  assert.equal(app.context.urlParamFiles("").url, null);
+});
