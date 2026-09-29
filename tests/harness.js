@@ -17,7 +17,8 @@ const EXPORTS = [
 ];
 
 function appScriptSource(options){
-  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  // VIEW_INDEX_HTML points the tests at another copy, e.g. an older revision.
+  const html = fs.readFileSync(process.env.VIEW_INDEX_HTML || path.join(ROOT, "index.html"), "utf8");
   const marker = "<script>\nconst PLOTLY_CDN";
   const start = html.indexOf(marker);
   if(start < 0) throw new Error("Main inline script not found in index.html.");

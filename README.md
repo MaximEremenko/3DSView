@@ -50,9 +50,11 @@ and slab-average slicing with linked 2-D and 3-D views.
 Text formats (`.dat`, `.txt`, `.csv`) — comment lines starting with `#`, `!` or `;` and
 Fortran `D` exponents are handled:
 
-- **RMCProfile 3DS indexed text**: rows of `i j k H K L intensity` with an optional
-  `points sections scale offset` header. Files whose name contains `amp` and that carry
-  trailing real/imaginary columns are loaded as amplitude magnitudes.
+- **RMCProfile 3DS indexed text**: rows of `i j k`, one coordinate triplet per symmetry
+  section, then the intensity, with an optional `points sections scale offset` header.
+  Rows that end in a real/imaginary pair instead (5 + 3·sections columns, e.g.
+  `*_amp_calc.dat` or `*_aver_interf_calc.dat`) are loaded as amplitude magnitudes |A|;
+  the section count comes from the header, or is 1 without one.
 - **4-column text**: `H K L intensity` rows (diffuse-scattering calculator output).
 - **3-column text**: `x y value` triplets, shown as a 2-D map.
 - **2-D numeric matrix**: plain rectangular matrices of numbers.

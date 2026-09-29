@@ -6,14 +6,18 @@ const {valueAt} = require("./harness");
 // Distinct, asymmetric values so any axis permutation is detectable.
 const code = (i, j, k) => 1 + i + 10 * j + 100 * k;
 
-// RMCProfile indexed rows "i j k x y z I", 1-based, i fastest, with an
-// "npoints nsec" header. coord(i,j,k) returns the three coordinate columns.
-function indexedText(shape, coord, value=code, header=true){
+// RMCProfile indexed rows "i j k" + one coordinate triplet per symmetry
+// section + intensity (or Re Im when amplitude(i,j,k) is given), 1-based,
+// i fastest, with an "npoints nsec" header unless header is false.
+function indexedText(shape, coord, value=code, {header=true, sections=1, amplitude=null}={}){
   const [nh, nk, nl] = shape;
-  const lines = header ? [`${nh * nk * nl} 1`] : [];
+  const lines = header ? [`${nh * nk * nl} ${sections}`] : [];
   for(let k=0;k<nl;k++) for(let j=0;j<nk;j++) for(let i=0;i<nh;i++){
-    const c = coord(i, j, k).map(v => v.toFixed(7));
-    lines.push(`${i + 1} ${j + 1} ${k + 1} ${c.join(" ")} ${value(i, j, k).toExponential(7)}`);
+    const c = coord(i, j, k);
+    const triplets = [];
+    for(let s=0;s<sections;s++) triplets.push(...c.map(v => (s % 2 ? -v : v).toFixed(7)));
+    const tail = amplitude ? amplitude(i, j, k).map(v => v.toExponential(7)).join(" ") : value(i, j, k).toExponential(7);
+    lines.push(`${i + 1} ${j + 1} ${k + 1} ${triplets.join(" ")} ${tail}`);
   }
   return lines.join("\n") + "\n";
 }

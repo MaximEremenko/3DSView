@@ -1090,21 +1090,24 @@ function parseStrictDelimitedNumbers(line){
   return nums;
 }
 
-function valueFromRmcDiffuse3dRow(name, nums, header){
-  const lower = String(name || "").toLowerCase();
-  if(lower.includes("amp") && nums.length >= 8){
+// RMCProfile rows are "i j k", three coordinates per symmetry section, then
+// the intensity, or Re Im in amplitude files such as *_amp_calc.dat and
+// *_aver_interf_calc.dat. nsec comes from the header (1 without one).
+function isAmplitudeRow(columns, header){
+  const sections = header && header.sections > 0 ? header.sections : 1;
+  return columns === 5 + 3 * sections;
+}
+
+function valueFromRmcDiffuse3dRow(nums, header){
+  if(isAmplitudeRow(nums.length, header)){
     const re = nums[nums.length - 2], im = nums[nums.length - 1];
     if(Number.isFinite(re) && Number.isFinite(im)) return Math.hypot(re, im);
   }
   return nums[nums.length - 1];
 }
 
-function indexedIntensityFromNums(nums, ampMode){
-  if(ampMode && nums.length >= 8){
-    const re = nums[nums.length - 2], im = nums[nums.length - 1];
-    if(Number.isFinite(re) && Number.isFinite(im)) return Math.hypot(re, im);
-  }
-  return nums[nums.length - 1];
+function indexedFormat(format, amplitude){
+  return amplitude ? `${format} (amplitude |A| from Re, Im)` : format;
 }
 
 function numberToken(token){
@@ -1623,7 +1626,7 @@ async function parseIndexedTextFile(file, sampleText, progress=null){
     }
     if(nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
       const ii = Math.round(nums[0]), jj = Math.round(nums[1]), kk = Math.round(nums[2]);
-      const val = valueFromRmcDiffuse3dRow(file.name, nums, header);
+      const val = valueFromRmcDiffuse3dRow(nums, header);
       if(!Number.isFinite(val)){ skipped++; return; }
       if(ii < minI) minI = ii; if(ii > maxI) maxI = ii;
       if(jj < minJ) minJ = jj; if(jj > maxJ) maxJ = jj;
@@ -1654,7 +1657,7 @@ async function parseIndexedTextFile(file, sampleText, progress=null){
     if(nums.length < 7 || !isIntLike(nums[0]) || !isIntLike(nums[1]) || !isIntLike(nums[2])) return;
     const a = Math.round(nums[0]) - minI, b = Math.round(nums[1]) - minJ, c = Math.round(nums[2]) - minK;
     if(a < 0 || b < 0 || c < 0 || a >= shape[0] || b >= shape[1] || c >= shape[2]) return;
-    const val = valueFromRmcDiffuse3dRow(file.name, nums, header);
+    const val = valueFromRmcDiffuse3dRow(nums, header);
     if(!Number.isFinite(val)) return;
     const p = idx3(shape, a, b, c);
     if(!Number.isFinite(I[p])) filled++;
@@ -1978,7 +1981,8 @@ async function parseParallelIndexedTextFile(file, sampleText, progress=null){
   if(typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined"){
     return null;
   }
-  const ampMode = String(file.name || "").toLowerCase().includes("amp");
+  const firstRow = indexedHeaderAndFirstRowFromText(sampleText);
+  const ampMode = !!firstRow && isAmplitudeRow(firstRow.first.columns, firstRow.header);
   const ranges = await lineAlignedRanges(file, PARALLEL_INDEXED_CHUNK_BYTES, progress);
   if(ranges.length < 2) return null;
   if(progress) progress({phase:"Starting workers", offset:0, size:ranges.length, units:"chunks", force:true});
@@ -2030,7 +2034,7 @@ async function parseParallelIndexedTextFile(file, sampleText, progress=null){
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
   const meta = extractBasisFromText(commentText || sampleText.slice(0, 8192));
-  return finalizeResult({file:file.name, header, skipped, rows, filled, format:"indexed text parallel stream", coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
+  return finalizeResult({file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text parallel stream", ampMode), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
 }
 
 function inferOrderedIndexedLayoutFromText(text){
@@ -2052,7 +2056,7 @@ function inferOrderedIndexedLayoutFromText(text){
     if(nums.length < 7 || !isIntLike(nums[0]) || !isIntLike(nums[1]) || !isIntLike(nums[2])) continue;
     const ii = Math.round(nums[0]), jj = Math.round(nums[1]), kk = Math.round(nums[2]);
     if(!first){
-      first = {i:ii, j:jj, k:kk};
+      first = {i:ii, j:jj, k:kk, columns:nums.length};
       nH = 1;
       rowsFirstK = 1;
       dataRows = 1;
@@ -2100,7 +2104,7 @@ function indexedHeaderAndFirstRowFromText(text){
     if(nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
       return {
         header,
-        first:{i:Math.round(nums[0]), j:Math.round(nums[1]), k:Math.round(nums[2])}
+        first:{i:Math.round(nums[0]), j:Math.round(nums[1]), k:Math.round(nums[2]), columns:nums.length}
       };
     }
   }
@@ -2162,7 +2166,7 @@ async function inferOrderedIndexedLayout(file, sampleText, progress=null){
 async function parseOrderedIndexedTextFile(file, sampleText, progress=null){
   const layout = await inferOrderedIndexedLayout(file, sampleText, progress);
   if(!layout) return null;
-  const ampMode = String(file.name || "").toLowerCase().includes("amp");
+  const ampMode = isAmplitudeRow(layout.first.columns, layout.header);
   const {dims:shape, total} = assertVolumeFits(layout.shape, "Ordered indexed 3DS grid");
   const I = new Float64Array(total);
   I.fill(NaN);
@@ -2214,12 +2218,11 @@ async function parseOrderedIndexedTextFile(file, sampleText, progress=null){
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
   const meta = extractBasisFromText(commentText || sampleText.slice(0, 8192));
-  return finalizeResult({file:file.name, header, skipped, rows, filled, format:"indexed text ordered stream", coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
+  return finalizeResult({file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text ordered stream", ampMode), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
 }
 
 async function parseFastIndexedTextFile(file, sampleText, progress=null){
-  const ampMode = String(file.name || "").toLowerCase().includes("amp");
-  let header = null, firstNumeric = true, skipped = 0, rows = 0, commentText = "";
+  let header = null, firstNumeric = true, skipped = 0, rows = 0, commentText = "", amplitude = false;
   let minI=Infinity, minJ=Infinity, minK=Infinity, maxI=-Infinity, maxJ=-Infinity, maxK=-Infinity;
   let rawMin=Infinity, rawMax=-Infinity;
   let buf = makeIndexedBuffers(0);
@@ -2244,8 +2247,9 @@ async function parseFastIndexedTextFile(file, sampleText, progress=null){
       skipped++;
       return;
     }
-    const val = indexedIntensityFromNums(nums, ampMode);
+    const val = valueFromRmcDiffuse3dRow(nums, header);
     if(!Number.isFinite(val)){ skipped++; return; }
+    if(!amplitude && isAmplitudeRow(nums.length, header)) amplitude = true;
     buf = growIndexedBuffers(buf, rows + 1);
     const ii = Math.round(nums[0]), jj = Math.round(nums[1]), kk = Math.round(nums[2]);
     buf.i[rows] = ii;
@@ -2288,7 +2292,7 @@ async function parseFastIndexedTextFile(file, sampleText, progress=null){
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
   const meta = extractBasisFromText(commentText || sampleText.slice(0, 8192));
-  return finalizeResult({file:file.name, header, skipped, rows, filled, format:"indexed text fast stream", coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
+  return finalizeResult({file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text fast stream", amplitude), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
 }
 
 async function parseStreamedMatrixFile(file, sampleText, progress=null){
@@ -2395,8 +2399,9 @@ async function parseStreamedPointTextFile(file, sampleText, progress=null){
       if(looksLikeHeader(nums)){ header = headerFromNums(nums); return; }
     }
     if(nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
-      const val = valueFromRmcDiffuse3dRow(file.name, nums, header);
+      const val = valueFromRmcDiffuse3dRow(nums, header);
       if(!Number.isFinite(val)){ skipped++; return; }
+      if(isAmplitudeRow(nums.length, header)) idxStats.amplitude = true;
       const ii = Math.round(nums[0]), jj = Math.round(nums[1]), kk = Math.round(nums[2]);
       if(ii < idxStats.minI) idxStats.minI = ii; if(ii > idxStats.maxI) idxStats.maxI = ii;
       if(jj < idxStats.minJ) idxStats.minJ = jj; if(jj > idxStats.maxJ) idxStats.maxJ = jj;
@@ -2454,7 +2459,7 @@ async function buildStreamedIndexedResult(file, sampleText, header, skipped, com
     if(nums.length < 7 || !isIntLike(nums[0]) || !isIntLike(nums[1]) || !isIntLike(nums[2])) return;
     const a = Math.round(nums[0]) - stats.minI, b = Math.round(nums[1]) - stats.minJ, c = Math.round(nums[2]) - stats.minK;
     if(a < 0 || b < 0 || c < 0 || a >= shape[0] || b >= shape[1] || c >= shape[2]) return;
-    const val = valueFromRmcDiffuse3dRow(file.name, nums, header);
+    const val = valueFromRmcDiffuse3dRow(nums, header);
     if(!Number.isFinite(val)) return;
     const p = idx3(shape, a, b, c);
     if(!Number.isFinite(I[p])) filled++;
@@ -2467,7 +2472,7 @@ async function buildStreamedIndexedResult(file, sampleText, header, skipped, com
   fillMissingAxis(kAxis, kSeen);
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
-  return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:"indexed text stream", coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta});
+  return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:indexedFormat("indexed text stream", stats.amplitude), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta});
 }
 
 async function buildStreamedPlainResult(file, sampleText, header, skipped, commentText, stats, meta, progress=null){
@@ -3451,7 +3456,7 @@ function parse3dsDat(name, text){
   const ph=[], plainK=[], plainL=[], plainVals=[];
   const tx=[], ty=[], tv=[];
   const comments = [];
-  let header = null, firstNumeric = true, skipped = 0, indexedRows = 0, plainRows = 0;
+  let header = null, firstNumeric = true, skipped = 0, indexedRows = 0, plainRows = 0, amplitude = false;
   let minI=Infinity, minJ=Infinity, minK=Infinity, maxI=-Infinity, maxJ=-Infinity, maxK=-Infinity;
   let rawMinIdx=Infinity, rawMaxIdx=-Infinity, rawMinPlain=Infinity, rawMaxPlain=-Infinity;
 
@@ -3478,8 +3483,9 @@ function parse3dsDat(name, text){
     }
     if(nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
       const ii = Math.round(nums[0]), jj = Math.round(nums[1]), kk = Math.round(nums[2]);
-      const inten = valueFromRmcDiffuse3dRow(name, nums, header);
+      const inten = valueFromRmcDiffuse3dRow(nums, header);
       if(!Number.isFinite(inten)){ skipped++; continue; }
+      if(isAmplitudeRow(nums.length, header)) amplitude = true;
       pi.push(ii); pj.push(jj); pk.push(kk);
       hs.push(nums[3]); ks.push(nums[4]); ls.push(nums[5]); vals.push(inten);
       if(ii < minI) minI = ii; if(ii > maxI) maxI = ii;
@@ -3507,7 +3513,7 @@ function parse3dsDat(name, text){
   const meta = extractBasisFromText(commentText);
   if(indexedRows > 0){
     const coordKind = inferCoordKind(name, commentText, "indexed 3ds");
-    return buildIndexedResult(name, header, skipped, pi, pj, pk, hs, ks, ls, vals, minI, minJ, minK, maxI, maxJ, maxK, rawMinIdx, rawMaxIdx, coordKind, "indexed text", meta);
+    return buildIndexedResult(name, header, skipped, pi, pj, pk, hs, ks, ls, vals, minI, minJ, minK, maxI, maxJ, maxK, rawMinIdx, rawMaxIdx, coordKind, indexedFormat("indexed text", amplitude), meta);
   }
   if(plainRows > 0){
     const coordKind = inferCoordKind(name, commentText, "calculator dat");
