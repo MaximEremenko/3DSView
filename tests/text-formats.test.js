@@ -1,8 +1,8 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const {loadApp, textFile} = require("./harness");
-const {code, indexedText, assertValues} = require("./fixtures");
+const {loadApp, textFile, valueAt} = require("./harness");
+const {code, indexedText, assertValues, assertClose} = require("./fixtures");
 
 test("4-column h k l intensity text keeps axis order and values", async () => {
   const app = loadApp();
@@ -124,3 +124,25 @@ test("a plain 5-column numeric matrix still loads as a 2-D map", async () => {
   assert.deepEqual(Array.from(res.shape), [12, 5, 1]);
   assert.match(res.format, /matrix/);
 });
+
+for(const streamed of [false, true]){
+  const mode = streamed ? "streamed" : "in memory";
+  test(`block grids with gaps are placed on their full lattice (${mode})`, async () => {
+    const app = loadApp(streamed ? {streamThreshold:0} : {});
+    // H: two blocks of 4 points (0..3 and 7..10 lattice steps), like the PMN
+    // "(halves)" files; K and L are regular.
+    const hPos = [0, 1, 2, 3, 7, 8, 9, 10];
+    const step = 0.0387646;
+    const shape = [hPos.length, 3, 2];
+    const text = indexedText(shape, (i, j, k) => [-0.2 + hPos[i] * step, (j - 1) * step, k * step]);
+    const res = await app.parseFile(textFile("pmn_x-ray_(halves)_norm-back.dat", text));
+    assert.deepEqual(Array.from(res.shape), [11, 3, 2]);
+    assert.ok(res.axes.h.uniform, "H axis is regular after padding");
+    assertClose(res.h[1] - res.h[0], step, 1e-9, "H step");
+    for(let i=0;i<hPos.length;i++) for(let j=0;j<3;j++) for(let k=0;k<2;k++){
+      assert.equal(valueAt(res, hPos[i], j, k), code(i, j, k), `value at block point ${i}`);
+    }
+    for(const gap of [4, 5, 6]) assert.ok(Number.isNaN(valueAt(res, gap, 1, 1)), `gap ${gap} is empty`);
+    assert.deepEqual(Array.from(res.gapPadding.from), [8, 3, 2]);
+  });
+}

@@ -57,3 +57,34 @@ realTest("PMN Mantid MDHisto loads in H,K,L order with bin-centre axes", PMN_NXS
   ];
   for(const [[i, j, k], v] of expected) assertClose(valueAt(res, i, j, k), v, 1e-12, `value at ${i},${j},${k}`);
 });
+
+const PMN_HALVES = "D:/Projects/3DS_Plotter/pmn_300k_x-ray_152x152x76(halves)_norm-back.dat";
+
+realTest("PMN (halves) block grid is padded onto its regular lattice", PMN_HALVES, async file => {
+  // 135 MB, so this goes through the streamed ordered parser.
+  const app = loadApp();
+  const res = await app.parseFile(file);
+  assert.deepEqual(Array.from(res.gapPadding.from), [152, 152, 76]);
+  assert.deepEqual(Array.from(res.shape), [300, 300, 139]);
+  assert.ok(res.axes.h.uniform && res.axes.k.uniform && res.axes.l.uniform);
+  const closest = (axis, x) => {
+    let best = 0;
+    for(let i=1;i<axis.length;i++) if(Math.abs(axis[i] - x) < Math.abs(axis[best] - x)) best = i;
+    return best;
+  };
+  const nearest = (axis, x) => {
+    const best = closest(axis, x);
+    assertClose(axis[best], x, 1e-5, "lattice point");
+    return best;
+  };
+  // Rows "i j k Qx Qy Qz I" copied from the file.
+  const rows = [
+    [-4.10905, -5.8147, 0.42641, 339.2082], [-4.03152, 0.46518, 1.12417, 418.1282],
+    [-0.81406, -0.85282, 3.72141, 473.5607]
+  ];
+  for(const [x, y, z, v] of rows){
+    assertClose(valueAt(res, nearest(res.h, x), nearest(res.k, y), nearest(res.l, z)), v, 1e-3, `value at Q=(${x},${y},${z})`);
+  }
+  // Between the first two H blocks there is no data.
+  assert.ok(Number.isNaN(valueAt(res, closest(res.h, -4.8), 10, 10)));
+});

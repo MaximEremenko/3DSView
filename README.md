@@ -54,7 +54,9 @@ Fortran `D` exponents are handled:
   section, then the intensity, with an optional `points sections scale offset` header.
   Rows that end in a real/imaginary pair instead (5 + 3·sections columns, e.g.
   `*_amp_calc.dat` or `*_aver_interf_calc.dat`) are loaded as amplitude magnitudes |A|;
-  the section count comes from the header, or is 1 without one.
+  the section count comes from the header, or is 1 without one. Grids made of separate
+  blocks on one regular lattice, such as the PMN "(halves)" files, are placed on that
+  lattice with the gaps left empty.
 - **4-column text**: `H K L intensity` rows (diffuse-scattering calculator output).
 - **h k l I σ lists**: Scatty `*_list.txt` and Spinteract `*_xtal_data_NN.txt` rows, also
   with extra twin hkl triplets before `I σ`. They are read as HKL volumes of I (not as

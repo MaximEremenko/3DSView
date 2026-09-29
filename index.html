@@ -643,7 +643,7 @@ function cacheBaseFromResult(res){
     "file","header","skipped","rows","filled","format","coordKind","shape",
     "h","k","l","I","rawMin","rawMax","dataKind","Bq","Bp","cellDeg","basisSource",
     "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous",
-    "projectionW","hklAxisLabels","maskedVoxels"
+    "projectionW","hklAxisLabels","maskedVoxels","gapPadding"
   ];
   const base = {};
   for(const key of keys){
@@ -3593,6 +3593,72 @@ function axisMeta(axis){
   return {step, maxDev, uniform:maxDev <= Math.max(1e-8, Math.abs(step) * 1e-5)};
 }
 
+// A non-uniform axis whose points all sit on one regular lattice, with gaps
+// (the PMN "(halves)" files hold 8 disjoint 19-point blocks per axis), maps
+// to lattice positions. Returns null for regular or truly irregular axes.
+function latticeEmbedding(axis){
+  const n = axis.length;
+  if(n < 3 || axisMeta(axis).uniform) return null;
+  let smallest = Infinity, sign = 0;
+  for(let i=1;i<n;i++){
+    const d = axis[i] - axis[i - 1];
+    if(!(Math.abs(d) > 0) || (sign && Math.sign(d) !== sign)) return null;
+    sign = Math.sign(d);
+    smallest = Math.min(smallest, Math.abs(d));
+  }
+  // The mean of the unit steps is robust to coordinates printed with few
+  // decimals; positions then follow gap by gap.
+  let sum = 0, count = 0;
+  for(let i=1;i<n;i++){
+    const d = Math.abs(axis[i] - axis[i - 1]);
+    if(d < 1.5 * smallest){ sum += d; count++; }
+  }
+  const unit = sign * sum / count;
+  const positions = new Int32Array(n);
+  for(let i=1;i<n;i++){
+    const f = (axis[i] - axis[i - 1]) / unit, m = Math.round(f);
+    if(m < 1 || Math.abs(f - m) > 0.05) return null;
+    positions[i] = positions[i - 1] + m;
+  }
+  // Refine the step over the whole span and check every point against it.
+  const refined = (axis[n - 1] - axis[0]) / positions[n - 1];
+  for(let i=0;i<n;i++){
+    if(Math.abs((axis[i] - axis[0]) / refined - positions[i]) > 0.02) return null;
+  }
+  const full = positions[n - 1] + 1;
+  if(full <= n || full > 16 * n) return null;
+  return {positions, full, start:axis[0], step:refined};
+}
+
+// Places data with gapped axes on the full lattice, NaN in the gaps, so
+// slices keep true distances and interpolation never bridges a gap.
+function embedBlockGaps(base){
+  const axes = [base.h, base.k, base.l];
+  const embeds = axes.map(latticeEmbedding);
+  if(!embeds.some(Boolean)) return;
+  const from = base.shape.slice();
+  const shape = from.map((n, a) => embeds[a] ? embeds[a].full : n);
+  const {total} = assertVolumeFits(shape, "Gap-padded grid");
+  const I = new Float64Array(total);
+  I.fill(NaN);
+  const pos = embeds.map(e => e && e.positions);
+  for(let i=0;i<from[0];i++){
+    const pi = pos[0] ? pos[0][i] : i;
+    for(let j=0;j<from[1];j++){
+      const pj = pos[1] ? pos[1][j] : j;
+      const src = (i * from[1] + j) * from[2], dst = (pi * shape[1] + pj) * shape[2];
+      if(pos[2]) for(let k=0;k<from[2];k++) I[dst + pos[2][k]] = base.I[src + k];
+      else I.set(base.I.subarray(src, src + from[2]), dst);
+    }
+  }
+  base.I = I;
+  base.shape = shape;
+  ["h", "k", "l"].forEach((name, a) => {
+    if(embeds[a]) base[name] = regularAxis(embeds[a].full, embeds[a].start, embeds[a].step);
+  });
+  base.gapPadding = {from, to:shape.slice()};
+}
+
 // Reinterprets the value order between the first and last axes, for files
 // whose disk layout could not be detected. Axis coordinates stay in place.
 function transposeFirstAndLastAxes(res){
@@ -3624,6 +3690,7 @@ function finalizeResult(base){
     delete base.gridVectors;
     delete base.gridOrigin;
     delete base.gridInv;
+    embedBlockGaps(base);
   }
   base.axes = {h:axisMeta(base.h), k:axisMeta(base.k), l:axisMeta(base.l)};
   base.bounds = validMatrix3(base.gridVectors) && Array.isArray(base.gridOrigin)
@@ -6294,7 +6361,8 @@ async function onFile(file){
     ? ` The file does not record its axis order; assumed the 3DSConvert/Fortran layout [${labels[2]},${labels[1]},${labels[0]}]. Use "Swap ${labels[0]}/${labels[2]} data order" if the map looks mirrored.`
     : "";
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${maskNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${maskNote}${gapNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
