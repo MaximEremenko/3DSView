@@ -29,7 +29,19 @@ and slab-average slicing with linked 2-D and 3-D views.
   Several files can be opened or dropped together, or a whole run folder opened (see
   *Compare*). A file opens on the middle slice, or on the nearest slice holding data
   when the middle falls in a gap of a block grid.
-- **Compare with a calculation** (Compare page):
+- **Profiles** (the strip under the map, <kbd>P</kbd>):
+  - **Line cuts:** turn on the cut tool (<kbd>L</kbd>) and drag across the map. Drag an
+    end to adjust the cut, drag the line to move it, or click to clear it. The cut
+    averages the voxels in a band of the given width across it and thickness along the
+    slice normal, one slice by default. Distances are in the plot frame (Å⁻¹ for Q), so
+    skewed and non-orthogonal grids measure true lengths. A drawn cut follows its plane as
+    you step through the slices, and its band is drawn on the map.
+  - **|Q| profiles:** the shown volume is averaged in shells of |Q| (|r| for real-space
+    data).
+  - **What comes along:** the σ of each mean when σ is known, and the scaled comparison
+    when a calculation is loaded, with R per shell on the |Q| profile (sparsely filled
+    shells are left out).
+  - **Export:** both profiles save as CSV.
   - **Placing the calculation:** it is put on the data grid by coordinates. It can be on
     the same grid (voxel for voxel), on a shifted or smaller grid, or in Q against HKL
     through the cell. Friedel pairs, I(−Q) = I(Q), fill in half-space calculations, and
@@ -104,8 +116,9 @@ and slab-average slicing with linked 2-D and 3-D views.
     voxels can be drawn transparent, gray, white or black.
   - **Levels:** global-auto (the default, so colours keep their meaning while you step
     through slices), slice-auto or manual; the auto choice is remembered. Auto levels
-    take a percentile window, 0.5–99.5 % by default, so Bragg peaks do not wash out the
-    diffuse signal. They can be made symmetric about 0.
+    take a percentile window (0.5–99.5 % by default, so Bragg peaks do not wash out the
+    diffuse signal), mean ± 3σ, the interquartile fences Q1 − 1.5·IQR … Q3 + 1.5·IQR, or
+    the full range. They can be made symmetric about 0.
   - **Colour bar and histogram:** the colour bar spans the display window, as the map
     does. Drag its handles on the 2-D map, or drag a limit or the whole window on the
     histogram of the shown slice; a click moves the nearer limit, and a double-click on
@@ -206,8 +219,11 @@ HDF5 signature), read with h5wasm:
 - **Generic NeXus signal files**, e.g. `MDHistoWorkspace/data/signal` or
   `entry/data/signal`. The signal's `axes` attribute sets the axis order, so Mantid
   MDHisto files (stored `[D2][D1][D0]`) are put back in dimension order. HKL projection
-  names such as `[H,H,0]` are taken from the axis `long_name` and keep their Q geometry,
-  and a `mask` dataset next to the signal hides masked voxels.
+  names such as `[H,H,0]` are taken from the axis `long_name` and keep their Q geometry.
+  When the workspace carries a `W_MATRIX` log, the projection is taken from it exactly,
+  since the names keep only three digits. A `mask` dataset next to the signal hides
+  masked voxels. Laue symbols in file names, including the `4_mmm` and `-3m_r` forms
+  that reduction programs write, suggest the class for symmetrization.
 
 ## Getting started
 

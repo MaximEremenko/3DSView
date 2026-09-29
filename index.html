@@ -225,6 +225,17 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .stepBtn{flex:0 0 auto;width:26px;height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--side2);color:var(--sideText);font-size:1.05rem;line-height:1}
 .stepBtn:hover{background:var(--soft)}
 .barRight{display:flex;align-items:center;gap:6px;margin-left:auto}
+.profileStrip{flex:0 0 var(--profile-h, 34%);min-height:120px;display:flex;flex-direction:column;background:var(--plot)}
+.profileHead{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:4px 8px;background:var(--toolbar);border-bottom:1px solid var(--line);color:var(--statsText);font-size:.78rem}
+.profileHead label{display:inline-flex;align-items:center;gap:5px;color:var(--statsText);font-size:.78rem}
+.profileHead label.check{min-height:0;align-self:center}
+.profileHead input[type=number]{width:78px;padding:3px 5px;font-size:.8rem;background:var(--side2);border-color:var(--line);color:var(--sideText)}
+.profileFields{display:inline-flex;gap:10px}
+.profileInfo{padding:2px 10px;min-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--statsText);font:11px Consolas,"Courier New",monospace}
+.profilePlot{position:relative;flex:1;min-height:0}
+#profileChart{width:100%;height:100%}
+.iconBtn.wide{width:auto;padding:0 8px;font-size:.74rem;font-weight:700}
+.iconBtn.on,.iconBtn.ghost.on{background:var(--brand);border-color:var(--brand);color:#fff}
 .dockHead{height:36px;flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:var(--toolbar);border-bottom:1px solid var(--line)}
 .tabs{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--side2)}
 .tabs button{padding:4px 11px;border-radius:6px;background:transparent;color:var(--statsText);font-size:.8rem}
@@ -530,6 +541,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
               <option value="p995" selected>0.5 - 99.5 %</option>
               <option value="p99">1 - 99 %</option>
               <option value="p98">2 - 98 %</option>
+              <option value="sigma3">Mean &plusmn; 3&sigma;</option>
+              <option value="iqr">IQR fences (1.5&times;)</option>
               <option value="minmax">Min - max</option>
             </select>
           </label>
@@ -725,6 +738,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
               <option value="coolwarm">Coolwarm</option>
             </optgroup>
           </select>
+          <button type="button" id="cutTool" class="iconBtn ghost" title="Line cut: drag across the map (L)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2.2" fill="currentColor"/><circle cx="19" cy="5" r="2.2"/></svg></button>
+          <button type="button" id="profileToggle" class="iconBtn ghost" title="Profiles under the map: line cut and |Q| (P)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M4 16l4-6 4 3 4-8 4 5"/></svg></button>
           <button type="button" id="mapMax" class="iconBtn ghost" title="Enlarge the map (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         </div>
       </div>
@@ -747,6 +762,29 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           </div>
         </div>
       </div>
+      <div class="splitH hidden" id="profileSplit" role="separator" aria-orientation="horizontal" aria-label="Resize the profiles" tabindex="0" title="Drag to resize; double-click to reset"></div>
+      <section class="profileStrip hidden" id="profileStrip" aria-label="Profiles">
+        <div class="profileHead">
+          <div class="tabs" role="group" aria-label="Profile">
+            <button type="button" data-profile="line">Line cut</button>
+            <button type="button" data-profile="q">|Q| profile</button>
+          </div>
+          <span id="cutFields" class="profileFields">
+            <label title="Across the cut, in the plot frame (empty: two grid steps)">Width <input id="cutWidth" type="number" step="any" min="0"></label>
+            <label title="Along the slice normal (empty: one slice)">Thickness <input id="cutThick" type="number" step="any" min="0"></label>
+          </span>
+          <label title="Empty: about one bin per grid step">Bins <input id="profileBins" type="number" min="2" max="20000" step="1" placeholder="auto"></label>
+          <label class="check"><input id="profileLog" type="checkbox">Log</label>
+          <span class="grow"></span>
+          <button type="button" id="profileCsv" class="iconBtn ghost wide" title="Save the profile as CSV" disabled>CSV</button>
+          <button type="button" id="profileClose" class="iconBtn ghost" title="Close the profiles (P)">&times;</button>
+        </div>
+        <div id="profileInfo" class="profileInfo"></div>
+        <div class="profilePlot" id="profilePlot">
+          <div id="profileChart"></div>
+          <div id="profileEmpty" class="empty3d">Pick the cut tool (L) and drag across the map.</div>
+        </div>
+      </section>
       <div class="sliceBar" id="sliceBar">
         <div id="axisControls" class="navGroup">
           <button type="button" class="stepBtn" data-step="-1" title="Previous slice (&larr;)" disabled>&lsaquo;</button>
@@ -835,6 +873,8 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="keyRow"><span>Fixed axis</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></div>
       <div class="keyRow"><span>Zoom the map</span><span><kbd>+</kbd><kbd>&minus;</kbd></span></div>
       <div class="keyRow"><span>Data / comparison</span><span><kbd>C</kbd></span></div>
+      <div class="keyRow"><span>Line cut tool</span><span><kbd>L</kbd></span></div>
+      <div class="keyRow"><span>Profiles under the map</span><span><kbd>P</kbd></span></div>
       <div class="keyRow"><span>Whole slice</span><span><kbd>0</kbd></span></div>
     </div>
     <div>
@@ -949,7 +989,13 @@ const state = {
   cmpFile:null,
   cmpAlign:null,
   cmpFor:null,
-  cmpExtras:[]
+  cmpExtras:[],
+  cut:null,
+  cutMode:false,
+  cutDrag:null,
+  profileData:null,
+  profileRaf:0,
+  profileCache:null
 };
 
 const COLOR_MAPS = {
@@ -3841,6 +3887,30 @@ function mantidProjection(longNames){
   return {W:rows, labels:longNames.map(s => String(s).trim())};
 }
 
+// Projection rows (hkl = x·W) from the W_MATRIX log next to a Mantid
+// workspace; null when absent, singular or the identity.
+function mantidWMatrix(h5file, signalPath){
+  const root = String(signalPath || "").split("/").filter(Boolean)[0] || "";
+  for(const path of [`${root}/experiment0/logs/W_MATRIX/value`, "experiment0/logs/W_MATRIX/value"]){
+    let W;
+    try{ W = matrixFromFlat(flatNumericArray(h5Value(h5Lookup(h5file, path)))); }catch(_){ W = null; }
+    if(!W) continue;
+    const rows = transpose3(W);
+    const identity = rows.every((row, i) => row.every((v, j) => Math.abs(v - (i === j ? 1 : 0)) < 1e-12));
+    if(identity || !validMatrix3(rows)) return null;
+    try{ inv3(rows); }catch(_){ return null; }
+    return rows;
+  }
+  return null;
+}
+
+function projectionTerm(c, letter){
+  if(Math.abs(c) < 1e-12) return "0";
+  if(Math.abs(c - 1) < 1e-12) return letter;
+  if(Math.abs(c + 1) < 1e-12) return `-${letter}`;
+  return `${fmt(c, 4)}${letter}`;
+}
+
 function projectedBq(Bq, res){
   return validMatrix3(Bq) && validMatrix3(res && res.projectionW) ? res.projectionW.map(row => mul(row, Bq)) : Bq;
 }
@@ -3953,7 +4023,14 @@ async function parseNexusFile(file){
     const coordKind = inferCoordKind(file.name, coordHint.join(" "), "nexus");
     const meta = Object.assign(readH5Basis(h5file), meta0);
     const projection = coordKind === "hkl" ? mantidProjection(axisObjs.map(obj => h5Text(h5AttrValue(obj, "long_name")))) : null;
-    if(projection){
+    // Axis names keep three significant digits; the W_MATRIX run log holds
+    // the projection exactly, with the axes as its columns.
+    const wLog = coordKind === "hkl" ? mantidWMatrix(h5file, signalPath) : null;
+    if(wLog){
+      meta.projectionW = wLog;
+      meta.hklAxisLabels = projection ? projection.labels : wLog.map(row => `[${row.map((c, i) => projectionTerm(c, "HKL"[i])).join(",")}]`);
+      meta.Bq = projectedBq(meta.Bq, meta);
+    }else if(projection){
       meta.projectionW = projection.W;
       meta.hklAxisLabels = projection.labels;
       meta.Bq = projectedBq(meta.Bq, meta);
@@ -4581,8 +4658,17 @@ const LAUE_NAME_TOKENS = {
   "m-3m":"m-3m", "m3m":"m-3m", "m-3":"m-3", "6/mmm":"6/mmm", "6mmm":"6/mmm", "6/m":"6/m",
   "4/mmm":"4/mmm", "4mmm":"4/mmm", "4/m":"4/m", "-3m1":"-3m1", "-31m":"-31m", "mmm":"mmm", "-1":"-1"
 };
+// Reduction programs write the Laue symbol with "/" as "_" (4_mmm, 2_m) and
+// the rhombohedral setting as -3m_r or -3mr.
+const LAUE_NAME_FORMS = [
+  [/(?:^|[_\s.(,-])(6_mmm)(?=$|[_\s.),])/, "6/mmm"], [/(?:^|[_\s.(,-])(4_mmm)(?=$|[_\s.),])/, "4/mmm"],
+  [/(?:^|[_\s.(,])(-3m_?r)(?=$|[_\s.),])/, "-3mR"], [/(?:^|[_\s.(,])(-3_?r)(?=$|[_\s.),])/, "-3R"],
+  [/(?:^|[_\s.(,-])(6_m)(?=$|[_\s.),])/, "6/m"], [/(?:^|[_\s.(,-])(4_m)(?=$|[_\s.),])/, "4/m"],
+  [/(?:^|[_\s.(,-])(2_m)(?=$|[_\s.),])/, "2/m_b"]
+];
 function suggestLaueClass(res){
   const stem = String(res && res.file || "").replace(/\.[^.]+$/, "").toLowerCase();
+  for(const [pattern, cls] of LAUE_NAME_FORMS) if(pattern.test(stem)) return {cls, source:"the file name"};
   for(const raw of stem.split(/[_\s.,()]+/)){
     // Space-group style tokens carry a lattice letter: fm-3m, p6mmm.
     for(const token of [raw, raw.replace(/^[pfibcar]/, "")]){
@@ -4881,6 +4967,163 @@ function planFileSet(files){
 function isControlGrid(res){
   return !!res && res.filled > 1 && res.rawMin === res.rawMax;
 }
+
+// ---- 1-D profiles: line cuts and |Q| profiles
+//
+// Distances are measured in the plot frame: Cartesian Q (Å⁻¹) through the
+// reciprocal basis, Å through a direct basis, otherwise the native units.
+
+// Native coordinates at fractional grid indices f.
+function nativeAtFraction(res, f){
+  if(validMatrix3(res.gridVectors) && Array.isArray(res.gridOrigin)) return pointAtIndex(res, f[0], f[1], f[2]);
+  return [res.h, res.k, res.l].map((axis, a) => {
+    const n = axis.length, x = clamp(f[a], 0, n - 1), i = Math.min(n - 2, Math.floor(x));
+    return n < 2 ? axis[0] : axis[i] + (axis[i + 1] - axis[i]) * (x - i);
+  });
+}
+
+// Plot-frame step vectors and origin of a regular grid: q = oq + idx·Gq.
+function plotGridFrame(res){
+  const frame = gridFrame(res);
+  const Gq = frame.G.map(row => plotVector(res, row));
+  const oq = plotPoint(res, frame.o[0], frame.o[1], frame.o[2]);
+  let Gqi;
+  try{ Gqi = inv3(Gq); }catch(_){ throw new Error("The grid steps are degenerate in the plot frame."); }
+  const steps = Gq.filter((row, a) => res.shape[a] > 1).map(normVec);
+  return {Gq, Gqi, oq, step:steps.length ? Math.min(...steps) : 1};
+}
+
+// Index box, within ranges, holding the plot-frame points pts.
+function indexBoxAround(pf, pts, ranges){
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for(const q of pts){
+    const f = mul(q.map((v, c) => v - pf.oq[c]), pf.Gqi);
+    for(let a=0;a<3;a++){ lo[a] = Math.min(lo[a], f[a]); hi[a] = Math.max(hi[a], f[a]); }
+  }
+  return [0, 1, 2].map(a => [Math.max(ranges[a][0], Math.floor(lo[a] - 1e-6)), Math.min(ranges[a][1], Math.ceil(hi[a] + 1e-6))]);
+}
+
+// Mean of res along the segment p0 -> p1 (native coordinates), over the
+// voxels within width/2 of it across and thickness/2 along the unit plot-
+// frame normal; without a normal, within a cylinder of diameter width. With
+// model = {values, scale, offset} (a comparison on the data grid and its fit)
+// the model's mean over the same voxels comes along. sigma gives the σ of
+// each mean.
+function lineCutProfile(res, p0, p1, {width, thickness=null, normal=null, bins=null, model=null, ranges=displayIndexRanges(res)}={}){
+  const pf = plotGridFrame(res);
+  const q0 = plotPoint(res, p0[0], p0[1], p0[2]), q1 = plotPoint(res, p1[0], p1[1], p1[2]);
+  const dir = q1.map((v, c) => v - q0[c]), length = normVec(dir);
+  if(!(length > 0)) throw new Error("The cut has no length.");
+  const u = dir.map(v => v / length);
+  let e2 = null;
+  if(normal){
+    const n = normal.map((v, c) => v - dot(normal, u) * u[c]), nl = normVec(n);
+    if(nl > 1e-9) e2 = n.map(v => v / nl);
+  }
+  if(!e2){
+    const trial = Math.abs(u[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const n = cross(u, trial), nl = normVec(n);
+    e2 = n.map(v => v / nl);
+    thickness = null;
+  }
+  const e1 = cross(e2, u);
+  const halfW = Math.max(0, Number(width) || 0) / 2, halfT = thickness === null ? halfW : Math.max(0, Number(thickness) || 0) / 2;
+  const box = thickness === null ? "cylinder" : "box";
+  const nb = Math.max(2, Math.min(20000, Math.floor(bins) || Math.max(8, Math.round(length / pf.step))));
+  const corners = [];
+  for(const q of [q0, q1]) for(const s1 of [-1, 1]) for(const s2 of [-1, 1]) corners.push(q.map((v, c) => v + s1 * halfW * e1[c] + s2 * halfT * e2[c]));
+  const [ri, rj, rk] = indexBoxAround(pf, corners, ranges);
+  const sum = new Float64Array(nb), count = new Float64Array(nb), msum = new Float64Array(nb), mcount = new Float64Array(nb), s2 = new Float64Array(nb);
+  const I = res.I, sig = res.sigma || null, [, n1, n2] = res.shape, G = pf.Gq;
+  const tolW = halfW * (1 + 1e-9) + 1e-12, tolT = halfT * (1 + 1e-9) + 1e-12;
+  let voxels = 0;
+  for(let i=ri[0];i<=ri[1];i++) for(let j=rj[0];j<=rj[1];j++){
+    let x = pf.oq[0] + i * G[0][0] + j * G[1][0] + rk[0] * G[2][0] - q0[0];
+    let y = pf.oq[1] + i * G[0][1] + j * G[1][1] + rk[0] * G[2][1] - q0[1];
+    let z = pf.oq[2] + i * G[0][2] + j * G[1][2] + rk[0] * G[2][2] - q0[2];
+    for(let k=rk[0];k<=rk[1];k++, x += G[2][0], y += G[2][1], z += G[2][2]){
+      const t = x * u[0] + y * u[1] + z * u[2];
+      if(t < -1e-9 * length || t > length * (1 + 1e-9)) continue;
+      const a = x * e1[0] + y * e1[1] + z * e1[2], b = x * e2[0] + y * e2[1] + z * e2[2];
+      if(box === "box" ? (Math.abs(a) > tolW || Math.abs(b) > tolT) : a * a + b * b > tolW * tolW) continue;
+      const v = (i * n1 + j) * n2 + k, value = I[v];
+      if(value !== value) continue;
+      const bin = Math.min(nb - 1, Math.max(0, Math.floor(t / length * nb)));
+      sum[bin] += value;
+      count[bin]++;
+      voxels++;
+      if(sig){ const e = sig[v]; s2[bin] += e * e; }
+      if(model){ const c = model.values[v]; if(c === c){ msum[bin] += model.scale * c + model.offset; mcount[bin]++; } }
+    }
+  }
+  const x = new Float64Array(nb), y = new Float64Array(nb), ym = model ? new Float64Array(nb) : null, ys = sig ? new Float64Array(nb) : null;
+  const native = [];
+  for(let b=0;b<nb;b++){
+    const t = (b + 0.5) / nb;
+    x[b] = t * length;
+    native.push(p0.map((v, c) => v + (p1[c] - v) * t));
+    y[b] = count[b] ? sum[b] / count[b] : NaN;
+    if(ym) ym[b] = mcount[b] ? msum[b] / mcount[b] : NaN;
+    if(ys) ys[b] = count[b] ? Math.sqrt(s2[b]) / count[b] : NaN;
+  }
+  return {kind:"line", length, bins:nb, x, y, n:count, ym, ys, native, p0:p0.slice(), p1:p1.slice(), width:2 * halfW, thickness:box === "box" ? 2 * halfT : null, voxels, step:pf.step};
+}
+
+// Mean of res in shells of |q| (the plot-frame distance from the origin) over
+// the shown volume, with the model's mean and the agreement R = Σ|y - m| /
+// Σ|y| per shell when a model is given.
+function radialProfile(res, {bins=null, model=null, ranges=displayIndexRanges(res)}={}){
+  const pf = plotGridFrame(res), G = pf.Gq;
+  let qmax = 0;
+  for(const i of ranges[0]) for(const j of ranges[1]) for(const k of ranges[2]){
+    const q = [0, 1, 2].map(c => pf.oq[c] + i * G[0][c] + j * G[1][c] + k * G[2][c]);
+    qmax = Math.max(qmax, normVec(q));
+  }
+  const nb = Math.max(2, Math.min(20000, Math.floor(bins) || Math.max(8, Math.ceil(qmax / pf.step))));
+  const width = (qmax || 1) / nb;
+  const sum = new Float64Array(nb), count = new Float64Array(nb), msum = new Float64Array(nb), mcount = new Float64Array(nb);
+  const dAbs = new Float64Array(nb), yAbs = new Float64Array(nb);
+  const I = res.I, [, n1, n2] = res.shape;
+  let voxels = 0;
+  for(let i=ranges[0][0];i<=ranges[0][1];i++) for(let j=ranges[1][0];j<=ranges[1][1];j++){
+    let x = pf.oq[0] + i * G[0][0] + j * G[1][0] + ranges[2][0] * G[2][0];
+    let y = pf.oq[1] + i * G[0][1] + j * G[1][1] + ranges[2][0] * G[2][1];
+    let z = pf.oq[2] + i * G[0][2] + j * G[1][2] + ranges[2][0] * G[2][2];
+    for(let k=ranges[2][0];k<=ranges[2][1];k++, x += G[2][0], y += G[2][1], z += G[2][2]){
+      const v = (i * n1 + j) * n2 + k, value = I[v];
+      if(value !== value) continue;
+      const bin = Math.min(nb - 1, Math.floor(Math.sqrt(x * x + y * y + z * z) / width));
+      sum[bin] += value;
+      count[bin]++;
+      voxels++;
+      if(model){
+        const c = model.values[v];
+        if(c === c){
+          const m = model.scale * c + model.offset;
+          msum[bin] += m; mcount[bin]++; dAbs[bin] += Math.abs(value - m); yAbs[bin] += Math.abs(value);
+        }
+      }
+    }
+  }
+  const xs = new Float64Array(nb), y = new Float64Array(nb), ym = model ? new Float64Array(nb) : null, R = model ? new Float64Array(nb) : null;
+  // R is left out for shells holding only a few voxels, at the edges of the
+  // coverage, where it says little and would swamp the plot.
+  const filled = Array.from(mcount).filter(c => c > 0).sort((a, b) => a - b);
+  const minCount = filled.length ? Math.max(10, 0.05 * filled[filled.length >> 1]) : 0;
+  for(let b=0;b<nb;b++){
+    xs[b] = (b + 0.5) * width;
+    y[b] = count[b] ? sum[b] / count[b] : NaN;
+    if(ym){ ym[b] = mcount[b] ? msum[b] / mcount[b] : NaN; R[b] = yAbs[b] > 0 && mcount[b] >= minCount ? dAbs[b] / yAbs[b] : NaN; }
+  }
+  return {kind:"q", bins:nb, width, x:xs, y, n:count, ym, R, voxels, qmax};
+}
+
+// The comparison and its fit, for profiles of the data it was aligned to.
+function comparisonModel(res){
+  if(!comparisonReady(res) || !state.cmpFit) return null;
+  return {values:state.cmpAligned, scale:state.cmpFit.scale, offset:state.cmpFit.offset};
+}
+
 
 // Reinterprets the value order between the first and last axes, for files
 // whose disk layout could not be detected. Axis coordinates stay in place.
@@ -5993,6 +6236,36 @@ function globalHistogram(mode){
 
 const AUTO_RANGES = {p995:[0.005, 0.995], p99:[0.01, 0.99], p98:[0.02, 0.98], minmax:[0, 1]};
 
+// Mean and standard deviation of a histogram, from its bin centres.
+function histogramMoments(hist){
+  if(!hist || !hist.total) return {mean:NaN, sd:NaN};
+  const n = hist.counts.length, width = (hist.max - hist.min) / n;
+  let s = 0, s2 = 0;
+  for(let b=0;b<n;b++){
+    const c = hist.counts[b];
+    if(!c) continue;
+    const x = hist.min + (b + 0.5) * width;
+    s += c * x;
+    s2 += c * x * x;
+  }
+  const mean = s / hist.total;
+  return {mean, sd:Math.sqrt(Math.max(0, s2 / hist.total - mean * mean))};
+}
+
+// Display window from the value distribution: mean ± 3σ, or Tukey's fences
+// Q1 - 1.5·IQR .. Q3 + 1.5·IQR; null for the percentile ranges.
+function spreadWindow(hist, key){
+  if(key === "sigma3"){
+    const m = histogramMoments(hist);
+    return [m.mean - 3 * m.sd, m.mean + 3 * m.sd];
+  }
+  if(key === "iqr"){
+    const q1 = histogramQuantile(hist, 0.25), q3 = histogramQuantile(hist, 0.75), iqr = q3 - q1;
+    return [q1 - 1.5 * iqr, q3 + 1.5 * iqr];
+  }
+  return null;
+}
+
 function levelBoundsForMode(slStats, mode, levelMode){
   const shown = viewRes(), res = shown && shown.levelsFrom || shown;
   if(levelMode === "global" && res && res.global[mode]) return res.global[mode];
@@ -6025,7 +6298,11 @@ function displayLevels(slStats, mode){
   const clipKey = $("levelClip") ? $("levelClip").value : "minmax";
   const clip = AUTO_RANGES[clipKey] || AUTO_RANGES.minmax;
   let mn = rawMin, mx = rawMax;
-  if(clip[0] > 0 || clip[1] < 1){
+  const spread = spreadWindow(levelMode === "global" ? globalHistogram(mode) : slStats.hist, clipKey);
+  if(spread){
+    const lo = Math.max(rawMin, spread[0]), hi = Math.min(rawMax, spread[1]);
+    if(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo){ mn = lo; mx = hi; }
+  }else if(clip[0] > 0 || clip[1] < 1){
     const hist = levelMode === "global" ? globalHistogram(mode) : slStats.hist;
     const lo = histogramQuantile(hist, clip[0]), hi = histogramQuantile(hist, clip[1]);
     if(Number.isFinite(lo) && Number.isFinite(hi) && hi > lo){ mn = lo; mx = hi; }
@@ -6161,6 +6438,10 @@ function onHeatmapPointerDown(ev){
   if(!state.res || !b) return;
   const pt = canvasPoint(ev);
   if(!pt) return;
+  if(state.cutMode && state.lastSlice && state.lastSlice.layout && pointInMapArea(pt) && !pickColorBarHandle(pt.x, pt.y, b)){
+    startCutDrag(ev, pt);
+    return;
+  }
   const handle = pickColorBarHandle(pt.x, pt.y, b);
   if(!handle){
     const layout = view2dArea();
@@ -6189,6 +6470,10 @@ function onHeatmapPointerMove(ev){
     cv.style.cursor = "default";
     return;
   }
+  if(state.cutDrag){
+    moveCutDrag(pt);
+    return;
+  }
   const pan = state.pan2d, layout = view2dArea();
   if(pan || (state.levelDrag && state.levelDrag.active)) hideReadout();
   else showReadout(pointInMapArea(pt) ? pt : null);
@@ -6200,7 +6485,7 @@ function onHeatmapPointerMove(ev){
   }
   const drag = state.levelDrag;
   if(!drag || !drag.active){
-    const zoomed = layout && layout.view.zoom > 1 && pointInMapArea(pt);
+    const zoomed = !state.cutMode && layout && layout.view.zoom > 1 && pointInMapArea(pt);
     cv.style.cursor = pickColorBarHandle(pt.x, pt.y, b) ? "ns-resize" : zoomed ? "grab" : pointInMapArea(pt) ? "crosshair" : "default";
     return;
   }
@@ -6218,6 +6503,10 @@ function onHeatmapPointerMove(ev){
 function onHeatmapPointerUp(ev){
   const drag = state.levelDrag;
   const cv = $("heatmap");
+  if(state.cutDrag){
+    endCutDrag(ev);
+    return;
+  }
   if(state.pan2d){
     try{ cv.releasePointerCapture(state.pan2d.pointerId); }catch(_){}
     state.pan2d = null;
@@ -6375,6 +6664,7 @@ function draw2d(options={}){
   }
   updateSliceValue(sl);
   if(state.readoutPt) showReadout(state.readoutPt);
+  scheduleProfile();
 }
 
 // Draws the last computed slice image with the current zoom and pan; cheap
@@ -6406,6 +6696,7 @@ function paint2d(){
   ctx.restore();
 
   drawAxes(ctx, sl, layout, cssH);
+  drawCutOverlay(ctx, layout, sl);
   drawColorbar(ctx, stops, levels, stats, cssW - 28, 20, 18, cssH - 40);
 }
 
@@ -8796,7 +9087,7 @@ async function onFile(file){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global"};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
@@ -8811,13 +9102,16 @@ function loadUiPrefs(){
     if(Number.isFinite(saved.dockW)) ui.dockW = clamp(saved.dockW, 0.2, 0.75);
     if(Number.isFinite(saved.stack)) ui.stack = clamp(saved.stack, 0.15, 0.85);
     if(["global", "slice"].includes(saved.levels)) ui.levels = saved.levels;
+    if(typeof saved.profile === "boolean") ui.profile = saved.profile;
+    if(["line", "q"].includes(saved.profileKind)) ui.profileKind = saved.profileKind;
+    if(Number.isFinite(saved.profileH)) ui.profileH = clamp(saved.profileH, 0.15, 0.7);
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH})); }catch(_){}
 }
 
 function applyUi(){
@@ -8840,6 +9134,13 @@ function applyUi(){
   for(const b of document.querySelectorAll("[data-layout-btn]")) b.classList.toggle("on", b.dataset.layoutBtn === ui.layout);
   for(const b of document.querySelectorAll("[data-dock]")) b.classList.toggle("on", b.dataset.dock === ui.dock);
   $("mapMax").title = ui.max === "map" ? "Restore the layout (F or Esc)" : "Enlarge the map (F)";
+  $("profileStrip").classList.toggle("hidden", !ui.profile);
+  $("profileSplit").classList.toggle("hidden", !ui.profile);
+  $("mapPanel").style.setProperty("--profile-h", `${(ui.profileH * 100).toFixed(1)}%`);
+  for(const b of document.querySelectorAll("[data-profile]")) b.classList.toggle("on", b.dataset.profile === ui.profileKind);
+  $("cutFields").classList.toggle("hidden", ui.profileKind !== "line");
+  $("profileToggle").classList.toggle("on", !!ui.profile);
+  $("profileToggle").setAttribute("aria-pressed", String(!!ui.profile));
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
   saveUiPrefs();
 }
@@ -8958,7 +9259,7 @@ function bindSplitter(el, {rows=false, onDrag, onKey, onReset}){
 // Repaints the map, the level histogram and the 3-D plots when their boxes
 // change size: window resizes, splitter drags, panels opening or closing.
 function observeViewSizes(){
-  const targets = {mapWrap:"map", levelHist:"hist", planeWrap:"plot3dPlane", isoWrap:"plot3dIso"};
+  const targets = {mapWrap:"map", levelHist:"hist", planeWrap:"plot3dPlane", isoWrap:"plot3dIso", profilePlot:"profile"};
   const pending = new Set();
   let raf = 0;
   const flush = () => {
@@ -8968,6 +9269,9 @@ function observeViewSizes(){
       hideReadout();
     }
     if(pending.has("hist") && state.lastSlice) drawLevelHistogram(state.lastSlice.transformed.hist, state.lastSlice.levels);
+    if(pending.has("profile") && window.Plotly && Plotly.Plots && $("profileChart")._fullLayout && $("profileChart").getClientRects().length){
+      try{ Promise.resolve(Plotly.Plots.resize($("profileChart"))).catch(() => {}); }catch(_){}
+    }
     if(window.Plotly && Plotly.Plots){
       for(const id of ["plot3dPlane", "plot3dIso"]){
         const gd = $(id);
@@ -9020,6 +9324,8 @@ function onShortcut(ev){
     case "b": case "B": setUi({side:!state.ui.side}); break;
     case "o": case "O": $("file").click(); break;
     case "t": case "T": setTheme(isLightTheme() ? "dark" : "light"); break;
+    case "l": case "L": setCutMode(!state.cutMode); break;
+    case "p": case "P": setProfileOpen(!profileOpen()); break;
     case "c": case "C":
       if(comparisonReady()) setShowMode(state.showMode === "cmp" ? "data" : "cmp");
       else handled = false;
@@ -9027,6 +9333,7 @@ function onShortcut(ev){
     case "?": openHelp(); break;
     case "Escape":
       if(!$("statusLog").classList.contains("hidden")) toggleStatusLog(false);
+      else if(state.cutMode) setCutMode(false);
       else if(state.ui.max) setUi({max:null});
       else handled = false;
       break;
@@ -9100,6 +9407,15 @@ function bindLayout(){
     },
     onKey:d => setUi({dockW:clamp(state.ui.dockW - 0.03 * d, 0.2, 0.75)}),
     onReset:() => setUi({dockW:UI_DEFAULTS.dockW})
+  });
+  bindSplitter($("profileSplit"), {
+    rows:true,
+    onDrag:ev => {
+      const panel = $("mapPanel").getBoundingClientRect(), bottom = $("profileStrip").getBoundingClientRect().bottom;
+      setUi({profileH:clamp((bottom - ev.clientY) / Math.max(1, panel.height), 0.15, 0.7)});
+    },
+    onKey:d => setUi({profileH:clamp(state.ui.profileH - 0.04 * d, 0.15, 0.7)}),
+    onReset:() => setUi({profileH:UI_DEFAULTS.profileH})
   });
   bindSplitter($("stackSplit"), {
     rows:true,
@@ -9484,6 +9800,268 @@ async function openFiles(list){
   }
 }
 
+// ---- Profiles under the map: the cut tool, the strip and its plot
+
+function profileOpen(){
+  return !!(state.ui && state.ui.profile);
+}
+
+function setProfileOpen(open, kind=null){
+  setUi(kind ? {profile:!!open, profileKind:kind} : {profile:!!open});
+  if(open) scheduleProfile(true);
+}
+
+function setCutMode(on){
+  state.cutMode = !!on;
+  $("cutTool").classList.toggle("on", state.cutMode);
+  $("cutTool").setAttribute("aria-pressed", String(state.cutMode));
+  $("heatmap").style.cursor = state.cutMode ? "crosshair" : "";
+  if(state.cutMode && !(profileOpen() && state.ui.profileKind === "line")) setProfileOpen(true, "line");
+}
+
+// A drawn cut lives in the plane of the slice it was drawn on and follows
+// that plane as the slice moves; another plane hides it.
+function sliceKeyForCut(sl){
+  if(!sl) return "";
+  return sl.type === "axis" ? `axis|${sl.fixedAxis}` : `${sl.type}|${String(sl.xVec)}|${String(sl.yVec)}`;
+}
+
+function sliceToNative(sl, xv, yv){
+  const res = state.res;
+  if(sl.type === "axis"){
+    const axes = [res.h, res.k, res.l], metas = [res.axes.h, res.axes.k, res.axes.l], f = [0, 0, 0];
+    f[sl.fixedAxis] = sl.fixedIndex;
+    f[sl.colAxis] = axisToFraction(axes[sl.colAxis], metas[sl.colAxis], xv);
+    f[sl.rowAxis] = axisToFraction(axes[sl.rowAxis], metas[sl.rowAxis], yv);
+    return nativeAtFraction(res, f);
+  }
+  const p = sl.type === "plane" ? state.plane : state.avgvol;
+  return [0, 1, 2].map(c => p.center[c] + sl.xVec[c] * xv + sl.yVec[c] * yv);
+}
+
+function plotUnit(res=state.res){
+  if(!res) return "";
+  if(isRealSpaceData(res)) return useBasisToDirect(res) ? "Å" : "";
+  if(useBasisToQ(res) || res.coordKind === "q") return "Å⁻¹";
+  return "r.l.u.";
+}
+
+function computeProfile(){
+  const base = state.res, res = viewRes(), last = state.lastSlice;
+  if(!base || !last) return null;
+  const bins = Number($("profileBins").value) || null;
+  const model = state.showMode === "data" ? comparisonModel(base) : null;
+  if(state.ui.profileKind === "q"){
+    const ranges = displayIndexRanges(base), fit = state.cmpFit;
+    const key = [res.viewMode || "data", JSON.stringify(ranges), bins, model ? `${fit.scale},${fit.offset}` : "", activeCoordKind()].join("|");
+    if(state.profileCache && state.profileCache.res === res && state.profileCache.key === key) return state.profileCache.data;
+    const data = radialProfile(res, {bins, model, ranges});
+    state.profileCache = {res, key, data};
+    return data;
+  }
+  const sl = last.slice, cut = state.cut;
+  if(!cut || cut.key !== sliceKeyForCut(sl)) return null;
+  const p0 = sliceToNative(sl, cut.a[0], cut.a[1]), p1 = sliceToNative(sl, cut.b[0], cut.b[1]);
+  const pf = plotGridFrame(res);
+  let normal = cross(plotVector(res, sl.xVec), plotVector(res, sl.yVec));
+  const nl = normVec(normal);
+  normal = nl > 0 ? normal.map(v => v / nl) : null;
+  // By default the cut is two steps wide and one slice thick.
+  const autoWidth = 2 * pf.step;
+  const autoThick = sl.type === "axis" && normal ? Math.abs(dot(pf.Gq[sl.fixedAxis], normal)) || pf.step : pf.step;
+  $("cutWidth").placeholder = fmt(autoWidth, 4);
+  $("cutThick").placeholder = fmt(autoThick, 4);
+  const width = Number($("cutWidth").value) > 0 ? Number($("cutWidth").value) : autoWidth;
+  const thickness = Number($("cutThick").value) > 0 ? Number($("cutThick").value) : autoThick;
+  return lineCutProfile(res, p0, p1, {width, thickness, normal, bins, model});
+}
+
+function scheduleProfile(force=false){
+  if(!profileOpen()) return;
+  if(force) state.profileCache = null;
+  if(state.profileRaf) return;
+  state.profileRaf = requestAnimationFrame(() => {
+    state.profileRaf = 0;
+    renderProfile().catch(err => { $("profileEmpty").textContent = `Profile failed: ${err.message}`; $("profileEmpty").style.display = "flex"; });
+  });
+}
+
+const fmtVec = p => p.map(v => fmt(v, 4)).join(", ");
+
+async function renderProfile(){
+  if(!profileOpen()) return;
+  let data = null, error = null;
+  try{ data = computeProfile(); }catch(err){ error = err.message; }
+  state.profileData = error ? null : data;
+  const empty = $("profileEmpty"), chart = $("profileChart");
+  if(!data){
+    const kind = state.ui.profileKind;
+    empty.textContent = error || (!state.res ? "Load data first." : kind === "line" ? "Pick the cut tool (L) and drag across the map." : "No values to profile.");
+    empty.style.display = "flex";
+    chart.style.visibility = "hidden";
+    $("profileInfo").textContent = "";
+    $("profileCsv").disabled = true;
+    return;
+  }
+  empty.style.display = "none";
+  chart.style.visibility = "visible";
+  $("profileCsv").disabled = false;
+  const Plotly = await ensurePlotly();
+  const tc = themePlot(), unit = plotUnit(), name = valueLabel(viewRes()), labels = nativeAxisLabels(state.res);
+  const unitText = unit ? ` (${unit})` : "";
+  const traces = [], line = data.kind === "line";
+  const hover = line ? data.native.map(p => `${labels.join(" ")} = ${fmtVec(p)}`) : null;
+  traces.push({
+    type:"scatter", mode:"lines", name, x:Array.from(data.x), y:Array.from(data.y, v => (Number.isFinite(v) ? v : null)),
+    line:{color:"#4cc9f0", width:2}, text:hover, connectgaps:false,
+    hovertemplate:line ? `%{text}<br>${name} %{y:.5g}<extra></extra>` : `|Q| %{x:.4f}<br>${name} %{y:.5g}<extra></extra>`,
+    error_y:data.ys ? {type:"data", array:Array.from(data.ys, v => (Number.isFinite(v) ? v : 0)), visible:true, thickness:1, width:0, color:"rgba(76,201,240,.45)"} : undefined
+  });
+  if(data.ym) traces.push({
+    type:"scatter", mode:"lines", name:"Comparison (scaled)", x:Array.from(data.x), y:Array.from(data.ym, v => (Number.isFinite(v) ? v : null)),
+    line:{color:"#f4a261", width:2, dash:"dash"}, text:hover, connectgaps:false,
+    hovertemplate:line ? `%{text}<br>comparison %{y:.5g}<extra></extra>` : `|Q| %{x:.4f}<br>comparison %{y:.5g}<extra></extra>`
+  });
+  if(data.R) traces.push({
+    type:"scatter", mode:"lines", name:"R per shell", x:Array.from(data.x), y:Array.from(data.R, v => (Number.isFinite(v) ? v : null)),
+    yaxis:"y2", line:{color:"#b8c0cc", width:1.5, dash:"dot"}, hovertemplate:"|Q| %{x:.4f}<br>R %{y:.4f}<extra></extra>"
+  });
+  const axis = title => ({title:{text:title, font:{size:11}}, gridcolor:tc.grid, zerolinecolor:tc.zero, color:tc.text, tickfont:{size:10}});
+  const layout = {
+    margin:{l:62, r:data.R ? 52 : 16, t:8, b:38},
+    paper_bgcolor:tc.bg, plot_bgcolor:tc.bg, font:{color:tc.text, size:11},
+    showlegend:traces.length > 1, legend:{orientation:"h", x:1, xanchor:"right", y:1.02, yanchor:"bottom", bgcolor:"rgba(0,0,0,0)", font:{size:10}},
+    xaxis:axis(line ? `Distance along the cut${unitText}` : `|${isRealSpaceData(state.res) ? "r" : "Q"}|${unitText}`),
+    yaxis:{...axis(name), type:$("profileLog").checked ? "log" : "linear"},
+    hovermode:"x unified"
+  };
+  if(data.R) layout.yaxis2 = {...axis("R"), overlaying:"y", side:"right", rangemode:"tozero", showgrid:false};
+  await Plotly.react(chart, traces, layout, {responsive:true, displaylogo:false, modeBarButtonsToRemove:["select2d", "lasso2d"]});
+  $("profileInfo").textContent = line
+    ? `${fmt(data.length, 4)}${unit ? ` ${unit}` : ""} from (${fmtVec(data.p0)}) to (${fmtVec(data.p1)}); width ${fmt(data.width, 4)}${data.thickness !== null ? `, thickness ${fmt(data.thickness, 4)}` : ""}; ${data.voxels.toLocaleString()} voxels in ${data.bins} bins`
+    : `${data.voxels.toLocaleString()} voxels in ${data.bins} shells of ${fmt(data.width, 4)}${unit ? ` ${unit}` : ""}`;
+  $("profileInfo").title = $("profileInfo").textContent;
+}
+
+function profileCsvText(){
+  const d = state.profileData;
+  if(!d) return "";
+  const cols = nativeAxisLabels(state.res).map(csvColumnName), unit = plotUnit().replace("Å⁻¹", "inv_angstrom").replace("Å", "angstrom").replace(/[^a-z_]+/gi, "_");
+  const value = valueColumnName(viewRes());
+  const head = d.kind === "line"
+    ? [`distance${unit ? `_${unit}` : ""}`, ...cols, value, "voxels", ...(d.ys ? ["sigma"] : []), ...(d.ym ? ["comparison"] : [])]
+    : [`q${unit ? `_${unit}` : ""}`, value, "voxels", ...(d.ym ? ["comparison", "r_shell"] : [])];
+  const rows = [head.join(",")];
+  for(let b=0;b<d.bins;b++){
+    const row = d.kind === "line"
+      ? [d.x[b], ...d.native[b], d.y[b], d.n[b], ...(d.ys ? [d.ys[b]] : []), ...(d.ym ? [d.ym[b]] : [])]
+      : [d.x[b], d.y[b], d.n[b], ...(d.ym ? [d.ym[b], d.R[b]] : [])];
+    rows.push(row.map(v => (Number.isFinite(v) ? v : "")).join(","));
+  }
+  return rows.join("\n");
+}
+
+// The drawn cut on the map: its integration band, the line and its ends.
+function drawCutOverlay(ctx, layout, sl){
+  const cut = state.cut;
+  if(!cut || cut.key !== sliceKeyForCut(sl)) return;
+  const A = layout.toCanvas(cut.a[0], cut.a[1]), B = layout.toCanvas(cut.b[0], cut.b[1]);
+  const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+  const a = layout.area;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(a.x, a.y, a.w, a.h);
+  ctx.clip();
+  const d = state.profileData;
+  if(d && d.kind === "line" && len > 0){
+    const P = layout.toCanvas(0, 0), Q = layout.toCanvas(1, 0);
+    const perUnit = Math.hypot(Q[0] - P[0], Q[1] - P[1]) / (normVec(plotVector(state.res, sl.xVec)) || 1);
+    const hw = d.width / 2 * perUnit, nx = -(B[1] - A[1]) / len * hw, ny = (B[0] - A[0]) / len * hw;
+    ctx.beginPath();
+    ctx.moveTo(A[0] + nx, A[1] + ny);
+    ctx.lineTo(B[0] + nx, B[1] + ny);
+    ctx.lineTo(B[0] - nx, B[1] - ny);
+    ctx.lineTo(A[0] - nx, A[1] - ny);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.fill();
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = "rgba(255,255,255,0.7)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(2,6,23,.85)";
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+  for(const [p, label] of [[A, "A"], [B, "B"]]){
+    ctx.beginPath();
+    ctx.arc(p[0], p[1], 5, 0, 2 * Math.PI);
+    ctx.fillStyle = label === "A" ? "#ffffff" : "#4cc9f0";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(2,6,23,.9)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.font = "bold 11px Segoe UI, sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(label, p[0] + 7, p[1] - 7);
+  }
+  ctx.restore();
+}
+
+function startCutDrag(ev, pt){
+  const last = state.lastSlice, sl = last.slice, layout = last.layout, key = sliceKeyForCut(sl);
+  const s = layout.toSlice(pt.x, pt.y);
+  let handle = "b";
+  if(state.cut && state.cut.key === key){
+    const A = layout.toCanvas(state.cut.a[0], state.cut.a[1]), B = layout.toCanvas(state.cut.b[0], state.cut.b[1]);
+    const dA = Math.hypot(pt.x - A[0], pt.y - A[1]), dB = Math.hypot(pt.x - B[0], pt.y - B[1]);
+    const len2 = (B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2;
+    const t = len2 ? clamp(((pt.x - A[0]) * (B[0] - A[0]) + (pt.y - A[1]) * (B[1] - A[1])) / len2, 0, 1) : 0;
+    const dLine = Math.hypot(pt.x - (A[0] + t * (B[0] - A[0])), pt.y - (A[1] + t * (B[1] - A[1])));
+    if(Math.min(dA, dB) <= 9) handle = dA <= dB ? "a" : "b";
+    else if(dLine <= 6) handle = "move";
+    else state.cut = null;
+  }
+  if(!state.cut || state.cut.key !== key) state.cut = {key, a:s.slice(), b:s.slice()};
+  state.cutDrag = {pointerId:ev.pointerId, handle, start:s, a0:state.cut.a.slice(), b0:state.cut.b.slice()};
+  try{ $("heatmap").setPointerCapture(ev.pointerId); }catch(_){}
+  hideReadout();
+  ev.preventDefault();
+}
+
+function moveCutDrag(pt){
+  const drag = state.cutDrag, layout = state.lastSlice && state.lastSlice.layout;
+  if(!drag || !layout || !state.cut) return;
+  const s = layout.toSlice(pt.x, pt.y);
+  if(drag.handle === "a") state.cut.a = s;
+  else if(drag.handle === "b") state.cut.b = s;
+  else{
+    const dx = s[0] - drag.start[0], dy = s[1] - drag.start[1];
+    state.cut.a = [drag.a0[0] + dx, drag.a0[1] + dy];
+    state.cut.b = [drag.b0[0] + dx, drag.b0[1] + dy];
+  }
+  paint2d();
+  scheduleProfile();
+}
+
+function endCutDrag(ev){
+  const drag = state.cutDrag, layout = state.lastSlice && state.lastSlice.layout;
+  state.cutDrag = null;
+  try{ $("heatmap").releasePointerCapture(ev.pointerId); }catch(_){}
+  if(state.cut && layout){
+    const A = layout.toCanvas(state.cut.a[0], state.cut.a[1]), B = layout.toCanvas(state.cut.b[0], state.cut.b[1]);
+    // A click without a drag clears the cut.
+    if(drag && drag.handle === "b" && Math.hypot(B[0] - A[0], B[1] - A[1]) < 4) state.cut = null;
+  }
+  paint2d();
+  scheduleProfile();
+}
+
 function bind(){
   $("file").addEventListener("change", e => {
     const files = Array.from(e.target.files || []);
@@ -9614,6 +10192,17 @@ function bind(){
   $("levelMax").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("resetLevels").addEventListener("click", () => resetDisplayLevels(true));
   $("showMode").addEventListener("change", () => setShowMode($("showMode").value));
+  $("cutTool").addEventListener("click", () => setCutMode(!state.cutMode));
+  $("profileToggle").addEventListener("click", () => setProfileOpen(!profileOpen()));
+  $("profileClose").addEventListener("click", () => { setCutMode(false); setProfileOpen(false); });
+  for(const b of document.querySelectorAll("[data-profile]")) b.addEventListener("click", () => setProfileOpen(true, b.dataset.profile));
+  for(const id of ["cutWidth", "cutThick", "profileBins", "profileLog"]) $(id).addEventListener("change", () => { scheduleProfile(true); paint2d(); });
+  $("profileCsv").addEventListener("click", () => {
+    const d = state.profileData;
+    if(!d) return;
+    saveText(`${baseName()}_${d.kind === "line" ? "cut" : "q_profile"}.csv`, profileCsvText(), "text/csv;charset=utf-8");
+    status(`Saved the ${d.kind === "line" ? "line cut" : "|Q| profile"} as CSV.`, "ok");
+  });
   $("laueClass").addEventListener("change", () => updateSymInfo());
   $("symApply").addEventListener("click", runSymmetry);
   $("symClear").addEventListener("click", clearSymmetry);

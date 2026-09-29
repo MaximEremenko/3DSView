@@ -147,3 +147,14 @@ test("the deviation and equivalents views derive from the symmetrized result", a
   assert.equal(sym.columnName, "intensity_symmetrized");
   assert.equal(sym.fileTag, "_sym");
 });
+
+test("Laue symbols as reduction programs write them in file names", () => {
+  const app = loadApp();
+  const ax = axis(3, -0.5, 0.5);
+  const s = name => app.context.suggestLaueClass(volume(app, {name, h:ax, k:ax, l:ax})).cls;
+  assert.equal(s("CuAu_(h,k,0)_[0,0,l]_[-10,10]x3_201x201x201_4_mmm_cc.nxs"), "4/mmm");
+  assert.equal(s("YSZ_[-8,8]x3_6_mmm.nxs"), "6/mmm");
+  assert.equal(s("film_2_m_sub_bkg.nxs"), "2/m_b");
+  assert.equal(s("calcite_-3m_r_cc.nxs"), "-3mR");
+  assert.equal(s("PMN_x0p0_300K_cc_m-3m.nxs"), "m-3m");
+});

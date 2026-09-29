@@ -401,3 +401,25 @@ test("parent cell from a unified structure file is used directly", async () => {
   [5.64, 5.64, 5.64, 90, 90, 90].forEach((v, i) => assertClose(got.cell[i], v, 1e-12, `cell ${i}`));
   assert.deepEqual(Array.from(got.supercell), [2, 2, 2]);
 });
+
+test("the W_MATRIX log gives the projection axes exactly", async () => {
+  const app = loadApp();
+  const shape = [3, 2, 2], third = 1 / 3;
+  // W_MATRIX is row-major with the projection axes as its columns.
+  const W = [[third, third, 0], [third, -third, 0], [0, 0, 1]];
+  const file = await h5File(app, "projected.nxs", f => {
+    const ws = f.create_group("MDHistoWorkspace");
+    const data = ws.create_group("data");
+    const signal = data.create_dataset({name:"signal", data:cOrderValues([2, 2, 3]), shape:[2, 2, 3], dtype:"<d"});
+    signal.create_attribute("axes", "D2:D1:D0");
+    shape.forEach((n, axis) => {
+      const ds = data.create_dataset({name:`D${axis}`, data:Array.from({length:n + 1}, (_, i) => i - 0.5), shape:[n + 1], dtype:"<d"});
+      ds.create_attribute("long_name", ["[0.333H,0.333H,0]", "[0.333K,-0.333K,0]", "[0,0,L]"][axis]);
+      ds.create_attribute("units", "r.l.u.");
+    });
+    ws.create_group("experiment0").create_group("logs").create_group("W_MATRIX").create_dataset({name:"value", data:W.flat(), shape:[9], dtype:"<d"});
+  });
+  const res = await app.parseFile(file);
+  assert.deepEqual(Array.from(res.projectionW, row => Array.from(row)), [[third, third, 0], [third, -third, 0], [0, 0, 1]]);
+  assert.deepEqual(Array.from(res.hklAxisLabels), ["[0.333H,0.333H,0]", "[0.333K,-0.333K,0]", "[0,0,L]"]);
+});

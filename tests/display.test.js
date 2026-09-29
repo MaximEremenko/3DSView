@@ -135,3 +135,15 @@ test("slice CSV carries native coordinates, Q and the value", async () => {
   assert.equal(first[6], 101);
   assert.equal(rows.length, 1 + 6);
 });
+
+test("mean +- 3 sigma and IQR fences give display windows from the distribution", () => {
+  const app = loadApp();
+  const values = Float64Array.from({length:1001}, (_, i) => i / 1000);   // uniform on [0, 1]
+  const hist = app.context.valueHistogram(values, 0, 1, 2000, v => v);
+  const [lo, hi] = app.context.spreadWindow(hist, "sigma3");
+  const sd = Math.sqrt(1 / 12);
+  assert.ok(Math.abs(lo - (0.5 - 3 * sd)) < 2e-3 && Math.abs(hi - (0.5 + 3 * sd)) < 2e-3, `sigma window ${lo}, ${hi}`);
+  const [f1, f2] = app.context.spreadWindow(hist, "iqr");
+  assert.ok(Math.abs(f1 - (0.25 - 0.75)) < 2e-3 && Math.abs(f2 - (0.75 + 0.75)) < 2e-3, `IQR fences ${f1}, ${f2}`);
+  assert.equal(app.context.spreadWindow(hist, "p99"), null);
+});
