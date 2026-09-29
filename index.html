@@ -520,6 +520,23 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button id="avgReset" class="alt" disabled>Reset</button>
         </div>
       </div>
+      <div class="group" id="resolutionGroup">
+        <h3>Resolution</h3>
+        <div class="row2">
+          <label>Map points per side<input id="resMap" type="number" min="32" max="520" step="1" placeholder="every point" title="Points along each side of a normal-plane or slab map; axis slices show every data point" disabled></label>
+          <label>3-D plane points per side<input id="res3dPlane" type="number" min="32" max="520" step="1" value="180" title="Points along each side of the 3-D slice plane" disabled></label>
+        </div>
+        <div class="row2">
+          <label>Isosurface voxel cap<input id="resIso" type="number" min="5000" step="1000" value="220000" title="The most points the isosurface samples; the stride follows from it" disabled></label>
+          <label>PNG image<select id="resImage" title="PNG exports at this multiple of their size on screen"><option value="1">1x screen</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
+        </div>
+        <div class="meta plotRes">
+          <div class="k">Map</div><div id="plotResMap">-</div>
+          <div class="k">3-D plane</div><div id="plotResPlane">-</div>
+          <div class="k">Isosurface</div><div id="plotResIso">-</div>
+          <div class="k">PNG</div><div id="plotResImage">-</div>
+        </div>
+      </div>
       <div class="group">
         <h3>Shown volume</h3>
         <div class="row2">
@@ -551,15 +568,6 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button id="viewReset" class="alt" disabled>Show full volume</button>
         </div>
         <div id="viewInfo" class="mono fine">Load data to set the shown volume.</div>
-      </div>
-      <div class="group">
-        <h3>Plotted resolution</h3>
-        <div class="meta plotRes">
-          <div class="k">Map</div><div id="plotResMap">-</div>
-          <div class="k">3-D plane</div><div id="plotResPlane">-</div>
-          <div class="k">Isosurface</div><div id="plotResIso">-</div>
-        </div>
-        <p class="fine">The map draws every data point of a slice, up to 1.5 million. The 3-D slice plane is thinned to 180 x 180 points and the isosurface to the voxel cap on the 3-D page; crop the shown volume or raise the cap for finer 3-D sampling.</p>
       </div>
     </section>
 
@@ -692,9 +700,10 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
 
     <section class="page" data-page="export">
       <div class="group">
-        <h3>Names</h3>
+        <h3>Files</h3>
         <label>File name<input id="exportName" type="text" placeholder="data file name" disabled></label>
         <label class="check"><input id="exportTransparent" type="checkbox" disabled>Transparent background</label>
+        <label>PNG resolution<select id="imageScale" title="PNG exports at this multiple of their size on screen"><option value="1">1x screen</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
       </div>
       <div class="group">
         <h3>2-D slice</h3>
@@ -707,6 +716,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="group">
         <h3>3-D views</h3>
         <div class="btns">
+          <button id="savePlanePng" class="alt" disabled>Plane PNG</button>
+          <button id="saveIsoPng" class="alt" disabled>Iso PNG</button>
+          <button id="saveStructPng" class="alt" disabled>Structure PNG</button>
           <button id="savePlaneSvg" class="alt" disabled>Plane SVG</button>
           <button id="saveIsoSvg" class="alt" disabled>Iso SVG</button>
           <button id="savePlaneHtml" class="alt" disabled>Plane HTML</button>
@@ -7051,7 +7063,7 @@ function draw2d(options={}){
   const validText = sl.type !== "axis" ? ` | valid=${sl.valid}/${sl.rows*sl.cols}` : "";
   const sampleText = sl.decimated ? ` | sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols} (${sl.strides.join("x")})` : "";
   const shown = `[${levels.min.toExponential(3)}, ${levels.max.toExponential(3)}]`;
-  setTextWithTitle("sliceStats", `${sl.plane} | display=${mode} | slice min=${stats.min.toExponential(4)} max=${stats.max.toExponential(4)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`);
+  setTextWithTitle("sliceStats", `${sl.plane} | ${sl.cols}x${sl.rows} points, \u0394 ${fmtStep(sliceSampling(sl).dx)} | display=${mode} | slice min=${stats.min.toExponential(4)} max=${stats.max.toExponential(4)} | shown ${shown}${validText}${sampleText} | ${sl.xLabel}: ${fmt(sl.xMin)}..${fmt(sl.xMax)} | ${sl.yLabel}: ${fmt(sl.yMin)}..${fmt(sl.yMax)}`);
   const clipText = levels.clip && levels.clip !== "minmax" ? ` ${$("levelClip").selectedOptions[0].textContent.replace(/\s+/g, "")}` : "";
   $("levelInfo").textContent = `${levels.source}${clipText} levels ${shown} | range [${levels.rawMin.toExponential(3)}, ${levels.rawMax.toExponential(3)}]`;
   const agree = sliceAgreement();
@@ -7071,6 +7083,11 @@ function draw2d(options={}){
 // enough to run on every wheel or drag event.
 function paint2d(){
   const {ctx, cssW, cssH} = prepareHeatmapCanvas();
+  paint2dOn(ctx, cssW, cssH);
+}
+
+// Draws the map, its axes, overlays and colour bar into ctx, in CSS pixels.
+function paint2dOn(ctx, cssW, cssH){
   const last = state.lastSlice;
   if(!state.res || !last) return;
   const {slice:sl, levels, transformed:stats, stops} = last;
@@ -7811,24 +7828,51 @@ function samplingText(s, unit){
   return `${s.cols} x ${s.rows} (${s.xLabel} x ${s.yLabel}), ${how}; \u0394${s.xLabel} ${fmtStep(s.dx)}, \u0394${s.yLabel} ${fmtStep(s.dy)}${unit}`;
 }
 
-// The resolution of what the map and the 3-D views plot: points, spacing and
-// how the data were thinned to draw them.
+function plane3dRes(){
+  return clamp(Math.round(Number(state.ui && state.ui.plane3dRes) || 180), 32, 520);
+}
+
+function imageScale(){
+  return clamp(Math.round(Number(state.ui && state.ui.imageScale) || 2), 1, 4);
+}
+
+// Spacing of the isosurface's samples along each axis, for a stride.
+function isoSpacingText(res, strides){
+  const steps = [res.h, res.k, res.l].map((values, a) => (values.length > 1 ? Math.abs(values[values.length - 1] - values[0]) / (values.length - 1) * strides[a] : NaN));
+  return `\u0394 ${steps.map(fmtStep).join(" x ")}${coordUnit(res)}`;
+}
+
+// Pixel sizes of PNG exports at the chosen scale.
+function imageSizesText(){
+  const s = imageScale();
+  const parts = [["map", "heatmap"], ["3-D plane", "plot3dPlane"], ["isosurface", "plot3dIso"], ["structure", "plot3dStruct"]].map(([name, id]) => {
+    const r = $(id) ? $(id).getBoundingClientRect() : null;
+    return r && r.width ? `${name} ${Math.round(r.width) * s} x ${Math.round(r.height) * s} px` : null;
+  }).filter(Boolean);
+  return `${s}x the size on screen${parts.length ? `: ${parts.join(", ")}` : ""}`;
+}
+
+// The resolution each figure is drawn with, and the fields that set it.
 function updatePlotResInfo(){
   if(!$("plotResMap")) return;
-  const res = state.res;
+  const res = state.res, mode = $("sliceMode").value, planeMap = mode === "plane" || mode === "avgvol";
+  $("resMap").disabled = !res || !planeMap;
+  setFieldUnlessEditing("resMap", planeMap ? $(mode === "plane" ? "pRes" : "avRes").value : "");
+  setFieldUnlessEditing("res3dPlane", String(plane3dRes()));
+  setFieldUnlessEditing("resIso", $("voxelCap").value);
+  $("plotResImage").textContent = imageSizesText();
   if(!res){
     for(const id of ["plotResMap", "plotResPlane", "plotResIso"]) $(id).textContent = "-";
     return;
   }
-  const unit = coordUnit(res), labels = nativeAxisLabels(res), r = state.plotRes || {};
+  const unit = coordUnit(res), r = state.plotRes || {};
   $("plotResMap").textContent = samplingText(r.map, unit);
   $("plotResPlane").textContent = r.plane || view3dShown("plane") ? samplingText(r.plane, unit) : "the 3-D slice plane is hidden";
   const size = displayIndexRanges(res).map(g => g[1] - g[0] + 1);
   const cap = Math.max(5000, Math.floor(Number($("voxelCap").value) || 220000));
   const strides = chooseVolumeStrides(size, cap), counts = size.map((n, a) => Math.ceil(n / strides[a]));
-  const steps = [res.h, res.k, res.l].map((values, a) => (values.length > 1 ? Math.abs(values[values.length - 1] - values[0]) / (values.length - 1) * strides[a] : NaN));
   const how = strides.every(s => s === 1) ? "every data point" : `stride ${strides.join(" x ")}`;
-  $("plotResIso").textContent = `${counts.join(" x ")} (~${(counts[0] * counts[1] * counts[2]).toLocaleString()} points), ${how}; ${labels.map((l, a) => `\u0394${l} ${fmtStep(steps[a])}`).join(", ")}${unit}`;
+  $("plotResIso").textContent = `${counts.join(" x ")} (~${(counts[0] * counts[1] * counts[2]).toLocaleString()} points), ${how}; ${isoSpacingText(res, strides)}`;
 }
 
 function resetShownVolume(redraw=true){
@@ -7875,7 +7919,7 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","savePlanePng","saveIsoPng","res3dPlane","resIso","isoPct","isoCount","voxelCap","auto3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -8375,6 +8419,7 @@ function syncStructureControls(){
   const st = state.structure;
   $("structStatus").textContent = st ? structureText(st) : "No structure";
   $("structStatus").title = $("structStatus").textContent;
+  $("saveStructPng").disabled = !(st && st.atoms.length);
   const available = vectorsAvailable(), on = vectorOverlayOn();
   $("vectorToggle").classList.toggle("hidden", !available);
   $("vectorToggle").classList.toggle("on", on);
@@ -9383,7 +9428,8 @@ async function renderPlane3d(Plotly){
   const planeCamera = readSceneCamera("plot3dPlane") || state.cameras.plane;
   if(planeCamera) state.cameras.plane = planeCamera;
   set3dStatus("Rendering plane...");
-  const sl = currentSlice(180, MAX_3D_SLICE_CELLS, true);
+  const n3 = plane3dRes();
+  const sl = currentSlice(n3, n3 * n3, true);
   state.plotRes.plane = cutawayOn(sl) ? {cutaway:true} : sliceSampling(sl);
   updatePlotResInfo();
   const mode = $("scale").value;
@@ -9458,8 +9504,8 @@ async function renderPlane3d(Plotly){
   wireCamera("plot3dPlane", "plane");
   captureSceneCamera("plot3dPlane", "plane");
   $("empty3dPlane").style.display = "none";
-  const sampled = sl.decimated ? `, sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols}` : "";
-  set3dStatus(`${sl.decimated ? "Rendered sampled" : "Rendered"} mesh ${plot.i.length.toLocaleString()} triangles${sampled}`);
+  const s3 = sliceSampling(sl);
+  set3dStatus(`${sl.cols} x ${sl.rows} points${s3.full === false ? ` of ${sl.fullCols} x ${sl.fullRows}` : ""}, \u0394 ${fmtStep(s3.dx)}${coordUnit(state.res)} | mesh ${plot.i.length.toLocaleString()} triangles`);
 }
 
 async function renderIso3d(Plotly){
@@ -9555,7 +9601,7 @@ async function renderIso3d(Plotly){
   $("empty3dIso").style.display = "none";
   const invalidText = sample.invalid ? `, masked ${sample.invalid.toLocaleString()}` : "";
   const skippedText = sample.skippedGeometry ? `, skipped geometry ${sample.skippedGeometry.toLocaleString()}` : "";
-  setIsoStatus(`${trace.type === "scatter3d" ? "Rendered fallback cloud" : "Rendered"} P${fmt(pct,2)}, finite ${sample.count.toLocaleString()} / sampled ${sample.total.toLocaleString()} (${sample.strides.join("x")})${invalidText}${skippedText}`);
+  setIsoStatus(`${trace.type === "scatter3d" ? "Rendered fallback cloud" : "Rendered"} P${fmt(pct,2)}, finite ${sample.count.toLocaleString()} / sampled ${sample.total.toLocaleString()} (stride ${sample.strides.join("x")}, ${isoSpacingText(state.res, sample.strides)})${invalidText}${skippedText}`);
 }
 
 // Draws the 3-D views on screen, or the ones named (an export of a hidden
@@ -9617,13 +9663,66 @@ function exportTransparent(){
   return !!($("exportTransparent") && $("exportTransparent").checked);
 }
 
+// The map as drawn on screen, at scale times its size in pixels, with the
+// interatomic-vector legend when it is shown.
+function mapImageCanvas(scale){
+  const rect = $("heatmap").getBoundingClientRect();
+  const cssW = Math.max(1, Math.round(rect.width)), cssH = Math.max(1, Math.round(rect.height));
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(cssW * scale);
+  cv.height = Math.round(cssH * scale);
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  if(!exportTransparent()){
+    ctx.fillStyle = themePlot().bg;
+    ctx.fillRect(0, 0, cssW, cssH);
+  }
+  paint2dOn(ctx, cssW, cssH);
+  drawVectorLegendOn(ctx);
+  return cv;
+}
+
+function drawVectorLegendOn(ctx){
+  const legend = $("vectorLegend");
+  if(!legend || legend.classList.contains("hidden") || !legend.children.length) return;
+  const rows = Array.from(legend.children), tc = themePlot(), x = 66, y = 26, lh = 15;
+  ctx.save();
+  ctx.font = '11px Consolas, "Courier New", monospace';
+  ctx.textBaseline = "middle";
+  const w = 20 + Math.max(...rows.map(r => ctx.measureText(r.textContent).width));
+  ctx.fillStyle = isLightTheme() ? "rgba(248,250,252,.92)" : "rgba(15,23,42,.88)";
+  ctx.fillRect(x, y, w + 10, rows.length * lh + 8);
+  rows.forEach((row, i) => {
+    const dot = row.querySelector(".dot"), cy = y + 4 + (i + 0.5) * lh;
+    let tx = x + 6;
+    if(dot){
+      ctx.beginPath();
+      ctx.arc(tx + 4, cy, 4, 0, 2 * Math.PI);
+      ctx.strokeStyle = dot.style.borderColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      tx += 14;
+    }
+    ctx.fillStyle = tc.canvasText;
+    ctx.fillText(row.textContent, tx, cy);
+  });
+  ctx.restore();
+}
+
+function saveBlob(name, blob){
+  const url = URL.createObjectURL(blob);
+  downloadDataUrl(name, url);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 function savePng(){
-  const transparent = exportTransparent();
-  if(transparent){ state.paintTransparent = true; paint2d(); }
-  const url = $("heatmap").toDataURL("image/png");
-  if(transparent){ state.paintTransparent = false; paint2d(); }
-  downloadDataUrl(`${baseName()}_slice.png`, url);
-  status("Saved slice PNG.", "ok");
+  if(!state.res || !state.lastSlice) return;
+  const scale = imageScale(), cv = mapImageCanvas(scale);
+  cv.toBlob(blob => {
+    if(!blob){ status("PNG export failed: the image is too large for this browser; lower the PNG resolution.", "err"); return; }
+    saveBlob(`${baseName()}_slice.png`, blob);
+    status(`Saved slice PNG, ${cv.width} x ${cv.height} px (${scale}x).`, "ok");
+  }, "image/png");
 }
 
 function xmlEscape(value){
@@ -10053,6 +10152,29 @@ function downloadDataUrl(name, dataUrl){
   a.remove();
 }
 
+// A 3-D view as PNG at the chosen scale of its size on screen.
+async function savePlotPng(plotId, tag){
+  try{
+    const Plotly = await ensurePlotly();
+    if(plotId === "plot3dStruct"){
+      if(!state.structure || !state.structure.atoms.length) return;
+    }else{
+      if(!state.res) return;
+      await render3d([plotId === "plot3dPlane" ? "plane" : "iso"]);
+    }
+    const fig = exportPlotFigure(plotId);
+    if(!fig) throw new Error("the view has not been drawn yet; show it in the dock first.");
+    const rect = $(plotId).getBoundingClientRect(), scale = imageScale();
+    const width = Math.round(rect.width) || 1200, height = Math.round(rect.height) || 900;
+    const url = await Plotly.toImage(fig, {format:"png", width, height, scale});
+    const base = state.res ? baseName() : String(state.structure.name || "structure").replace(/\.[^.]+$/, "");
+    downloadDataUrl(`${base}_${tag}.png`, url);
+    status(`Saved ${tag} PNG, ${width * scale} x ${height * scale} px (${scale}x).`, "ok");
+  }catch(err){
+    status(`PNG export failed: ${err.message}`, "err");
+  }
+}
+
 async function savePlotSvg(plotId, tag){
   if(!state.res) return;
   try{
@@ -10218,7 +10340,7 @@ async function onFile(file){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
@@ -10240,13 +10362,15 @@ function loadUiPrefs(){
     if(["below", "above"].includes(saved.cutawayKeep)) ui.cutawayKeep = saved.cutawayKeep;
     if(typeof saved.ortho === "boolean") ui.ortho = saved.ortho;
     if(typeof saved.vectors === "boolean") ui.vectors = saved.vectors;
+    if(Number.isFinite(saved.plane3dRes)) ui.plane3dRes = clamp(Math.round(saved.plane3dRes), 32, 520);
+    if([1, 2, 3, 4].includes(saved.imageScale)) ui.imageScale = saved.imageScale;
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale})); }catch(_){}
 }
 
 function applyUi(){
@@ -10281,6 +10405,8 @@ function applyUi(){
   $("cutawayFlip").title = ui.cutawayKeep === "above" ? "Showing the block above the slice; show the part below" : "Showing the block below the slice; show the part above";
   $("camOrtho").checked = !!ui.ortho;
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
+  for(const id of ["imageScale", "resImage"]) $(id).value = String(ui.imageScale);
+  updatePlotResInfo();
   saveUiPrefs();
 }
 
@@ -11473,6 +11599,23 @@ function bind(){
     render3d().catch(err => status(`3D render failed: ${err.message}`, "err"));
   });
   $("savePng").addEventListener("click", savePng);
+  $("savePlanePng").addEventListener("click", () => savePlotPng("plot3dPlane", "plane3d"));
+  $("saveIsoPng").addEventListener("click", () => savePlotPng("plot3dIso", "iso3d"));
+  $("saveStructPng").addEventListener("click", () => savePlotPng("plot3dStruct", "structure"));
+  for(const id of ["imageScale", "resImage"]) $(id).addEventListener("change", () => setUi({imageScale:clamp(Math.round(Number($(id).value) || 2), 1, 4)}));
+  $("resMap").addEventListener("change", () => {
+    const id = $("sliceMode").value === "avgvol" ? "avRes" : "pRes";
+    $(id).value = String(clamp(Math.round(Number($("resMap").value) || 0), 32, 520));
+    $(id).dispatchEvent(new Event("change"));
+  });
+  $("res3dPlane").addEventListener("change", () => {
+    setUi({plane3dRes:clamp(Math.round(Number($("res3dPlane").value) || 180), 32, 520)});
+    scheduleRender3d(0, true);
+  });
+  $("resIso").addEventListener("change", () => {
+    $("voxelCap").value = String(Math.max(5000, Math.round(Number($("resIso").value) || 220000)));
+    $("voxelCap").dispatchEvent(new Event("change"));
+  });
   $("saveSliceSvg").addEventListener("click", saveSliceSvg);
   $("saveCsv").addEventListener("click", saveCsv);
   $("saveUnified").addEventListener("click", saveUnified);

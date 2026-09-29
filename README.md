@@ -140,10 +140,16 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **Shown-volume limits**: crop the displayed volume per axis with dual-range sliders.
   The limits, like the other coordinate fields, are rounded to the precision the grid
   step needs, so float32 axes read -8 rather than -7.999999508.
-- **Plotted resolution** (Slice page): the points and spacing each figure is drawn with.
-  The map shows every data point of a slice (up to 1.5 million). The 3-D slice plane is
-  thinned to 180 x 180 points and the isosurface to the voxel cap (3-D page), with the
-  stride and the resulting spacing listed.
+- **Resolution** (Slice page, above Shown volume): set how finely each figure is drawn,
+  and see the points and spacing that gives.
+  - **Map points per side** for normal-plane and slab maps. Axis slices show every data
+    point, up to 1.5 million.
+  - **3-D plane points per side** (180 by default, up to 520).
+  - **Isosurface voxel cap**, the same field as on the 3-D page; the stride follows from it.
+  - **PNG image**: 1x to 4x the size on screen, with the resulting pixel size of each
+    figure.
+  - The 3-D views' headers and the status line under the map also give each figure's
+    points and spacing.
 - **Display controls**:
   - **Scales:** log10(value+1), log10, linear and signed-sqrt.
   - **Colour maps:** sequential Viridis, Plasma, Inferno, Magma, Cividis, Turbo and Gray,
@@ -207,7 +213,11 @@ and slab-average slicing with linked 2-D and 3-D views.
   - **2-D slice:** PNG; SVG, with vector axes, ticks and a colour-bar legend over the
     embedded slice image; and CSV, with native coordinates, u/v for plane slices, Q when
     a reciprocal basis is known, and the value.
-  - **3-D views:** SVG snapshots and standalone interactive HTML copies of either 3-D plot.
+  - **3-D views:** PNG images of the slice plane, the isosurface and the structure; SVG
+    snapshots; and standalone interactive HTML copies of either 3-D plot.
+  - **PNG resolution:** 1x to 4x the size on screen (2x by default). The map is redrawn at
+    that size, so text and lines stay sharp and the data pixels stay crisp; the
+    interatomic-vector legend is drawn in when it is shown.
   - **Shown (cropped) volume:**
     - Unified HDF5 (`*_unified.h5`, written in the browser via `js/unified_hdf5.js` and
       h5wasm). The experiment type is kept from the source file, and the cell is derived
