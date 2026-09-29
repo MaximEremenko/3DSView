@@ -546,6 +546,7 @@ function setTheme(t){
 const state = {
   res:null,
   sourceBasis:null,
+  sourceGeometry:null,
   displayRanges:null,
   plane:null,
   avgvol:null,
@@ -829,6 +830,36 @@ function basisFromCell(cell, anglesAreDegrees=false){
   }
 }
 
+// Mantid/Busing-Levy UB maps hkl to Q/2pi as column vectors (Q = 2pi UB h);
+// 3DSView multiplies row vectors, q = [h,k,l] . Bq.
+function ubToBq(UB){
+  return transpose3(UB).map(row => row.map(v => v * 2 * Math.PI));
+}
+
+// RMCProfile, Scatty and 3DSConvert write Cartesian Q = 2pi B hkl with a
+// along x and b in the xy-plane (cell_to_lattice). Returns the direct
+// lattice A (columns a, b, c) and Bq with q = hkl . Bq, i.e. 2pi A^-1.
+function rmcCartesianFrame(cellDeg){
+  const [a, b, c] = cellDeg.slice(0, 3).map(Number);
+  const [al, be, ga] = cellDeg.slice(3, 6).map(v => Number(v) * Math.PI / 180);
+  const sg = Math.sin(ga);
+  if(!(a > 0 && b > 0 && c > 0) || Math.abs(sg) < 1e-12) return null;
+  const A = [
+    [a, b * Math.cos(ga), c * Math.cos(be)],
+    [0, b * sg, c * (Math.cos(al) - Math.cos(be) * Math.cos(ga)) / sg],
+    [0, 0, 0]
+  ];
+  let z2 = c * c - A[0][2] * A[0][2] - A[1][2] * A[1][2];
+  if(z2 < 0 && Math.abs(z2) < 1e-10) z2 = 0;
+  if(!(z2 >= 0)) return null;
+  A[2][2] = Math.sqrt(z2);
+  try{
+    return {A, Bq:inv3(A).map(row => row.map(v => v * 2 * Math.PI))};
+  }catch(_){
+    return null;
+  }
+}
+
 function isUnitMetricCell(cell){
   if((!Array.isArray(cell) && !ArrayBuffer.isView(cell)) || cell.length < 6) return false;
   const nums = Array.from(cell).slice(0,6).map(Number);
@@ -849,8 +880,9 @@ function extractBasisFromText(text){
     const line = lines[i], lower = line.toLowerCase();
     if(/\b(?:bq|ub|ub_matrix|orientation_matrix)\b/.test(lower)){
       const nums = parseNumberList([line, lines[i+1] || "", lines[i+2] || ""].join(" "));
-      const Bq = matrixFromFlat(nums);
-      if(Bq) return {Bq, basisSource:lower.includes("orientation") ? "orientation matrix" : "UB/Bq matrix"};
+      const m = matrixFromFlat(nums);
+      if(m && /\bbq\b/.test(lower)) return {Bq:m, basisSource:"Bq matrix"};
+      if(m) return {Bq:ubToBq(m), basisSource:lower.includes("orientation") ? "orientation matrix" : "UB matrix"};
     }
   }
   for(const line of lines){
@@ -867,7 +899,8 @@ function extractBasisFromPayload(payload){
   if(!payload || typeof payload !== "object") return {};
   for(const key of ["Bq","bq","UB","ub","ubMatrix","orientation_matrix","orientationMatrix"]){
     if(payload[key] !== undefined){
-      const Bq = matrixFromFlat(flatNumericArray(payload[key]));
+      const m = matrixFromFlat(flatNumericArray(payload[key]));
+      const Bq = m && (key === "Bq" || key === "bq" ? m : ubToBq(m));
       if(Bq) return {Bq, Bp:payload.Bp && matrixFromFlat(flatNumericArray(payload.Bp)) || null, basisSource:key};
     }
   }
@@ -2894,8 +2927,8 @@ function readH5Basis(file){
   ];
   for(const path of matrixCandidates){
     const obj = h5Lookup(file, path);
-    const Bq = matrixFromFlat(flatNumericArray(h5Value(obj)));
-    if(Bq) return {Bq, basisSource:path};
+    const UB = matrixFromFlat(flatNumericArray(h5Value(obj)));
+    if(UB) return {Bq:ubToBq(UB), basisSource:path};
   }
   return {};
 }
@@ -5329,7 +5362,7 @@ function applyShownVolume(){
 
 function syncControls(){
   const has = !!state.res;
-  const cellAllowed = has && !isRealSpaceData(state.res) && state.res.coordKind === "hkl";
+  const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
   for(const id of ["coordMode","sliceMode","scale","colorMap","levelMode","resetLevels","render3d","savePng","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
@@ -5430,6 +5463,52 @@ function snapshotCellBasis(res){
   return out;
 }
 
+const GEOMETRY_KEYS = ["coordKind","h","k","l","gridOrigin","gridVectors","gridVectorSource","h5"];
+
+function snapshotGeometry(res){
+  const out = {};
+  for(const key of GEOMETRY_KEYS) if(res && res[key] !== undefined) out[key] = res[key];
+  return out;
+}
+
+// Converts a Q-native grid (Cartesian 1/A in the RMCProfile/Scatty frame)
+// to HKL with the given parent cell; Bq keeps the original Q available.
+function convertQGridToHkl(res, cellDeg){
+  if(!res || res.coordKind !== "q") throw new Error("Only Q-space data can be converted to HKL.");
+  const frame = rmcCartesianFrame(cellDeg);
+  if(!frame) throw new Error("The supplied unit cell is singular or geometrically invalid.");
+  let origin, steps;
+  if(validMatrix3(res.gridVectors) && Array.isArray(res.gridOrigin)){
+    origin = res.gridOrigin.slice(0, 3);
+    steps = [0, 1, 2].map(axis => [res.gridVectors[0][axis], res.gridVectors[1][axis], res.gridVectors[2][axis]]);
+  }else{
+    const metas = [res.h, res.k, res.l].map(axisMeta);
+    if(metas.some((m, axis) => res.shape[axis] > 1 && !m.uniform)) throw new Error("Converting Q to HKL needs regularly spaced Q axes.");
+    origin = [res.h[0], res.k[0], res.l[0]];
+    steps = metas.map((m, axis) => [0, 1, 2].map(c => c === axis ? m.step : 0));
+  }
+  const toHkl = q => mul(q, frame.A).map(v => v / (2 * Math.PI));
+  const o = toHkl(origin), v = steps.map(toHkl);
+  res.coordKind = "hkl";
+  res.gridOrigin = o;
+  res.gridVectors = [0, 1, 2].map(c => v.map(step => step[c]));
+  res.gridVectorSource = "Q grid converted with the unit cell";
+  res.h = regularAxis(res.shape[0], o[0], v[0][0]);
+  res.k = regularAxis(res.shape[1], o[1], v[1][1]);
+  res.l = regularAxis(res.shape[2], o[2], v[2][2]);
+  if(!isSkewedGrid(res)){
+    delete res.gridOrigin;
+    delete res.gridVectors;
+    delete res.gridVectorSource;
+  }
+  if(res.h5) res.h5 = Object.assign({}, res.h5, {axesType:"hkl"});
+  res.Bq = frame.Bq;
+  res.Bp = transpose3(frame.A);
+  res.cellDeg = cellDeg.slice(0, 6).map(Number);
+  res.basisSource = "manual unit cell (Q converted to HKL, a along x)";
+  return res;
+}
+
 function populateCellInputs(cell){
   const vals = Array.isArray(cell) && cell.length >= 6 ? cell : ["","","","","",""];
   for(let i=0;i<CELL_INPUT_IDS.length;i++) $(CELL_INPUT_IDS[i]).value = vals[i] === "" ? "" : fmt(Number(vals[i]), 8);
@@ -5446,6 +5525,8 @@ function updateCellInfo(){
     $("cellInfo").textContent = `Using ${fmt(c[0],6)}, ${fmt(c[1],6)}, ${fmt(c[2],6)} Angstrom; ${fmt(c[3],5)}, ${fmt(c[4],5)}, ${fmt(c[5],5)} deg (${r.basisSource || "cell metadata"}).`;
   }else if(validMatrix3(r.Bq)){
     $("cellInfo").textContent = `Using reciprocal basis from ${r.basisSource || "file metadata"}; unit-cell parameters are not available.`;
+  }else if(r.coordKind === "q" && !isRealSpaceData(r)){
+    $("cellInfo").textContent = "Q data: enter the parent cell and Apply Cell to convert Q to HKL (Cartesian Q with a along x, as written by RMCProfile and Scatty).";
   }else{
     $("cellInfo").textContent = "No reciprocal basis found. Enter a, b, c, alpha, beta, and gamma, then Apply Cell.";
   }
@@ -5464,13 +5545,24 @@ function refreshAfterBasisChange(message){
 
 function applyManualCell(){
   if(!state.res) throw new Error("Load a data file before applying a unit cell.");
-  if(isRealSpaceData(state.res) || state.res.coordKind !== "hkl") throw new Error("A reciprocal unit cell can only be applied to HKL data.");
+  if(isRealSpaceData(state.res) || !["hkl", "q"].includes(state.res.coordKind)) throw new Error("A reciprocal unit cell can only be applied to reciprocal-space data.");
   const raw = CELL_INPUT_IDS.map(id => String($(id).value).trim());
   if(raw.some(v => v === "")) throw new Error("Enter all six unit-cell parameters.");
   const vals = raw.map(Number);
   if(!vals.every(Number.isFinite)) throw new Error("Enter all six unit-cell parameters.");
   if(vals[0] <= 0 || vals[1] <= 0 || vals[2] <= 0) throw new Error("Cell lengths must be positive.");
   if(vals.slice(3).some(v => !(v > 0 && v < 180))) throw new Error("Cell angles must be between 0 and 180 degrees.");
+  if(state.res.coordKind === "q"){
+    if($("coordMode").value !== "hkl"){
+      convertQGridToHkl(state.res, vals);
+      populateCellInputs(state.res.cellDeg);
+      $("coordMode").value = "auto";
+      refreshAfterBasisChange("Converted the Q grid to HKL with the entered cell (Cartesian Q with a along x, as written by RMCProfile and Scatty).");
+      return;
+    }
+    // "Use HKL" declared the stored coordinates to be HKL already.
+    state.res.coordKind = "hkl";
+  }
   const basis = basisFromCell(vals, true);
   if(!basis) throw new Error("The supplied unit cell is singular or geometrically invalid.");
   state.res.Bq = projectedBq(basis.Bq, state.res);
@@ -5484,6 +5576,11 @@ function applyManualCell(){
 function restoreFileCell(){
   if(!state.res) return;
   for(const key of ["Bq","Bp","cellDeg","basisSource"]) delete state.res[key];
+  if(state.sourceGeometry){
+    // Undo a Q to HKL conversion as well.
+    for(const key of GEOMETRY_KEYS) delete state.res[key];
+    Object.assign(state.res, snapshotGeometry(state.sourceGeometry));
+  }
   Object.assign(state.res, snapshotCellBasis(state.sourceBasis));
   populateCellInputs(state.res.cellDeg);
   refreshAfterBasisChange(validMatrix3(state.res.Bq) ? "Restored unit cell from file metadata." : "Removed manual unit cell; the file contains no reciprocal basis.");
@@ -6447,6 +6544,7 @@ async function onFile(file){
   await nextFrame();
   state.res = parsed;
   state.sourceBasis = snapshotCellBasis(parsed);
+  state.sourceGeometry = snapshotGeometry(parsed);
   state.displayRanges = fullDisplayRanges(parsed);
   state.cameras = {plane:null, iso:null};
   state.lastSlice = null;
@@ -6489,7 +6587,18 @@ function bind(){
   });
   file.addEventListener("change", e => onFile(e.target.files && e.target.files[0]).catch(err => status(`File load failed: ${err.message}`, "err")));
 
-  $("coordMode").addEventListener("change", () => { updateAxisOptionText(); updateMeta(); draw2d(); scheduleRender3d(0); });
+  $("coordMode").addEventListener("change", () => {
+    updateAxisOptionText();
+    updateMeta();
+    draw2d();
+    scheduleRender3d(0);
+    const r = state.res, mode = $("coordMode").value;
+    if(r && !isRealSpaceData(r) && mode !== "auto" && mode !== r.coordKind && !canTransformHklToQ(r)){
+      status(mode === "hkl"
+        ? "Axes relabelled as HKL; values are shown as stored. To convert Q to HKL, enter the parent cell and press Apply Cell."
+        : "Axes relabelled as Q; values are shown as stored. Enter the unit cell to transform HKL to Q.", "warn");
+    }
+  });
   $("cellApply").addEventListener("click", () => {
     try{ applyManualCell(); }catch(err){ status(`Cell error: ${err.message}`, "err"); }
   });

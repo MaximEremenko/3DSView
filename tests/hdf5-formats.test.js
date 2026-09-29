@@ -251,3 +251,30 @@ test("Mantid mask hides masked voxels", async () => {
   assert.equal(res.maskedVoxels, 1);
   assert.equal(res.I[(1 * 2 + 1) * 2 + 0], code(1, 1, 0));
 });
+
+test("Mantid UB without cell parameters gives Bq = 2 pi UB^T", async () => {
+  const app = loadApp();
+  const shape = [3, 2, 2];
+  // UB = U B with U a 30 degree rotation about z and B = diag(1/4, 1/4, 1/6).
+  const c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6);
+  const UB = [[c / 4, -s / 4, 0], [s / 4, c / 4, 0], [0, 0, 1 / 6]];
+  const file = await h5File(app, "ub_only.nxs", f => {
+    const ws = f.create_group("MDHistoWorkspace");
+    const data = ws.create_group("data");
+    const signal = data.create_dataset({name:"signal", data:cOrderValues([2, 2, 3]), shape:[2, 2, 3], dtype:"<d"});
+    signal.create_attribute("axes", "D2:D1:D0");
+    shape.forEach((n, axis) => {
+      const ds = data.create_dataset({name:`D${axis}`, data:Array.from({length:n + 1}, (_, i) => i - 0.5), shape:[n + 1], dtype:"<d"});
+      ds.create_attribute("long_name", ["[H,0,0]", "[0,K,0]", "[0,0,L]"][axis]);
+      ds.create_attribute("units", "r.l.u.");
+    });
+    const lattice = ws.create_group("experiment0").create_group("sample").create_group("oriented_lattice");
+    lattice.create_dataset({name:"UB", data:UB.flat(), shape:[3, 3], dtype:"<d"});
+  });
+  const res = await app.parseFile(file);
+  const q = app.hklToQ(1, 0, 0, res.Bq);
+  const t = 2 * Math.PI;
+  [t * c / 4, t * s / 4, 0].forEach((v, i) => assertClose(q[i], v, 1e-12, `Q(1,0,0) component ${i}`));
+  const q001 = app.hklToQ(0, 0, 1, res.Bq);
+  assertClose(Math.hypot(...q001), t / 6, 1e-12, "|Q(0,0,1)|");
+});

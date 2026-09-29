@@ -23,11 +23,15 @@ and slab-average slicing with linked 2-D and 3-D views.
     plane.
 - **Coordinate handling**: Q and HKL (r.l.u.) axes are auto-detected from file names and
   metadata, with a manual override (Auto / Use Q / Use HKL). When a unit cell is known,
-  HKL data is transformed to Q through the reciprocal basis. Real-space volumes
+  HKL data is transformed to Q through the reciprocal basis; without one, the override
+  only relabels the axes. A Mantid UB matrix is read as Q = 2π·UB·h. Real-space volumes
   (delta-PDF / 3D-PDF, scattering density) are recognized and shown with X/Y/Z or U/V/W
   axes.
 - **Unit-cell override**: enter a, b, c, alpha, beta, gamma to apply a cell for
-  cell-aware axes, or restore the cell read from the file.
+  cell-aware axes, or restore the cell read from the file. For Q-space data (RMCProfile
+  old text, Scatty VTK, unified files with Q axes) the cell converts the Cartesian Q
+  grid to HKL, using the RMCProfile/Scatty frame (a along x, b in the xy-plane); Q stays
+  available through the reciprocal basis, and **Restore File Cell** undoes the conversion.
 - **Shown-volume limits**: crop the displayed volume per axis with dual-range sliders.
 - **Display controls**: log10(value+1), log10, linear and signed-sqrt scales; Viridis,
   Turbo, Inferno, Magma and Gray color maps; slice-auto, global-auto or manual color

@@ -180,3 +180,32 @@ test("axis-aligned indexed grids keep separable axes", async () => {
   const res = await app.parseFile(textFile("cubic_d3d.dat", indexedText(shape, (i, j, k) => [i * 0.1, j * 0.1, k * 0.1])));
   assert.equal(res.gridVectors, undefined);
 });
+
+test("Q grids convert to HKL with the RMCProfile frame (a along x)", async () => {
+  const app = loadApp();
+  const shape = [9, 7, 5];
+  const res = await app.parseFile(textFile("hexagonal_d3d.dat", indexedText(shape, hexQ)));
+  app.convertQGridToHkl(res, [4, 4, 6, 90, 90, 120]);
+  app.finalizeResult(res);
+  assert.equal(res.coordKind, "hkl");
+  for(const [i, j, k] of [[0, 0, 0], [8, 0, 0], [0, 6, 0], [3, 5, 4], [8, 6, 4]]){
+    const hkl = app.pointAtIndex(res, i, j, k), expected = hexHkl(i, j, k);
+    for(let c=0;c<3;c++) assertClose(hkl[c], expected[c], 1e-6, `hkl component ${c} at ${i},${j},${k}`);
+    // Q shown through Bq reproduces the Cartesian Q stored in the file.
+    const q = app.hklToQ(hkl[0], hkl[1], hkl[2], res.Bq), fileQ = hexQ(i, j, k);
+    for(let c=0;c<3;c++) assertClose(q[c], fileQ[c], 1e-6, `Q component ${c} at ${i},${j},${k}`);
+  }
+  assertValues(res, shape);
+});
+
+test("orthogonal Q grids convert to separable HKL axes", async () => {
+  const app = loadApp();
+  const shape = [5, 4, 3];
+  const dq = 0.05;
+  const res = await app.parseFile(textFile("tetragonal_d3d.dat", indexedText(shape, (i, j, k) => [(i - 2) * dq, (j - 2) * dq, k * dq])));
+  app.convertQGridToHkl(res, [4, 4, 6, 90, 90, 90]);
+  app.finalizeResult(res);
+  assert.equal(res.gridVectors, undefined);
+  assertClose(res.h[1] - res.h[0], dq * 4 / (2 * Math.PI), 1e-9, "H step");
+  assertClose(res.l[1] - res.l[0], dq * 6 / (2 * Math.PI), 1e-9, "L step");
+});
