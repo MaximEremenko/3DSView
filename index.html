@@ -223,6 +223,11 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .navLabel{color:var(--statsText);font-size:.78rem;white-space:nowrap}
 .val{min-width:0;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--panelText);font:12px Consolas,"Courier New",monospace}
 .val .of{margin-left:8px;color:var(--statsText)}
+.val .valEdit{width:auto;min-width:3ch;padding:0 3px;border:1px solid transparent;border-radius:4px;background:transparent;color:inherit;font:inherit}
+.val .valEdit:hover:not(:disabled){border-color:var(--line)}
+.val .valEdit:focus{border-color:var(--brand);background:var(--inputBg);color:var(--ink);outline:none}
+.val .valEdit:disabled{opacity:1;cursor:default}
+.plotRes .k{white-space:nowrap}
 .stepBtn{flex:0 0 auto;width:26px;height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--side2);color:var(--sideText);font-size:1.05rem;line-height:1}
 .stepBtn:hover{background:var(--soft)}
 .barRight{display:flex;align-items:center;gap:6px;margin-left:auto}
@@ -472,9 +477,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <label>oL<input id="pOL" type="number" value="0" step="any" disabled></label>
         </div>
         <div class="row3">
-          <label>cH<input id="pCH" type="number" value="" readonly disabled></label>
-          <label>cK<input id="pCK" type="number" value="" readonly disabled></label>
-          <label>cL<input id="pCL" type="number" value="" readonly disabled></label>
+          <label>cH<input id="pCH" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
+          <label>cK<input id="pCK" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
+          <label>cL<input id="pCL" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
         </div>
         <div class="row2">
           <label>Resolution<input id="pRes" type="number" value="220" min="32" max="520" step="1" disabled></label>
@@ -498,9 +503,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <label>oL<input id="avOL" type="number" value="0" step="any" disabled></label>
         </div>
         <div class="row3">
-          <label>cH<input id="avCH" type="number" value="" readonly disabled></label>
-          <label>cK<input id="avCK" type="number" value="" readonly disabled></label>
-          <label>cL<input id="avCL" type="number" value="" readonly disabled></label>
+          <label>cH<input id="avCH" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
+          <label>cK<input id="avCK" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
+          <label>cL<input id="avCL" type="number" value="" step="any" title="Type a centre to move the plane through it" disabled></label>
         </div>
         <div class="row2">
           <label>Resolution<input id="avRes" type="number" value="180" min="32" max="420" step="1" disabled></label>
@@ -546,6 +551,15 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button id="viewReset" class="alt" disabled>Show full volume</button>
         </div>
         <div id="viewInfo" class="mono fine">Load data to set the shown volume.</div>
+      </div>
+      <div class="group">
+        <h3>Plotted resolution</h3>
+        <div class="meta plotRes">
+          <div class="k">Map</div><div id="plotResMap">-</div>
+          <div class="k">3-D plane</div><div id="plotResPlane">-</div>
+          <div class="k">Isosurface</div><div id="plotResIso">-</div>
+        </div>
+        <p class="fine">The map draws every data point of a slice, up to 1.5 million. The 3-D slice plane is thinned to 180 x 180 points and the isosurface to the voxel cap on the 3-D page; crop the shown volume or raise the cap for finer 3-D sampling.</p>
       </div>
     </section>
 
@@ -816,21 +830,21 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button type="button" class="stepBtn" data-step="-1" title="Previous slice (&larr;)" disabled>&lsaquo;</button>
           <input id="idx" type="range" min="0" max="0" value="0" disabled aria-label="Slice index">
           <button type="button" class="stepBtn" data-step="1" title="Next slice (&rarr;)" disabled>&rsaquo;</button>
-          <span id="sliceVal" class="val">-</span>
+          <span id="sliceVal" class="val"><span id="sliceAxisName">-</span> = <input id="sliceCoord" class="valEdit" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="Slice coordinate" title="Type a coordinate and press Enter" disabled><span id="sliceThickTag"></span><span class="of"><input id="sliceIndex" class="valEdit" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" aria-label="Slice number" title="Type a slice number and press Enter" disabled> / <span id="sliceCount">-</span></span></span>
         </div>
         <div id="planeMoveGroup" class="navGroup hidden">
           <span class="navLabel">Along normal</span>
           <button type="button" class="stepBtn" data-step="-1" title="Move back (&larr;)" disabled>&lsaquo;</button>
           <input id="planeMove" type="range" min="0" max="400" value="200" disabled aria-label="Plane position along the normal">
           <button type="button" class="stepBtn" data-step="1" title="Move forward (&rarr;)" disabled>&rsaquo;</button>
-          <span id="planeMoveVal" class="val">Plane center: -</span>
+          <span id="planeMoveVal" class="val">Centre <input id="planeCenterEdit" class="valEdit" type="text" spellcheck="false" autocomplete="off" aria-label="Plane centre" title="Type the plane centre, e.g. 0.4, 0, 0, and press Enter" disabled><span id="planeMoveInfo"></span></span>
         </div>
         <div id="avgMoveGroup" class="navGroup hidden">
           <span class="navLabel">Slab centre</span>
           <button type="button" class="stepBtn" data-step="-1" title="Move back (&larr;)" disabled>&lsaquo;</button>
           <input id="avgMove" type="range" min="0" max="400" value="200" disabled aria-label="Slab position along the normal">
           <button type="button" class="stepBtn" data-step="1" title="Move forward (&rarr;)" disabled>&rsaquo;</button>
-          <span id="avgMoveVal" class="val">Volume average: -</span>
+          <span id="avgMoveVal" class="val">Centre <input id="avgCenterEdit" class="valEdit" type="text" spellcheck="false" autocomplete="off" aria-label="Slab centre" title="Type the slab centre, e.g. 0.4, 0, 0, and press Enter" disabled><span id="avgMoveInfo"></span></span>
         </div>
       </div>
     </section>
@@ -1079,7 +1093,8 @@ const state = {
   structureVectors:null,
   structurePairs:[],
   structureStale:true,
-  vectorMarks:[]
+  vectorMarks:[],
+  plotRes:{map:null, plane:null}
 };
 
 const COLOR_MAPS = {
@@ -1255,6 +1270,40 @@ function fmt(n, digits=5){
   if(Math.abs(n) >= 1e5 || (Math.abs(n) > 0 && Math.abs(n) < 1e-3)) return n.toExponential(3);
   return Number(n.toFixed(digits)).toString();
 }
+// Decimals that resolve an axis's finest step to a twentieth, so a rounded
+// coordinate still picks out its grid point: step 0.05 gives 3, 1 gives 1.
+function axisDecimals(values){
+  let step = Infinity;
+  for(let i=1;i<values.length;i++){
+    const d = Math.abs(values[i] - values[i - 1]);
+    if(d > 0 && d < step) step = d;
+  }
+  return Number.isFinite(step) ? clamp(Math.ceil(-Math.log10(step)) + 1, 0, 9) : 6;
+}
+
+// A coordinate rounded to its axis's precision: -7.999999508 on a 0.05 grid
+// reads -8.
+function fmtAxis(v, values){
+  return Number.isFinite(v) ? String(Number(Number(v).toFixed(axisDecimals(values)))) : "";
+}
+
+// A display level for the level fields, to six significant digits.
+function fmtLevel(v){
+  return Number.isFinite(v) ? String(Number(Number(v).toPrecision(6))) : "";
+}
+
+// A spacing to three significant digits.
+function fmtStep(v){
+  return Number.isFinite(v) ? String(Number(Number(v).toPrecision(3))) : "-";
+}
+
+// Three numbers typed as "0.4, 0, 0", "(0.4 0 0)" or "[0.4; 0; 0]".
+function parseTriple(text){
+  const nums = String(text || "").replace(/[()\[\]]/g, " ").trim().split(/[\s,;]+/).filter(Boolean).map(Number);
+  if(nums.length !== 3 || !nums.every(Number.isFinite)) throw new Error("Type three numbers, e.g. 0.4, 0, 0.");
+  return nums;
+}
+
 function fmtRange(a){
   if(!a || !a.length) return "-";
   return `${fmt(a[0])} .. ${fmt(a[a.length-1])}`;
@@ -6126,16 +6175,40 @@ function setPlaneInputs(){
   $("pNH").value = fmt(p.normal[0], 7);
   $("pNK").value = fmt(p.normal[1], 7);
   $("pNL").value = fmt(p.normal[2], 7);
-  $("pOH").value = fmt(p.origin[0], 7);
-  $("pOK").value = fmt(p.origin[1], 7);
-  $("pOL").value = fmt(p.origin[2], 7);
-  $("pCH").value = fmt(p.center[0], 7);
-  $("pCK").value = fmt(p.center[1], 7);
-  $("pCL").value = fmt(p.center[2], 7);
+  const axes = [state.res.h, state.res.k, state.res.l];
+  ["pOH", "pOK", "pOL"].forEach((id, a) => { $(id).value = fmtAxis(p.origin[a], axes[a]); });
+  ["pCH", "pCK", "pCL"].forEach((id, a) => setFieldUnlessEditing(id, fmtAxis(p.center[a], axes[a])));
   $("planeMove").max = String(Math.max(0, p.slider.length - 1));
   $("planeMove").value = String(p.sliderIndex);
   const t = p.slider[p.sliderIndex] || 0;
-  setTextWithTitle("planeMoveVal", `Plane center: (${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) | t=${fmt(t)} | n=(${fmt(p.normalUnit[0],3)}, ${fmt(p.normalUnit[1],3)}, ${fmt(p.normalUnit[2],3)})`);
+  const centre = p.center.map((v, a) => fmtAxis(v, axes[a])).join(", ");
+  const info = ` | t=${fmt(t)} | n=(${fmt(p.normalUnit[0],3)}, ${fmt(p.normalUnit[1],3)}, ${fmt(p.normalUnit[2],3)})`;
+  setValEdit("planeCenterEdit", centre);
+  $("planeMoveInfo").textContent = info;
+  $("planeMoveVal").title = `Plane centre (${centre})${info}. Type a centre and press Enter to move the plane through it.`;
+}
+
+// Moves the normal plane or the averaging slab so that it passes through c,
+// which becomes its origin and its centre.
+function moveSliceCenterTo(kind, c){
+  if(!state.res) return;
+  finishSliceMoveCameraLock();
+  const plane = kind === "plane";
+  if(plane) readPlaneInputsIntoState(); else readAvgVolInputsIntoState();
+  const p = plane ? state.plane : state.avgvol;
+  p.origin = c.slice();
+  if(plane) rebuildPlaneSlider(0); else rebuildAvgVolSlider(0);
+  // The slider steps through the volume along the normal; its chosen step
+  // lands exactly on the typed centre.
+  p.slider[p.sliderIndex] = 0;
+  p.center = c.slice();
+  if(plane) setPlaneInputs(); else setAvgVolInputs();
+  const b = displayBounds(state.res, false);
+  if(c.some((v, a) => v < Math.min(b.min[a], b.max[a]) - 1e-9 || v > Math.max(b.min[a], b.max[a]) + 1e-9)){
+    status(`The centre (${c.map(v => fmt(v)).join(", ")}) lies outside the shown volume.`, "warn");
+  }
+  draw2d();
+  scheduleRender3d();
 }
 
 function applyPlaneInputs(){
@@ -6221,17 +6294,18 @@ function setAvgVolInputs(){
   $("avNH").value = fmt(p.normal[0], 7);
   $("avNK").value = fmt(p.normal[1], 7);
   $("avNL").value = fmt(p.normal[2], 7);
-  $("avOH").value = fmt(p.origin[0], 7);
-  $("avOK").value = fmt(p.origin[1], 7);
-  $("avOL").value = fmt(p.origin[2], 7);
-  $("avCH").value = fmt(p.center[0], 7);
-  $("avCK").value = fmt(p.center[1], 7);
-  $("avCL").value = fmt(p.center[2], 7);
+  const axes = [state.res.h, state.res.k, state.res.l];
+  ["avOH", "avOK", "avOL"].forEach((id, a) => { $(id).value = fmtAxis(p.origin[a], axes[a]); });
+  ["avCH", "avCK", "avCL"].forEach((id, a) => setFieldUnlessEditing(id, fmtAxis(p.center[a], axes[a])));
   $("avgMove").max = String(Math.max(0, p.slider.length - 1));
   $("avgMove").value = String(p.sliderIndex);
   const t = p.slider[p.sliderIndex] || 0;
   const slab = Math.max(0.001, Number($("slabWidth").value) || 0.25);
-  setTextWithTitle("avgMoveVal", `Volume average: c=(${fmt(p.center[0])}, ${fmt(p.center[1])}, ${fmt(p.center[2])}) | t=${fmt(t)} | slab=+/-${fmt(slab,3)}`);
+  const centre = p.center.map((v, a) => fmtAxis(v, axes[a])).join(", ");
+  const info = ` | t=${fmt(t)} | slab \u00b1${fmt(slab,3)}`;
+  setValEdit("avgCenterEdit", centre);
+  $("avgMoveInfo").textContent = info;
+  $("avgMoveVal").title = `Slab centre (${centre})${info}. Type a centre and press Enter to move the slab through it.`;
 }
 
 function applyAvgVolInputs(){
@@ -6658,8 +6732,8 @@ function setDisplayLevelsFromBounds(min, max, bounds){
   $("levelMode").value = "manual";
   $("levelMin").disabled = false;
   $("levelMax").disabled = false;
-  $("levelMin").value = fmt(nmin, 7);
-  $("levelMax").value = fmt(nmax, 7);
+  $("levelMin").value = fmtLevel(nmin);
+  $("levelMax").value = fmtLevel(nmax);
   return {min:nmin, max:nmax};
 }
 
@@ -6969,6 +7043,10 @@ function draw2d(options={}){
   octx.putImageData(img, 0, 0);
   state.lastSlice = {slice:sl, mode, transformed:stats, levels, stops};
   paint2d();
+  if(!fast){
+    state.plotRes.map = sliceSampling(sl);
+    updatePlotResInfo();
+  }
 
   const validText = sl.type !== "axis" ? ` | valid=${sl.valid}/${sl.rows*sl.cols}` : "";
   const sampleText = sl.decimated ? ` | sampled ${sl.rows}x${sl.cols} from ${sl.fullRows}x${sl.fullCols} (${sl.strides.join("x")})` : "";
@@ -6981,8 +7059,8 @@ function draw2d(options={}){
   updateSliceAgreement();
   drawLevelHistogram(stats.hist, levels);
   if($("levelMode").value !== "manual"){
-    $("levelMin").value = fmt(levels.min, 7);
-    $("levelMax").value = fmt(levels.max, 7);
+    setFieldUnlessEditing("levelMin", fmtLevel(levels.min));
+    setFieldUnlessEditing("levelMax", fmtLevel(levels.max));
   }
   updateSliceValue(sl);
   if(state.readoutPt) showReadout(state.readoutPt);
@@ -7422,19 +7500,80 @@ function updateSliceThickInfo(){
   out.textContent = `Each map is the mean of ${hi - lo + 1} slices, ${nativeAxisLabels(res)[axis]} from ${fmt(values[lo])} to ${fmt(values[hi])}; empty voxels stay out.`;
 }
 
+// Inline fields in the slice bar and the Slice page: a field being typed in
+// is not overwritten by a redraw.
+function setFieldUnlessEditing(id, text){
+  const el = $(id);
+  if(el && document.activeElement !== el) el.value = text;
+}
+
+function setValEdit(id, text){
+  const el = $(id);
+  if(!el || document.activeElement === el) return;
+  el.value = text;
+  el.dataset.shown = text;
+  el.style.width = `${Math.max(3, text.length + 1)}ch`;
+}
+
+// Enter applies a field, Escape restores its shown value.
+function bindValEdit(id, apply){
+  const el = $(id);
+  el.addEventListener("focus", () => el.select());
+  el.addEventListener("input", () => { el.style.width = `${Math.max(3, el.value.length + 1)}ch`; });
+  el.addEventListener("keydown", ev => {
+    if(ev.key === "Enter"){ ev.preventDefault(); el.blur(); }
+    else if(ev.key === "Escape"){ ev.preventDefault(); el.value = el.dataset.shown || ""; el.blur(); }
+  });
+  el.addEventListener("change", () => {
+    try{ apply(el.value); }
+    catch(err){ status(err.message, "warn"); el.value = el.dataset.shown || ""; }
+  });
+}
+
+function goToAxisIndex(index){
+  const idx = $("idx");
+  idx.value = String(clamp(Math.round(index), Number(idx.min), Number(idx.max)));
+  state.axisIndex[$("axis").value] = Number(idx.value);
+  draw2d();
+  scheduleRender3d();
+}
+
+// The slice whose coordinate is nearest to a typed value, within the shown volume.
+function applySliceCoordinate(text){
+  const v = Number(String(text).trim());
+  if(!state.res || !Number.isFinite(v)) throw new Error("Type a coordinate, e.g. 0.25.");
+  const axis = {h:0, k:1, l:2}[$("axis").value], values = [state.res.h, state.res.k, state.res.l][axis];
+  const range = displayIndexRanges(state.res)[axis];
+  let best = range[0];
+  for(let i=range[0];i<=range[1];i++) if(Math.abs(values[i] - v) < Math.abs(values[best] - v)) best = i;
+  goToAxisIndex(best);
+}
+
+function applySliceIndex(text){
+  const n = Number(String(text).trim());
+  if(!state.res || !Number.isFinite(n)) throw new Error("Type a slice number.");
+  goToAxisIndex(n - 1);
+}
+
 function updateSliceValue(sl){
   const out = $("sliceVal");
-  if(!out) return;
-  if(!state.res || !sl){ out.textContent = "-"; out.title = ""; return; }
-  if(sl.type !== "axis"){ setTextWithTitle("sliceVal", sl.plane); return; }
-  const m = /^(.*)\[\d+\] = (.*)$/.exec(sl.plane);
-  const n = state.res.shape[sl.fixedAxis];
-  const of = document.createElement("span");
-  of.className = "of";
-  of.textContent = `${sl.fixedIndex + 1} / ${n}`;
-  out.textContent = m ? `${m[1]} = ${m[2]}` : sl.plane;
-  out.append(of);
-  out.title = `${sl.plane}, slice ${sl.fixedIndex + 1} of ${n}`;
+  if(!out || !$("sliceCoord")) return;
+  if(!state.res || !sl || sl.type !== "axis"){
+    $("sliceAxisName").textContent = "-";
+    setValEdit("sliceCoord", "");
+    setValEdit("sliceIndex", "");
+    $("sliceThickTag").textContent = "";
+    $("sliceCount").textContent = "-";
+    out.title = "";
+    return;
+  }
+  const res = state.res, a = sl.fixedAxis, values = [res.h, res.k, res.l][a], n = res.shape[a];
+  $("sliceAxisName").textContent = nativeAxisLabels(res)[a];
+  setValEdit("sliceCoord", fmtAxis(values[sl.fixedIndex], values));
+  setValEdit("sliceIndex", String(sl.fixedIndex + 1));
+  $("sliceThickTag").textContent = sl.thickness ? ` \u00b1${sl.thickness} slice${sl.thickness > 1 ? "s" : ""}` : "";
+  $("sliceCount").textContent = String(n);
+  out.title = `${sl.plane}, slice ${sl.fixedIndex + 1} of ${n}. Type a coordinate or a slice number and press Enter.`;
   updateSliceThickInfo();
 }
 
@@ -7443,10 +7582,14 @@ function gridRangeForLimits(axis, requestedMin, requestedMax){
   const fullMax = Math.max(Number(axis[0]), Number(axis[axis.length - 1]));
   const lo = clamp(requestedMin, fullMin, fullMax);
   const hi = clamp(requestedMax, fullMin, fullMax);
-  // The limit fields show values rounded to 9 decimals; do not lose the end
-  // points to that rounding.
-  const step = axis.length > 1 ? (fullMax - fullMin) / (axis.length - 1) : 0;
-  const tol = Math.max(1e-9, step * 1e-6);
+  // The limit fields show values rounded to the axis's precision (a
+  // twentieth of its finest step); do not lose the end points to that.
+  let step = Infinity;
+  for(let i=1;i<axis.length;i++){
+    const d = Math.abs(Number(axis[i]) - Number(axis[i - 1]));
+    if(d > 0 && d < step) step = d;
+  }
+  const tol = Math.max(1e-9, Number.isFinite(step) ? step * 0.25 : 0);
   let first = -1, last = -1;
   for(let i=0;i<axis.length;i++){
     const value = Number(axis[i]);
@@ -7498,8 +7641,8 @@ function syncShownVolumeNumbersFromSliders(axis, changed){
   }
   const loValue = Number(values[axisIndexFromSliderPosition(values, lo)]);
   const hiValue = Number(values[axisIndexFromSliderPosition(values, hi)]);
-  $("viewMin" + axis).value = fmt(Math.min(loValue, hiValue), 9);
-  $("viewMax" + axis).value = fmt(Math.max(loValue, hiValue), 9);
+  $("viewMin" + axis).value = fmtAxis(Math.min(loValue, hiValue), values);
+  $("viewMax" + axis).value = fmtAxis(Math.max(loValue, hiValue), values);
   updateDualRangeTrack(axis);
   $("viewInfo").textContent = "Slider values updated. Release the handle to redraw the cropped volume.";
 }
@@ -7638,18 +7781,54 @@ function updateShownVolumeInputs(){
     $("viewMinSlider" + axis).value = String(positions[0]);
     $("viewMaxSlider" + axis).value = String(positions[1]);
     updateDualRangeTrack(axis);
-    $("viewMin" + axis).value = fmt(limits[axis][0], 9);
-    $("viewMax" + axis).value = fmt(limits[axis][1], 9);
+    $("viewMin" + axis).value = fmtAxis(limits[axis][0], values);
+    $("viewMax" + axis).value = fmtAxis(limits[axis][1], values);
   }
   const size = ranges.map(range => range[1] - range[0] + 1);
-  const cap = Math.max(5000, Math.floor(Number($("voxelCap").value) || 220000));
-  const strides = chooseVolumeStrides(size, cap);
-  const sampled = size.map((n,axis) => Math.ceil(n / strides[axis]));
-  const sampledCount = sampled[0] * sampled[1] * sampled[2];
-  const cropped = size.some((n,axis) => n < res.shape[axis]);
-  const detail = cropped ? "crop uses the voxel budget for finer sampling" : "crop the volume for finer sampling";
+  const steps = [res.h, res.k, res.l].map(values => (values.length > 1 ? Math.abs(values[values.length - 1] - values[0]) / (values.length - 1) : NaN));
   $("viewInfo").textContent = labels.map((label,axis) => label + " " + fmt(limits[axis][0]) + ".." + fmt(limits[axis][1])).join(" | ") +
-    " | grid " + size.join(" x ") + " | 3D stride " + strides.join(" x ") + " (~" + sampledCount.toLocaleString() + " points); " + detail + ".";
+    " | grid " + size.join(" x ") + ", step " + steps.map(fmtStep).join(" x ") + coordUnit(res);
+  updatePlotResInfo();
+}
+
+function coordUnit(res){
+  return ({hkl:" r.l.u.", q:" \u00c5\u207b\u00b9", xyz:" \u00c5"})[String(res && res.coordKind || "").toLowerCase()] || "";
+}
+
+// What a drawn slice samples: points along its two axes, their spacing, and
+// for axis slices whether every data point is drawn.
+function sliceSampling(sl){
+  const step = (lo, hi, n) => (n > 1 ? Math.abs(hi - lo) / (n - 1) : NaN);
+  return {type:sl.type, cols:sl.cols, rows:sl.rows, xLabel:sl.xLabel, yLabel:sl.yLabel,
+    dx:step(sl.xMin, sl.xMax, sl.cols), dy:step(sl.yMin, sl.yMax, sl.rows),
+    full:sl.type === "axis" ? !sl.decimated : null, fullCols:sl.fullCols, fullRows:sl.fullRows};
+}
+
+function samplingText(s, unit){
+  if(!s) return "not drawn yet";
+  if(s.cutaway) return "cutaway block, faces sampled up to 150 x 150 points";
+  const how = s.type !== "axis" ? "sampled on the plane" : s.full ? "every data point" : `sampled from ${s.fullCols} x ${s.fullRows}`;
+  return `${s.cols} x ${s.rows} (${s.xLabel} x ${s.yLabel}), ${how}; \u0394${s.xLabel} ${fmtStep(s.dx)}, \u0394${s.yLabel} ${fmtStep(s.dy)}${unit}`;
+}
+
+// The resolution of what the map and the 3-D views plot: points, spacing and
+// how the data were thinned to draw them.
+function updatePlotResInfo(){
+  if(!$("plotResMap")) return;
+  const res = state.res;
+  if(!res){
+    for(const id of ["plotResMap", "plotResPlane", "plotResIso"]) $(id).textContent = "-";
+    return;
+  }
+  const unit = coordUnit(res), labels = nativeAxisLabels(res), r = state.plotRes || {};
+  $("plotResMap").textContent = samplingText(r.map, unit);
+  $("plotResPlane").textContent = r.plane || view3dShown("plane") ? samplingText(r.plane, unit) : "the 3-D slice plane is hidden";
+  const size = displayIndexRanges(res).map(g => g[1] - g[0] + 1);
+  const cap = Math.max(5000, Math.floor(Number($("voxelCap").value) || 220000));
+  const strides = chooseVolumeStrides(size, cap), counts = size.map((n, a) => Math.ceil(n / strides[a]));
+  const steps = [res.h, res.k, res.l].map((values, a) => (values.length > 1 ? Math.abs(values[values.length - 1] - values[0]) / (values.length - 1) * strides[a] : NaN));
+  const how = strides.every(s => s === 1) ? "every data point" : `stride ${strides.join(" x ")}`;
+  $("plotResIso").textContent = `${counts.join(" x ")} (~${(counts[0] * counts[1] * counts[2]).toLocaleString()} points), ${how}; ${labels.map((l, a) => `\u0394${l} ${fmtStep(steps[a])}`).join(", ")}${unit}`;
 }
 
 function resetShownVolume(redraw=true){
@@ -7709,17 +7888,17 @@ function syncControls(){
   $("cellApply").disabled = !cellAllowed;
   $("cellFromStructure").disabled = !cellAllowed;
   $("cellRestore").disabled = !cellAllowed;
-  for(const id of ["axis","idx"]){
+  for(const id of ["axis","idx","sliceCoord","sliceIndex"]){
     $(id).disabled = !has || !axisMode;
   }
-  for(const id of ["pNH","pNK","pNL","pOH","pOK","pOL","planeMove","pRes","pScale","planeApply","planeReset"]){
+  for(const id of ["pNH","pNK","pNL","pOH","pOK","pOL","pCH","pCK","pCL","planeCenterEdit","planeMove","pRes","pScale","planeApply","planeReset"]){
     $(id).disabled = !has || !planeMode;
   }
-  for(const id of ["avNH","avNK","avNL","avOH","avOK","avOL","avgMove","avRes","avScale","slabWidth","slabN","avgApply","avgReset"]){
+  for(const id of ["avNH","avNK","avNL","avOH","avOK","avOL","avCH","avCK","avCL","avgCenterEdit","avgMove","avRes","avScale","slabWidth","slabN","avgApply","avgReset"]){
     $(id).disabled = !has || !avgMode;
   }
-  $("levelMin").disabled = !has || $("levelMode").value !== "manual";
-  $("levelMax").disabled = !has || $("levelMode").value !== "manual";
+  $("levelMin").disabled = !has;
+  $("levelMax").disabled = !has;
   $("axisControls").classList.toggle("hidden", !axisMode);
   $("planeControls").classList.toggle("hidden", !planeMode);
   $("avgControls").classList.toggle("hidden", !avgMode);
@@ -9205,6 +9384,8 @@ async function renderPlane3d(Plotly){
   if(planeCamera) state.cameras.plane = planeCamera;
   set3dStatus("Rendering plane...");
   const sl = currentSlice(180, MAX_3D_SLICE_CELLS, true);
+  state.plotRes.plane = cutawayOn(sl) ? {cutaway:true} : sliceSampling(sl);
+  updatePlotResInfo();
   const mode = $("scale").value;
   const stats = sliceTransformed(sl, mode);
   const levels = displayLevels(stats, mode);
@@ -10568,6 +10749,7 @@ function clearSymmetry(){
 
 // A new file: back to its own values, with a Laue class suggested for it.
 function resetViewsForNewData(res){
+  state.plotRes = {map:null, plane:null};
   if(state.viewDisplaySaved){
     applyViewDisplay(state.showMode, "data");
     state.viewDisplaySaved = null;
@@ -11160,8 +11342,17 @@ function bind(){
     draw2d();
     scheduleRender3d();
   });
-  $("levelMin").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
-  $("levelMax").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
+  // Typed levels switch to manual levels.
+  const typedLevels = () => {
+    if($("levelMode").value !== "manual"){
+      const b = state.lastBar;
+      setDisplayLevelsFromBounds(Number($("levelMin").value), Number($("levelMax").value), b ? {rawMin:b.fullMin, rawMax:b.fullMax} : null);
+    }
+    draw2d();
+    scheduleRender3d();
+  };
+  $("levelMin").addEventListener("change", typedLevels);
+  $("levelMax").addEventListener("change", typedLevels);
   $("resetLevels").addEventListener("click", () => resetDisplayLevels(true));
   $("sliceThick").addEventListener("change", () => {
     state.sliceHalf = clamp(Math.floor(Number($("sliceThick").value) || 0), 0, 100);
@@ -11256,6 +11447,16 @@ function bind(){
     scheduleDraw2d({fast:true, sync3d:true});
   });
   $("avgMove").addEventListener("change", () => { finalizeSliceMoveCameraLock(); });
+  bindValEdit("sliceCoord", applySliceCoordinate);
+  bindValEdit("sliceIndex", applySliceIndex);
+  bindValEdit("planeCenterEdit", text => moveSliceCenterTo("plane", parseTriple(text)));
+  bindValEdit("avgCenterEdit", text => moveSliceCenterTo("avgvol", parseTriple(text)));
+  for(const [kind, ids] of [["plane", ["pCH", "pCK", "pCL"]], ["avgvol", ["avCH", "avCK", "avCL"]]]){
+    for(const id of ids) $(id).addEventListener("change", () => {
+      const c = ids.map(i => Number($(i).value));
+      if(c.every(Number.isFinite)) moveSliceCenterTo(kind, c);
+    });
+  }
   for(const id of ["avRes","avScale","slabWidth","slabN"]){
     $(id).addEventListener("change", () => { setAvgVolInputs(); draw2d(); scheduleRender3d(); });
   }

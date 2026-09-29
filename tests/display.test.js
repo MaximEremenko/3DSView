@@ -172,3 +172,47 @@ test("file-info ranges of a u, v, w map drawn through its cell are labelled X, Y
   assert.ok(Math.abs(b.max[0] - 5.64) < 1e-9, "the ranges are in angstrom");
   assert.deepEqual(Array.from(app.context.metaAxisLabels(withCell)), ["X", "Y", "Z"]);
 });
+
+const {assertClose} = require("./fixtures");
+
+test("coordinates round to their axis's precision and still pick their grid points", () => {
+  const app = loadApp();
+  // A float32 grid from -8 to 8 in steps of 0.05, as Mantid bin centres come.
+  const noisy = Float64Array.from({length:321}, (_, i) => Math.fround(-8 + 0.05 * i) - 4.92e-7);
+  assert.equal(app.context.fmtAxis(noisy[0], noisy), "-8");
+  assert.equal(app.context.fmtAxis(noisy[1], noisy), "-7.95");
+  assert.equal(app.context.fmtAxis(noisy[320], noisy), "8");
+  // A crop typed from the rounded fields keeps both end points.
+  const lo = Number(app.context.fmtAxis(noisy[120], noisy)), hi = Number(app.context.fmtAxis(noisy[200], noisy));
+  assert.deepEqual([lo, hi], [-2, 2]);
+  assert.deepEqual(Array.from(app.context.gridRangeForLimits(noisy, lo, hi)), [120, 200]);
+  assert.equal(app.context.fmtAxis(1.23456, [0, 1, 2]), "1.2", "unit steps keep one decimal");
+  assert.equal(app.context.fmtLevel(12345.678901), "12345.7");
+  assert.equal(app.context.fmtLevel(0.000123456789), "0.000123457");
+});
+
+test("a typed centre reads as three numbers", () => {
+  const app = loadApp();
+  assert.deepEqual(Array.from(app.context.parseTriple("0.4, 0, 0")), [0.4, 0, 0]);
+  assert.deepEqual(Array.from(app.context.parseTriple("(0.4 0 -1.5)")), [0.4, 0, -1.5]);
+  assert.deepEqual(Array.from(app.context.parseTriple("[1; 2; 3]")), [1, 2, 3]);
+  assert.throws(() => app.context.parseTriple("0.4, 0"), /three numbers/);
+  assert.throws(() => app.context.parseTriple("a, b, c"), /three numbers/);
+});
+
+test("the plotted resolution gives the points and spacing a slice is drawn with", () => {
+  const app = loadApp();
+  const ax = Array.from({length:321}, (_, i) => -8 + 0.05 * i);
+  const res = app.context.makeVolumeResult("big.h5", [321, 321, 3], ax, ax, [-0.05, 0, 0.05], new Float64Array(321 * 321 * 3), "test", "hkl");
+  app.state.res = res;
+  const full = app.context.sliceSampling(app.context.buildAxisSlice(res, "l", 1, 1500000, false, 0));
+  assert.deepEqual([full.cols, full.rows, full.full], [321, 321, true]);
+  assertClose(full.dx, 0.05, 1e-12);
+  assert.match(app.context.samplingText(full, " r.l.u."), /^321 x 321 \([HK] x [HK]\), every data point; Δ[HK] 0\.05, Δ[HK] 0\.05 r\.l\.u\.$/);
+  // The 3-D slice plane is capped at 180 x 180 cells: every second point here.
+  const thin = app.context.sliceSampling(app.context.buildAxisSlice(res, "l", 1, 180 * 180, false, 0));
+  assert.deepEqual([thin.cols, thin.rows, thin.full], [161, 161, false]);
+  assertClose(thin.dx, 0.1, 1e-12);
+  assert.match(app.context.samplingText(thin, ""), /sampled from 321 x 321; Δ[HK] 0\.1/);
+  assert.equal(app.context.samplingText(null, ""), "not drawn yet");
+});

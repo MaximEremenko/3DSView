@@ -17,11 +17,14 @@ and slab-average slicing with linked 2-D and 3-D views.
   Structure view of the crystal structure.
 - **Window layout**: the 2-D map is the main view. The slice mode, the plane shown, the
   value scale and the colour map sit above it, and the slice slider (with ‹ › step
-  buttons) sits below it. The 3-D views share a dock beside the map. Show the slice
-  plane, the isosurface, both, or the structure, drag the splitters to resize, enlarge
-  the map or the dock, or hide the dock (**Map** / **Map + 3-D**). Only the 3-D views on
-  screen are drawn; a hidden view is drawn when it is shown again, and Plotly is not
-  loaded until a 3-D view is needed.
+  buttons) sits below it. The values beside the slider can be typed into: the slice
+  coordinate or slice number, and the centre of a normal plane or slab (e.g.
+  `0.4, 0, 0`), which the plane then passes through exactly; so can the centre fields
+  on the Slice page. The 3-D views share a dock beside the map. Show the slice plane,
+  the isosurface, both, or the structure, drag the splitters to resize, enlarge the map
+  or the dock, or hide the dock (**Map** / **Map + 3-D**). Only the 3-D views on screen
+  are drawn; a hidden view is drawn when it is shown again, and Plotly is not loaded
+  until a 3-D view is needed.
 - **Side panel**: the Data, Slice, Levels, 3-D and Export pages open from the rail on the
   left; click the open page again to hide the panel. The layout, the open page and the
   splitter positions are remembered between visits.
@@ -135,6 +138,12 @@ and slab-average slicing with linked 2-D and 3-D views.
   The readout names the vector under the cursor, [u v w] and |r|, and its pairs. When
   the marks would crowd the map, zoom in.
 - **Shown-volume limits**: crop the displayed volume per axis with dual-range sliders.
+  The limits, like the other coordinate fields, are rounded to the precision the grid
+  step needs, so float32 axes read -8 rather than -7.999999508.
+- **Plotted resolution** (Slice page): the points and spacing each figure is drawn with.
+  The map shows every data point of a slice (up to 1.5 million). The 3-D slice plane is
+  thinned to 180 x 180 points and the isosurface to the voxel cap (3-D page), with the
+  stride and the resulting spacing listed.
 - **Display controls**:
   - **Scales:** log10(value+1), log10, linear and signed-sqrt.
   - **Colour maps:** sequential Viridis, Plasma, Inferno, Magma, Cividis, Turbo and Gray,
@@ -148,8 +157,9 @@ and slab-average slicing with linked 2-D and 3-D views.
   - **Colour bar and histogram:** the colour bar spans the display window, as the map
     does. Drag its handles on the 2-D map, or drag a limit or the whole window on the
     histogram of the shown slice; a click moves the nearer limit, and a double-click on
-    the histogram returns to auto levels. When the window is a small part of the value
-    range, both zoom onto it, and arrows on the bar mark the range beyond.
+    the histogram returns to auto levels. The level fields can be typed into at any
+    time; typed levels become manual levels. When the window is a small part of the
+    value range, both zoom onto it, and arrows on the bar mark the range beyond.
   - **Signed data:** real-space volumes (delta-PDF, Patterson, density) open on a linear
     scale with RdBu and symmetric levels.
 - **Show selector**: above the map, choose what the map, the 3-D views, the readout and the
