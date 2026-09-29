@@ -423,3 +423,43 @@ test("the W_MATRIX log gives the projection axes exactly", async () => {
   assert.deepEqual(Array.from(res.projectionW, row => Array.from(row)), [[third, third, 0], [third, -third, 0], [0, 0, 1]]);
   assert.deepEqual(Array.from(res.hklAxisLabels), ["[0.333H,0.333H,0]", "[0.333K,-0.333K,0]", "[0,0,L]"]);
 });
+
+// A unified export with /entry/process added the way 3DSConvert writes it:
+// program, date and a recipe NXnote with a readable step list.
+async function processedUnifiedFile(app, name, spec, description){
+  const h5 = await app.ensureH5wasm();
+  const tmp = `/tmp_processed_${Date.now()}_${Math.random().toString(36).slice(2)}.h5`;
+  h5.FS.writeFile(tmp, app.context.UnifiedH5.writeData(h5, spec));
+  const f = new h5.File(tmp, "a");
+  try{
+    const p = f.get("entry").create_group("process");
+    p.create_attribute("NX_class", "NXprocess");
+    p.create_dataset({name:"program", data:"3DSConvert"});
+    p.create_dataset({name:"date", data:"2026-09-29T06:15:29.070Z"});
+    const note = p.create_group("recipe");
+    note.create_attribute("NX_class", "NXnote");
+    note.create_dataset({name:"type", data:"application/json"});
+    note.create_dataset({name:"description", data:description});
+    note.create_dataset({name:"data", data:JSON.stringify({version:1, steps:[{op:"symmetrize", laue:"m-3m"}, {op:"deltaPdf"}]})});
+    f.flush();
+  }finally{
+    f.close();
+  }
+  const bytes = h5.FS.readFile(tmp);
+  h5.FS.unlink(tmp);
+  return new File([bytes], name, {lastModified:0});
+}
+
+test("processing recorded in /entry/process is read with the data", async () => {
+  const app = loadApp();
+  const shape = [3, 4, 5];
+  const spec = {dims:shape, corner:[-1, -1, 0], vectors:DIAGONAL, values:cOrderValues(shape), cell:[4, 4, 4, 90, 90, 90], axesType:"hkl"};
+  const steps = ["1. symmetrize with Laue group m-3m (average)", "2. 3D-ΔPDF by FFT on the CPU (float64)"];
+  const res = await app.parseFile(await processedUnifiedFile(app, "processed_unified.h5", spec, steps.join("\n")));
+  assertValues(res, shape);
+  assert.equal(res.process.program, "3DSConvert");
+  assert.equal(res.process.date.slice(0, 10), "2026-09-29");
+  assert.deepEqual(Array.from(res.process.steps), steps);
+  const plain = await app.parseFile(await unifiedExportFile(app, "plain_unified.h5", spec));
+  assert.equal(plain.process, undefined, "files without /entry/process have none");
+});

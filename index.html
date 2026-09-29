@@ -185,6 +185,7 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .meta{display:grid;grid-template-columns:96px 1fr;gap:5px 9px;font-size:.84rem;line-height:1.25}
 .meta .k{color:var(--metaK)}
 .meta>div{min-width:0;overflow-wrap:anywhere}
+#mProc{white-space:pre-line}
 .mono{font-family:Consolas,"Courier New",monospace}
 .fine{font-size:.78rem;color:var(--metaK)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
@@ -405,6 +406,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <div class="k" id="mLName">L range</div><div id="mL">-</div>
           <div class="k" id="mIName">Intensity</div><div id="mI">-</div>
           <div class="k">Header</div><div id="mHeader">-</div>
+          <div class="k hidden" id="mProcName">Processing</div><div id="mProc" class="hidden">-</div>
         </div>
       </div>
       <div class="group">
@@ -982,7 +984,7 @@ const ORDERED_INDEXED_TAIL_BYTES = 1024 * 1024;
 const CACHE_DB_NAME = "three_ds_plotter_cache_v1";
 const CACHE_STORE_NAME = "parsed_volumes";
 // Bump whenever parser semantics change so stale axis/data-kind metadata is not restored.
-const CACHE_VERSION = 8;
+const CACHE_VERSION = 9;
 const $ = (id) => document.getElementById(id);
 
 const THEME_KEY = "view3ds-theme";
@@ -1181,7 +1183,7 @@ function cacheBaseFromResult(res){
     "file","header","skipped","rows","filled","format","coordKind","shape",
     "h","k","l","I","rawMin","rawMax","dataKind","Bq","Bp","cellDeg","basisSource",
     "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous",
-    "projectionW","hklAxisLabels","maskedVoxels","gapPadding","sigma","geometryNote"
+    "projectionW","hklAxisLabels","maskedVoxels","gapPadding","sigma","geometryNote","process"
   ];
   const base = {};
   for(const key of keys){
@@ -3629,6 +3631,15 @@ function discusStepVectorsFromH5(h5file){
   return null;
 }
 
+// Processing recorded in /entry/process (an NXprocess, as 3DSConvert writes
+// it): the program, the date and the readable list of steps.
+function unifiedProcessInfo(h5file){
+  const text = path => h5Text(h5Value(h5Lookup(h5file, path))).trim();
+  const steps = text("entry/process/recipe/description");
+  if(!steps) return null;
+  return {program:text("entry/process/program"), date:text("entry/process/date"), steps:steps.split(/\r?\n/).map(v => v.trim()).filter(Boolean)};
+}
+
 function parseFortranUnifiedH5(h5file, name){
   const dataObj = h5Lookup(h5file, "entry/data/data_values");
   if(!dataObj) return null;
@@ -3697,6 +3708,8 @@ function parseFortranUnifiedH5(h5file, name){
   );
   result.header = {points:values.length, sections:1, scale:null, offset:null};
   result.h5 = {space, content, radiation, experiment, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary};
+  const processing = unifiedProcessInfo(h5file);
+  if(processing) result.process = processing;
   return result;
 }
 
@@ -3865,6 +3878,8 @@ function parseCommonScatteringH5(h5file, name){
   result.header = {points:values.length, sections:1, scale:null, offset:null};
   result.h5 = {space, content, radiation, experiment, axes:axesNames, axesType:contract.axesType, dictionary:contract.dictionary, diskOrder:cOrder ? "[H,K,L]" : "[L,K,H]"};
   result.axisOrderAmbiguous = !detectedOrder && diskShape.length >= 2 && diskShape[0] === diskShape[diskShape.length - 1];
+  const processing = unifiedProcessInfo(h5file);
+  if(processing) result.process = processing;
   return result;
 }
 
@@ -7745,6 +7760,7 @@ function updateMeta(){
   $("mLName").textContent = `${labels[2]} range`;
   if(!r){
     for(const id of ["mFile","mKind","mRows","mGrid","mH","mK","mL","mI","mHeader"]) $(id).textContent = "-";
+    for(const id of ["mProcName","mProc"]) $(id).classList.add("hidden");
     $("mIName").textContent = "Value range";
     $("mFormat").value = "-";
     $("tbFile").textContent = "No file";
@@ -7766,6 +7782,9 @@ function updateMeta(){
   $("mI").textContent = `${r.rawMin.toExponential(4)} .. ${r.rawMax.toExponential(4)}`;
   const h = r.header;
   $("mHeader").textContent = h ? `n=${h.points.toLocaleString()}, sec=${h.sections}${h.scale !== null ? `, scale=${fmt(h.scale)}` : ""}${h.offset !== null ? `, offset=${fmt(h.offset)}` : ""}` : "not found";
+  const proc = r.process;
+  for(const id of ["mProcName","mProc"]) $(id).classList.toggle("hidden", !proc);
+  $("mProc").textContent = proc ? [[proc.program, proc.date.slice(0, 10)].filter(Boolean).join(", "), ...proc.steps].filter(Boolean).join("\n") : "-";
   const basis = usePlotBasis(r) ? ` | basis=${r.basisSource || (useBasisToQ(r) ? "Bq" : "direct cell")}` : "";
   const geometry = useBasisToQ(r) ? "Q from HKL" : useBasisToDirect(r) ? "XYZ" : activeCoordKind().toUpperCase();
   const layout = r.h5 && r.h5.diskOrder ? ` | disk ${r.h5.diskOrder}${r.axisOrderAmbiguous ? " (assumed)" : ""}` : "";
@@ -9994,6 +10013,9 @@ async function onFile(file){
   draw2d();
   const cacheText = parsed.fromCache ? " from cache" : "";
   const labels = nativeAxisLabels(parsed);
+  const processNote = parsed.process
+    ? ` Processed${parsed.process.program ? ` by ${parsed.process.program}` : ""} in ${parsed.process.steps.length} step${parsed.process.steps.length === 1 ? "" : "s"}, listed under File.`
+    : "";
   const orderNote = parsed.axisOrderAmbiguous
     ? ` The file does not record its axis order; assumed the 3DSConvert/Fortran layout [${labels[2]},${labels[1]},${labels[0]}]. Use "Swap ${labels[0]}/${labels[2]} data order" if the map looks mirrored.`
     : "";
@@ -10002,7 +10024,7 @@ async function onFile(file){
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
   const geometryNote = parsed.geometryNote ? ` ${parsed.geometryNote}` : "";
   const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${processNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
