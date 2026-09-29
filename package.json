@@ -1,0 +1,9 @@
+{
+  "name": "3dsview",
+  "private": true,
+  "description": "Browser viewer for 3-D diffuse-scattering volumes",
+  "license": "Apache-2.0",
+  "scripts": {
+    "test": "node --test"
+  }
+}

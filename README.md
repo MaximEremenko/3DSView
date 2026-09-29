@@ -95,6 +95,16 @@ the corresponding features:
 
 Text-format loading and the 2-D slice map work without either library.
 
+## Development
+
+The file loaders are covered by a Node test suite (Node 20 or newer, no
+dependencies). The tests run the page's own script in a Node `vm` context and
+build their data fixtures in memory:
+
+```
+npm test
+```
+
 ## Provenance
 
 This repository was extracted, with full git history, from the
