@@ -825,7 +825,7 @@ const ORDERED_INDEXED_TAIL_BYTES = 1024 * 1024;
 const CACHE_DB_NAME = "three_ds_plotter_cache_v1";
 const CACHE_STORE_NAME = "parsed_volumes";
 // Bump whenever parser semantics change so stale axis/data-kind metadata is not restored.
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8;
 const $ = (id) => document.getElementById(id);
 
 const THEME_KEY = "view3ds-theme";
@@ -1006,7 +1006,7 @@ function cacheBaseFromResult(res){
     "file","header","skipped","rows","filled","format","coordKind","shape",
     "h","k","l","I","rawMin","rawMax","dataKind","Bq","Bp","cellDeg","basisSource",
     "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous",
-    "projectionW","hklAxisLabels","maskedVoxels","gapPadding","sigma"
+    "projectionW","hklAxisLabels","maskedVoxels","gapPadding","sigma","geometryNote"
   ];
   const base = {};
   for(const key of keys){
@@ -3938,27 +3938,22 @@ async function hasHdf5Signature(file){
 async function parseFile(file, progress=null){
   const cached = await readCachedResult(file, progress);
   if(cached) return cached;
-  let parsed;
-  if(/\.(nx|nx5|nxs|h5|hdf5)$/i.test(file.name) || await hasHdf5Signature(file)){
-    parsed = await parseNexusFile(file);
-    queueCacheSave(file, parsed);
-    return parsed;
-  }
+  const parsed = cleanFileGeometry(await parseFileContents(file, progress));
+  queueCacheSave(file, parsed);
+  return parsed;
+}
+
+async function parseFileContents(file, progress){
+  if(/\.(nx|nx5|nxs|h5|hdf5)$/i.test(file.name) || await hasHdf5Signature(file)) return parseNexusFile(file);
   if(file.size > STREAM_TEXT_THRESHOLD){
     if(progress) progress({phase:"Sampling file", offset:0, size:file.size, force:true});
     const sampleText = await file.slice(0, Math.min(file.size, 262144)).text();
     const sample = sampleText.trimStart();
-    if(!sample.startsWith("{") && !sample.startsWith("[")){
-      parsed = await parseStreamedTextData(file, sampleText, progress);
-      queueCacheSave(file, parsed);
-      return parsed;
-    }
+    if(!sample.startsWith("{") && !sample.startsWith("[")) return parseStreamedTextData(file, sampleText, progress);
   }
   if(progress) progress({phase:"Reading file", offset:0, size:file.size, force:true});
   const text = await readWholeTextFile(file);
-  parsed = parseTextData(file.name, text);
-  queueCacheSave(file, parsed);
-  return parsed;
+  return parseTextData(file.name, text);
 }
 
 function parse3dsDat(name, text, options={}){
@@ -4625,6 +4620,13 @@ function finalizeResult(base){
     delete base.gridInv;
     embedBlockGaps(base);
   }
+  updateGeometryFields(base);
+  base.global = computeGlobalDisplayBounds(base);
+  return base;
+}
+
+// Axis metadata and bounds, after the axes or the basis change.
+function updateGeometryFields(base){
   base.axes = {h:axisMeta(base.h), k:axisMeta(base.k), l:axisMeta(base.l)};
   base.bounds = validMatrix3(base.gridVectors) && Array.isArray(base.gridOrigin)
     ? affineBounds(base, false)
@@ -4633,9 +4635,155 @@ function finalizeResult(base){
       max:[base.h[base.h.length-1], base.k[base.k.length-1], base.l[base.l.length-1]]
     };
   base.qBounds = qBoundsFromAxes(base);
-  base.global = computeGlobalDisplayBounds(base);
-  return base;
 }
+
+// ---- Rounding noise in file geometry
+//
+// Float32 metadata leaves a cubic lattice a few 1e-8 away from cubic, puts a
+// 1e-7 rad "rotation" in a UB matrix, and shifts axis values from Mantid bin
+// edges by ~1e-7 (the L = 0 plane reads -5.96e-8). Such noise breaks exact
+// comparisons downstream, so it is removed when a file is read.
+
+const CELL_LENGTH_TOL = 2e-6;    // relative
+const CELL_ANGLE_TOL = 2e-4;     // degrees
+
+// The cell with lengths that agree to rounding made equal, and angles within
+// rounding of 90, 120 or 60 degrees (or of each other) made exact.
+function idealizeCell(cell){
+  const out = Array.from(cell).slice(0, 6).map(Number);
+  const same = (x, y) => Math.abs(x - y) <= CELL_LENGTH_TOL * Math.max(Math.abs(x), Math.abs(y));
+  const [a, b, c] = out;
+  if(same(a, b) && same(b, c) && same(a, c)) out[0] = out[1] = out[2] = (a + b + c) / 3;
+  else if(same(a, b)) out[0] = out[1] = (a + b) / 2;
+  else if(same(b, c)) out[1] = out[2] = (b + c) / 2;
+  else if(same(a, c)) out[0] = out[2] = (a + c) / 2;
+  for(let i=3;i<6;i++){
+    const exact = [90, 120, 60].find(v => Math.abs(out[i] - v) <= CELL_ANGLE_TOL);
+    if(exact !== undefined) out[i] = exact;
+  }
+  const [al, be, ga] = out.slice(3);
+  if(Math.abs(al - be) <= CELL_ANGLE_TOL && Math.abs(be - ga) <= CELL_ANGLE_TOL && Math.abs(al - ga) <= CELL_ANGLE_TOL) out[3] = out[4] = out[5] = (al + be + ga) / 3;
+  return out;
+}
+
+function latticeSystemName(cell){
+  const [a, b, c, al, be, ga] = cell;
+  const right = al === 90 && be === 90 && ga === 90;
+  if(right && a === b && b === c) return "cubic";
+  if(right && a === b) return "tetragonal";
+  if(al === 90 && be === 90 && ga === 120 && a === b) return "hexagonal";
+  if(a === b && b === c && al === be && be === ga) return "rhombohedral";
+  if(right) return "orthorhombic";
+  if([al, be, ga].filter(v => v === 90).length === 2) return "monoclinic";
+  return "triclinic";
+}
+
+// Nearest rotation to a matrix that is one to within rounding.
+function orthonormalize(m){
+  let r = m.map(row => row.slice());
+  for(let n=0;n<8;n++){
+    const it = transpose3(inv3(r));
+    r = r.map((row, i) => row.map((v, j) => 0.5 * (v + it[i][j])));
+  }
+  return r;
+}
+
+// A reciprocal basis within rounding of an exact lattice, split into that
+// lattice (Busing-Levy, a* along x) and a sample rotation U, Bq = B·U. HKL
+// grids drop U: their Q is shown in the crystal frame, as HKL viewers do,
+// and |Q| and d do not change. Q grids keep a real U, since their grid lies
+// in the sample frame. Returns null when there is nothing to clean.
+function cleanReciprocalBasis(res){
+  if(!res || isRealSpaceData(res)) return null;
+  const Bq0 = unprojectedBq(res);
+  const cell = cellFromBq(Bq0);
+  if(!cell || !cell.every(Number.isFinite)) return null;
+  const fileLattice = basisFromCell(cell, true);
+  if(!fileLattice) return null;
+  let U;
+  try{ U = inv3(fileLattice.Bq).map(row => mul(row, Bq0)); }catch(_){ return null; }
+  // Anything but a proper rotation means another convention: leave it.
+  const orthError = Math.max(...U.flatMap((r, i) => U.map((s, j) => Math.abs(dot(r, s) - (i === j ? 1 : 0)))));
+  if(orthError > 1e-4 || dot(U[0], cross(U[1], U[2])) < 0) return null;
+  const angle = Math.acos(clamp((U[0][0] + U[1][1] + U[2][2] - 1) / 2, -1, 1));
+  const ideal = idealizeCell(cell);
+  const keepRotation = String(res.coordKind || "").toLowerCase() !== "hkl" && angle > 1e-6;
+  const scale = Math.max(...Bq0.flat().map(Math.abs));
+  // Right-angled lattices are written out, so their zeros and equal lengths
+  // are exact; cos(90 deg) is 6e-17 in floating point.
+  const lattice = ideal[3] === 90 && ideal[4] === 90 && ideal[5] === 90
+    ? [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 2 * Math.PI / ideal[i] : 0)))
+    : basisFromCell(ideal, true).Bq.map(row => row.map(v => (Math.abs(v) < 1e-12 * scale ? 0 : v)));
+  const rotation = keepRotation ? orthonormalize(U) : [[1,0,0],[0,1,0],[0,0,1]];
+  const Bq = lattice.map(row => mul(row, rotation));
+  const change = Math.max(...Bq.flatMap((row, i) => row.map((v, j) => Math.abs(v - Bq0[i][j]))));
+  if(!(change > 1e-12 * scale)) return null;
+  const notes = [];
+  const lengthChange = Math.max(...[0, 1, 2].map(i => Math.abs(ideal[i] - cell[i]) / cell[i]));
+  const angleChange = Math.max(...[3, 4, 5].map(i => Math.abs(ideal[i] - cell[i])));
+  if(lengthChange > 1e-12 || angleChange > 1e-10){
+    notes.push(`${latticeSystemName(ideal)} metric made exact (lengths moved by up to ${lengthChange.toExponential(1)} relative, angles by ${angleChange.toExponential(1)} deg)`);
+  }
+  const degrees = angle * 180 / Math.PI;
+  if(keepRotation) notes.push(`sample rotation of ${fmt(degrees, 4)} deg kept, as the grid is in the sample's Q frame`);
+  else if(angle > 1e-6) notes.push(`the UB's sample rotation of ${fmt(degrees, 4)} deg dropped, so Q is shown in the crystal frame (|Q| and d unchanged)`);
+  else if(angle > 0) notes.push(`a rotation of ${angle.toExponential(1)} rad (rounding) dropped`);
+  return {Bq, cell:ideal, angle, keepRotation, notes};
+}
+
+// An axis regular to float32 precision that passes through zero, rebuilt as
+// exact multiples of its least-squares step; null when it does not qualify
+// or is exact already.
+function snapAxisToGrid(axis){
+  const n = axis ? axis.length : 0;
+  if(n < 3) return null;
+  const rough = (axis[n - 1] - axis[0]) / (n - 1);
+  if(!(Math.abs(rough) > 0)) return null;
+  const tol = 5e-4 * Math.abs(rough);
+  const zero = Math.round(-axis[0] / rough);
+  if(zero < 0 || zero >= n || Math.abs(axis[zero]) > tol) return null;
+  let num = 0, den = 0;
+  for(let i=0;i<n;i++){ const x = i - zero; num += x * axis[i]; den += x * x; }
+  const step = num / den;
+  const out = new Float64Array(n);
+  let moved = 0;
+  for(let i=0;i<n;i++){
+    out[i] = (i - zero) * step;
+    moved = Math.max(moved, Math.abs(out[i] - axis[i]));
+  }
+  // Float64 axes typed as text are exact to ~1e-16 and are left alone.
+  if(moved > tol || !(moved > 1e-9 * Math.abs(step))) return null;
+  return {axis:out, moved};
+}
+
+function cleanFileGeometry(res){
+  if(!res || !Array.isArray(res.shape)) return res;
+  const notes = [];
+  if(!validMatrix3(res.gridVectors)){
+    let moved = 0, axes = 0;
+    for(const key of ["h", "k", "l"]){
+      const snapped = snapAxisToGrid(res[key]);
+      if(!snapped) continue;
+      res[key] = snapped.axis;
+      moved = Math.max(moved, snapped.moved);
+      axes++;
+    }
+    if(axes) notes.push(`${axes === 1 ? "one axis" : `${axes} axes`} set to exact steps (moved by up to ${moved.toExponential(1)})`);
+  }
+  const basis = cleanReciprocalBasis(res);
+  if(basis){
+    res.Bq = validMatrix3(res.projectionW) ? res.projectionW.map(row => mul(row, basis.Bq)) : basis.Bq;
+    res.cellDeg = basis.cell.slice();
+    if(validMatrix3(res.Bp)) res.Bp = transpose3(inv3(basis.Bq)).map(row => row.map(v => v * 2 * Math.PI));
+    notes.push(...basis.notes);
+  }
+  if(notes.length){
+    updateGeometryFields(res);
+    res.geometryNote = `Rounding noise removed from the file geometry: ${notes.join("; ")}.`;
+  }
+  return res;
+}
+
 
 function canTransformHklToQ(res){
   return !!(res && !isRealSpaceData(res) && res.coordKind === "hkl" && validMatrix3(res.Bq));
@@ -6824,6 +6972,11 @@ function updateCellInfo(){
     $("cellInfo").textContent = "Load reciprocal-space data to inspect or enter its unit cell.";
     return;
   }
+  updateCellInfoText(r);
+  if(r.geometryNote) $("cellInfo").textContent += ` ${r.geometryNote}`;
+}
+
+function updateCellInfoText(r){
   if(Array.isArray(r.cellDeg) && r.cellDeg.length >= 6){
     const c = r.cellDeg;
     $("cellInfo").textContent = `Using ${fmt(c[0],6)}, ${fmt(c[1],6)}, ${fmt(c[2],6)} Angstrom; ${fmt(c[3],5)}, ${fmt(c[4],5)}, ${fmt(c[5],5)} deg (${r.basisSource || "cell metadata"}).`;
@@ -8329,8 +8482,9 @@ async function onFile(file){
   const zeroNote = autoZero ? ` ${parsed.zeroMasked.toLocaleString()} zero voxels treated as no data (RMCProfile convention; untick "Treat 0 as no data" to show them).` : "";
   const signedNote = signed ? " Signed data: linear scale, RdBu colors and levels symmetric about 0." : "";
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
+  const geometryNote = parsed.geometryNote ? ` ${parsed.geometryNote}` : "";
   const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 

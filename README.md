@@ -52,6 +52,19 @@ and slab-average slicing with linked 2-D and 3-D views.
   only relabels the axes. A Mantid UB matrix is read as Q = 2π·UB·h. Real-space volumes
   (delta-PDF / 3D-PDF, scattering density) are recognized and shown with X/Y/Z or U/V/W
   axes.
+- **UB and axis rounding cleanup**: files that store their geometry in float32 (Mantid
+  among them) are cleaned as they load.
+  - **Lattice:** a reciprocal basis or cell within rounding of an exact lattice is made
+    exact. Equal lengths are made equal, and angles near 90°, 120° or 60° are made exact.
+    The tolerances are 2·10⁻⁶ relative and 2·10⁻⁴°.
+  - **Sample rotation:** a UB matrix is split into its lattice B (Busing–Levy, a* along x)
+    and its sample rotation U. HKL grids drop U, so Q is shown in the crystal frame; |Q|
+    and d are unchanged. Q grids keep a real rotation, because their grid lies in the
+    sample frame. Rotations of rounding size are always dropped.
+  - **Axes:** axes that are regular to float32 precision and pass through zero are set to
+    exact steps, so the L = 0 plane reads 0 instead of −5.96·10⁻⁸.
+  - What changed is reported in the load message and under Unit cell. Exact values from
+    text files are left alone.
 - **Unit-cell override**: enter a, b, c, alpha, beta, gamma to apply a cell for
   cell-aware axes, or restore the cell read from the file. For Q-space data (RMCProfile
   old text, Scatty VTK, unified files with Q axes) the cell converts the Cartesian Q

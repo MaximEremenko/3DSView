@@ -46,9 +46,17 @@ realTest("PMN Mantid MDHisto loads in H,K,L order with bin-centre axes", PMN_NXS
   const res = await app.parseFile(file);
   assert.deepEqual(Array.from(res.shape), [501, 501, 41]);
   assert.deepEqual(Array.from(app.nativeAxisLabels(res)), ["H", "K", "L"]);
-  assertClose(res.h[0], -7.984031915664673, 1e-9, "first H centre");
-  assertClose(res.l[0], -1.9512194991111755, 1e-9, "first L centre");
-  assertClose(res.cellDeg[0], 4.048077537537062, 1e-9, "a");
+  // Float32 bin centres are set to exact steps: within float32 precision of
+  // the stored values, with the zero planes exactly at 0.
+  assertClose(res.h[0], -7.984031915664673, 1e-6, "first H centre");
+  assertClose(res.l[0], -1.9512194991111755, 1e-6, "first L centre");
+  assert.equal(res.h[250], 0, "H = 0 plane");
+  assert.equal(res.l[20], 0, "L = 0 plane");
+  // The UB is cubic to rounding, and the cell is made exactly cubic.
+  assertClose(res.cellDeg[0], 4.048077537537062, 1e-6, "a");
+  assert.equal(res.cellDeg[1], res.cellDeg[0], "b = a");
+  assert.equal(res.cellDeg[2], res.cellDeg[0], "c = a");
+  assert.deepEqual(Array.from(res.cellDeg.slice(3)), [90, 90, 90]);
   // Reference values read with h5py as signal[l][k][h].
   const expected = [
     [[100, 250, 20], 0.04558469758943384], [[420, 300, 5], 0.040506363357832816],

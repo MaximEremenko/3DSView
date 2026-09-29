@@ -256,7 +256,7 @@ test("Mantid mask hides masked voxels", async () => {
   assert.equal(res.I[(1 * 2 + 1) * 2 + 0], code(1, 1, 0));
 });
 
-test("Mantid UB without cell parameters gives Bq = 2 pi UB^T", async () => {
+test("Mantid UB without cell parameters gives Bq = 2 pi UB^T; HKL grids drop the sample rotation", async () => {
   const app = loadApp();
   const shape = [3, 2, 2];
   // UB = U B with U a 30 degree rotation about z and B = diag(1/4, 1/4, 1/6).
@@ -275,12 +275,20 @@ test("Mantid UB without cell parameters gives Bq = 2 pi UB^T", async () => {
     const lattice = ws.create_group("experiment0").create_group("sample").create_group("oriented_lattice");
     lattice.create_dataset({name:"UB", data:UB.flat(), shape:[3, 3], dtype:"<d"});
   });
+  const t = 2 * Math.PI;
+  // The conversion itself keeps the rotation.
+  const raw = app.context.ubToBq(UB);
+  const q0 = app.hklToQ(1, 0, 0, raw);
+  [t * c / 4, t * s / 4, 0].forEach((v, i) => assertClose(q0[i], v, 1e-12, `raw Q(1,0,0) component ${i}`));
+  // An HKL grid shows Q in the crystal frame: a* along x, |Q| unchanged.
   const res = await app.parseFile(file);
   const q = app.hklToQ(1, 0, 0, res.Bq);
-  const t = 2 * Math.PI;
-  [t * c / 4, t * s / 4, 0].forEach((v, i) => assertClose(q[i], v, 1e-12, `Q(1,0,0) component ${i}`));
+  [t / 4, 0, 0].forEach((v, i) => assertClose(q[i], v, 1e-12, `Q(1,0,0) component ${i}`));
+  assertClose(Math.hypot(...app.hklToQ(1, 2, 1, res.Bq)), Math.hypot(...app.hklToQ(1, 2, 1, raw)), 1e-12, "|Q(1,2,1)|");
   const q001 = app.hklToQ(0, 0, 1, res.Bq);
   assertClose(Math.hypot(...q001), t / 6, 1e-12, "|Q(0,0,1)|");
+  [4, 4, 6, 90, 90, 90].forEach((v, i) => assertClose(res.cellDeg[i], v, 1e-9, `cell ${i}`));
+  assert.match(res.geometryNote, /rotation of 30 deg dropped/);
 });
 
 test("unified export saves the shown region with a shifted corner", async () => {
