@@ -484,14 +484,26 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
       <details class="toolbox" open>
         <summary>Export</summary>
         <div class="toolbody">
+          <div class="row2">
+            <label>File name<input id="exportName" type="text" placeholder="data file name" disabled></label>
+            <label class="check"><input id="exportTransparent" type="checkbox" disabled>Transparent background</label>
+          </div>
+          <div class="fine">2-D slice</div>
           <div class="btns">
-            <button id="savePng" class="alt" disabled>Save PNG</button>
-            <button id="saveCsv" class="alt" disabled>Save CSV</button>
-            <button id="saveUnified" class="alt" disabled>Save Unified .h5</button>
+            <button id="savePng" class="alt" disabled>PNG</button>
+            <button id="saveSliceSvg" class="alt" disabled title="Vector axes and colour bar with the slice image embedded">SVG</button>
+            <button id="saveCsv" class="alt" disabled>CSV</button>
+          </div>
+          <div class="fine">3-D views</div>
+          <div class="btns">
             <button id="savePlaneSvg" class="alt" disabled>Plane SVG</button>
             <button id="saveIsoSvg" class="alt" disabled>Iso SVG</button>
             <button id="savePlaneHtml" class="alt" disabled>Plane HTML</button>
             <button id="saveIsoHtml" class="alt" disabled>Iso HTML</button>
+          </div>
+          <div class="fine">Shown volume</div>
+          <div class="btns" id="volumeExports">
+            <button id="saveUnified" class="alt" disabled>Unified .h5</button>
           </div>
         </div>
       </details>
@@ -621,6 +633,7 @@ const state = {
   cameras:{plane:null, iso:null},
   view2d:null,
   pan2d:null,
+  paintTransparent:false,
   readoutPt:null,
   globalHist:null,
   autoSigned:false,
@@ -5176,8 +5189,12 @@ function prepareHeatmapCanvas(){
   const bkW = Math.round(cssW * dpr), bkH = Math.round(cssH * dpr);
   if(cv.width !== bkW || cv.height !== bkH){ cv.width = bkW; cv.height = bkH; }
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle = themePlot().bg;
-  ctx.fillRect(0,0,cssW,cssH);
+  if(state.paintTransparent){
+    ctx.clearRect(0,0,cssW,cssH);
+  }else{
+    ctx.fillStyle = themePlot().bg;
+    ctx.fillRect(0,0,cssW,cssH);
+  }
   return {ctx, cssW, cssH};
 }
 
@@ -5535,10 +5552,12 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   // A zoomed map can reach under the labels, so each gets a backdrop.
   const label = (text, lx, ly) => {
     const w = ctx.measureText(text).width;
-    ctx.fillStyle = tb.bg;
-    ctx.globalAlpha = 0.8;
-    ctx.fillRect(lx - 2, ly - 10, w + 4, 13);
-    ctx.globalAlpha = 1;
+    if(!state.paintTransparent){
+      ctx.fillStyle = tb.bg;
+      ctx.globalAlpha = 0.8;
+      ctx.fillRect(lx - 2, ly - 10, w + 4, 13);
+      ctx.globalAlpha = 1;
+    }
     ctx.fillStyle = tb.canvasText;
     ctx.fillText(text, lx, ly);
   };
@@ -5817,7 +5836,7 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","savePng","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -6838,31 +6857,101 @@ function saveText(name, text, mime){
 }
 
 function baseName(){
+  const custom = $("exportName") ? $("exportName").value.trim() : "";
+  if(custom) return custom.replace(/[\\/:*?"<>|]+/g, "_");
   return state.res ? state.res.file.replace(/\.[^.]+$/, "") : "3dsview";
 }
 
+function exportTransparent(){
+  return !!($("exportTransparent") && $("exportTransparent").checked);
+}
+
 function savePng(){
-  const cv = $("heatmap");
-  const a = document.createElement("a");
-  a.href = cv.toDataURL("image/png");
-  a.download = `${baseName()}_slice.png`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  const transparent = exportTransparent();
+  if(transparent){ state.paintTransparent = true; paint2d(); }
+  const url = $("heatmap").toDataURL("image/png");
+  if(transparent){ state.paintTransparent = false; paint2d(); }
+  downloadDataUrl(`${baseName()}_slice.png`, url);
+  status("Saved slice PNG.", "ok");
+}
+
+function xmlEscape(value){
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Vector copy of the 2-D map: the slice image is embedded as PNG with the
+// on-screen transform (zoom included) under vector outline, ticks and labels,
+// and the colour bar is a legend spanning the display window.
+function sliceSvg(){
+  const last = state.lastSlice;
+  if(!state.res || !last || !state.offscreen) return null;
+  const rect = $("heatmap").getBoundingClientRect();
+  const W = Math.max(1, Math.round(rect.width)), H = Math.max(1, Math.round(rect.height));
+  const {slice:sl, levels} = last;
+  const layout = slice2dLayout(sl, W, H);
+  const ticks = slice2dTicks(sl, layout);
+  const th = themePlot(), area = layout.area;
+  const n = v => Number((+v).toFixed(2));
+  const png = state.offscreen.toDataURL("image/png");
+  const out = [];
+  const Wsvg = W + 56;
+  out.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Wsvg}" height="${H}" viewBox="0 0 ${Wsvg} ${H}" font-family="Consolas, 'Courier New', monospace" font-size="11">`);
+  out.push(`<title>${xmlEscape(sl.plane)}</title>`);
+  if(!exportTransparent()) out.push(`<rect width="${Wsvg}" height="${H}" fill="${th.bg}"/>`);
+  const stops = activeColorStops();
+  out.push(`<defs><clipPath id="map"><rect x="${area.x}" y="${area.y}" width="${area.w}" height="${area.h}"/></clipPath>` +
+    `<linearGradient id="bar" x1="0" y1="1" x2="0" y2="0">${stops.map(([t, c]) => `<stop offset="${t}" stop-color="rgb(${c.join(",")})"/>`).join("")}</linearGradient></defs>`);
+  out.push(`<g clip-path="url(#map)"><image width="${sl.cols}" height="${sl.rows}" preserveAspectRatio="none" style="image-rendering:pixelated" transform="matrix(${layout.imageTransform.map(v => Number(v.toPrecision(10))).join(" ")})" href="${png}" xlink:href="${png}"/>`);
+  out.push(`<polygon points="${layout.outline.map(p => `${n(p[0])},${n(p[1])}`).join(" ")}" fill="none" stroke="rgba(148,163,184,.8)"/></g>`);
+  out.push(`<g stroke="${th.axisStroke}" fill="${th.canvasText}">`);
+  for(const t of ticks.x) out.push(`<line x1="${n(t.p[0])}" y1="${n(t.p[1])}" x2="${n(t.p[0])}" y2="${n(t.p[1] + 5)}"/><text x="${n(t.p[0] - 14)}" y="${n(Math.min(H - 24, t.p[1] + 18))}" stroke="none">${xmlEscape(fmt(t.v, 2))}</text>`);
+  for(const t of ticks.y) out.push(`<line x1="${n(t.p[0] - 5)}" y1="${n(t.p[1])}" x2="${n(t.p[0])}" y2="${n(t.p[1])}"/><text x="${n(Math.max(4, t.p[0] - 48))}" y="${n(t.p[1] + 4)}" stroke="none">${xmlEscape(fmt(t.v, 2))}</text>`);
+  out.push(`<text x="${n(ticks.xLabelAt[0])}" y="${n(Math.min(H - 8, ticks.xLabelAt[1]))}" stroke="none">${xmlEscape(sl.xLabel)}</text>`);
+  out.push(`<text transform="translate(${n(ticks.yLabelAt[0])} ${n(ticks.yLabelAt[1])}) rotate(-90)" stroke="none">${xmlEscape(sl.yLabel)}</text></g>`);
+  const bx = W - 20, by = 20, bw = 16, bh = H - 48, span = levels.max - levels.min || 1;
+  out.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="url(#bar)" stroke="${th.frame}"/>`);
+  for(const v of niceTicks(levels.min, levels.max, 6)){
+    const y = by + bh * (1 - (v - levels.min) / span);
+    out.push(`<line x1="${bx + bw}" y1="${n(y)}" x2="${bx + bw + 4}" y2="${n(y)}" stroke="${th.axisStroke}"/><text x="${bx + bw + 6}" y="${n(y + 4)}" fill="${th.canvasText}">${xmlEscape(fmt(v, 3))}</text>`);
+  }
+  out.push(`<text x="${bx + bw + 30}" y="${by + bh + 18}" text-anchor="end" fill="${th.mutedText}">${xmlEscape($("scale").selectedOptions[0].textContent)}</text>`);
+  out.push(`</svg>`);
+  return out.join("\n");
+}
+
+function saveSliceSvg(){
+  const svg = sliceSvg();
+  if(!svg) return;
+  saveText(`${baseName()}_slice.svg`, svg, "image/svg+xml;charset=utf-8");
+  status("Saved slice SVG.", "ok");
+}
+
+function csvColumnName(label){
+  return String(label).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "axis";
+}
+
+// Slice values with native coordinates, u and v for plane slices, and Q
+// where a reciprocal basis is known.
+function sliceCsv(sl=currentSlice(null, MAX_AXIS_SLICE_CELLS, true)){
+  if(!sl) return "";
+  const res = state.res, plane = sl.type !== "axis", withQ = useBasisToQ(res);
+  const head = [...(plane ? ["u", "v"] : []), ...nativeAxisLabels(res).map(csvColumnName), ...(withQ ? ["qx", "qy", "qz"] : []), valueColumnName(res)];
+  const du = sl.cols > 1 ? (sl.xMax - sl.xMin) / (sl.cols - 1) : 0, dv = sl.rows > 1 ? (sl.yMax - sl.yMin) / (sl.rows - 1) : 0;
+  const out = [head.join(",")];
+  for(let r=0;r<sl.rows;r++) for(let c=0;c<sl.cols;c++){
+    const v = sl.d[r * sl.cols + c];
+    if(!Number.isFinite(v)) continue;
+    const p = [sl.x3[r][c], sl.y3[r][c], sl.z3[r][c]];
+    const row = [...(plane ? [sl.xMin + c * du, sl.yMin + r * dv] : []), ...p, ...(withQ ? hklToQ(p[0], p[1], p[2], res.Bq) : []), v];
+    out.push(row.join(","));
+  }
+  return out.join("\n");
 }
 
 function saveCsv(){
-  const sl = currentSlice(null, MAX_AXIS_SLICE_CELLS, true);
-  if(!sl) return;
-  const labels = renderAxisLabels().map(s => s.toLowerCase());
-  const out = [`${labels[0]},${labels[1]},${labels[2]},${valueColumnName(state.res)}`];
-  for(let r=0;r<sl.rows;r++) for(let c=0;c<sl.cols;c++){
-    const v = sl.d[r*sl.cols+c];
-    if(!Number.isFinite(v)) continue;
-    const p = plotPoint(state.res, sl.x3[r][c], sl.y3[r][c], sl.z3[r][c]);
-    out.push(`${p[0]},${p[1]},${p[2]},${v}`);
-  }
-  saveText(`${baseName()}_slice.csv`, out.join("\n"), "text/csv;charset=utf-8");
+  if(!state.res) return;
+  saveText(`${baseName()}_slice.csv`, sliceCsv(), "text/csv;charset=utf-8");
   status("Saved slice CSV.", "ok");
 }
 
@@ -6992,7 +7081,9 @@ async function savePlotSvg(plotId, tag){
   try{
     await render3d();
     const Plotly = await ensurePlotly();
-    const uri = await Plotly.toImage($(plotId), {format:"svg", width:1200, height:900});
+    const fig = exportPlotFigure(plotId);
+    if(!fig) throw new Error("Target 3D plot is empty.");
+    const uri = await Plotly.toImage(fig, {format:"svg", width:1200, height:900});
     downloadDataUrl(`${baseName()}_${tag}.svg`, uri);
     status(`Saved ${tag} SVG.`, "ok");
   }catch(err){
@@ -7035,6 +7126,12 @@ function exportPlotFigure(plotId){
   const data = toPlainJson(gd.data, new WeakSet()) || [];
   const layout = toPlainJson(gd.layout, new WeakSet()) || {};
   if(layout.template) delete layout.template;
+  if(exportTransparent()){
+    const clear = "rgba(0,0,0,0)";
+    layout.paper_bgcolor = clear;
+    layout.plot_bgcolor = clear;
+    if(layout.scene) layout.scene.bgcolor = clear;
+  }
   return {data, layout};
 }
 
@@ -7046,7 +7143,8 @@ async function savePlotHtml(plotId, tag, title){
     if(!fig || !Array.isArray(fig.data) || !fig.data.length) throw new Error("Target 3D plot is empty.");
     const payload = JSON.stringify({fig, title, createdAt:new Date().toISOString()}).replace(/</g, "\\u003c");
     const tx = themePlot();
-    const html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><script src="${PLOTLY_CDN}"><\/script><style>body{margin:0;background:${tx.bg};color:${tx.text};font-family:Segoe UI,Tahoma,sans-serif}main{padding:12px;display:grid;gap:10px}#plot{min-height:720px;border:1px solid ${tx.grid};background:${tx.bg}}</style></head><body><main><h2 style="margin:0">${title}</h2><div id="plot"></div></main><script>const payload=${payload};Plotly.newPlot("plot",(payload.fig&&payload.fig.data)||[],(payload.fig&&payload.fig.layout)||{},{responsive:true,displaylogo:false});<\/script></body></html>`;
+    const pageBg = exportTransparent() ? "transparent" : tx.bg;
+    const html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><script src="${PLOTLY_CDN}"><\/script><style>body{margin:0;background:${pageBg};color:${tx.text};font-family:Segoe UI,Tahoma,sans-serif}main{padding:12px;display:grid;gap:10px}#plot{min-height:720px;border:1px solid ${tx.grid};background:${pageBg}}</style></head><body><main><h2 style="margin:0">${title}</h2><div id="plot"></div></main><script>const payload=${payload};Plotly.newPlot("plot",(payload.fig&&payload.fig.data)||[],(payload.fig&&payload.fig.layout)||{},{responsive:true,displaylogo:false});<\/script></body></html>`;
     saveText(`${baseName()}_${tag}.html`, html, "text/html;charset=utf-8");
     status(`Saved ${tag} HTML.`, "ok");
   }catch(err){
@@ -7110,6 +7208,8 @@ async function onFile(file){
   const autoZero = /^indexed text/.test(parsed.format || "") && zeroFraction(parsed) >= 0.01;
   if(autoZero) setZeroMask(parsed, true);
   populateCellInputs(parsed.cellDeg);
+  $("exportName").value = "";
+  $("exportName").placeholder = parsed.file.replace(/\.[^.]+$/, "");
   updateAxisOptionText();
   updateShownVolumeInputs();
   updateMeta();
@@ -7287,6 +7387,7 @@ function bind(){
   $("auto3d").addEventListener("change", () => { if($("auto3d").value === "1") scheduleRender3d(0); });
   $("render3d").addEventListener("click", () => render3d().catch(err => status(`3D render failed: ${err.message}`, "err")));
   $("savePng").addEventListener("click", savePng);
+  $("saveSliceSvg").addEventListener("click", saveSliceSvg);
   $("saveCsv").addEventListener("click", saveCsv);
   $("saveUnified").addEventListener("click", saveUnified);
   $("savePlaneSvg").addEventListener("click", () => savePlotSvg("plot3dPlane", "plane3d"));

@@ -68,11 +68,17 @@ and slab-average slicing with linked 2-D and 3-D views.
   files whose row order cannot be streamed directly are, at 192 MB or more, parsed in
   parallel Web Workers (up to 8). Parsed volumes are cached in IndexedDB so reloading
   the same file is nearly instant.
-- **Export**: PNG of the 2-D slice, CSV of the slice values, the shown (cropped) volume
-  as a unified HDF5 file (`*_unified.h5`, written in the browser via `js/unified_hdf5.js`
-  and h5wasm; the experiment type is kept from the source file, and the cell is derived
-  from the reciprocal basis when only a basis is known), SVG snapshots of either 3-D
-  plot, and standalone interactive HTML copies of either 3-D plot.
+- **Export**:
+  - **2-D slice:** PNG; SVG, with vector axes, ticks and a colour-bar legend over the
+    embedded slice image; and CSV, with native coordinates, u/v for plane slices, Q when
+    a reciprocal basis is known, and the value.
+  - **3-D views:** SVG snapshots and standalone interactive HTML copies of either 3-D plot.
+  - **Shown (cropped) volume:** a unified HDF5 file (`*_unified.h5`, written in the
+    browser via `js/unified_hdf5.js` and h5wasm). The experiment type is kept from the
+    source file, and the cell is derived from the reciprocal basis when only a basis is
+    known.
+  - **File name and backgrounds:** a file-name field overrides the default base name,
+    and **Transparent background** drops the page colour from PNG, SVG and HTML output.
 
 ## Supported formats
 

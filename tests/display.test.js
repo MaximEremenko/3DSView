@@ -118,3 +118,20 @@ test("the map readout reports the voxel under the cursor, with Q and d", async (
   const [Xo, Yo] = layout.toCanvas(res.k[3] + 2, res.h[2]);
   assert.equal(ctx.sliceReadout({x:Xo, y:Yo}), null);
 });
+
+test("slice CSV carries native coordinates, Q and the value", async () => {
+  const app = loadApp();
+  const lines = ["# h k l intensity"];
+  for(let i=0;i<3;i++) for(let j=0;j<2;j++) for(let k=0;k<2;k++) lines.push(`${i} ${j} ${k} ${1 + i + 10 * j + 100 * k}`);
+  const res = await app.parseFile(textFile("calc.dat", lines.join("\n")));
+  res.Bq = [[2 * Math.PI / 5, 0, 0], [0, 2 * Math.PI / 5, 0], [0, 0, 2 * Math.PI / 5]];
+  app.state.res = app.finalizeResult(res);
+  const sl = app.context.buildAxisSlice(app.state.res, "l", 1, 1e6, true);
+  const rows = app.context.sliceCsv(sl).split("\n");
+  assert.equal(rows[0], "h,k,l,qx,qy,qz,intensity");
+  const first = rows[1].split(",").map(Number);
+  assert.deepEqual(first.slice(0, 3), [0, 0, 1]);
+  assert.ok(Math.abs(first[5] - 2 * Math.PI / 5) < 1e-12, "qz of L = 1");
+  assert.equal(first[6], 101);
+  assert.equal(rows.length, 1 + 6);
+});
