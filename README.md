@@ -91,6 +91,16 @@ and slab-average slicing with linked 2-D and 3-D views.
     move it along the normal, and control the interpolation resolution and plane extent.
   - *Volume average*: average a slab of adjustable half-width and sample count around the
     plane.
+- **Three linked slices** (<kbd>G</kbd>, or the grid button beside the plane selector, in
+  axis mode): HK, HL and KL through one point, with the point and a shared colour bar in
+  the fourth tile.
+  - Clicking a view moves the other two through that point, and dashed lines, coloured
+    by axis, show where they cut.
+  - The framed view is the one the slider, the arrow keys, the readout and the level
+    histogram follow; clicking a view frames it.
+  - Each view zooms (wheel, box, +/−) and pans on its own, and the PNG export holds all
+    three.
+  - The line cut and the vector overlay work on the single map.
 - **Coordinate handling**: Q and HKL (r.l.u.) axes are auto-detected from file names and
   metadata, with a manual override (Auto / Use Q / Use HKL). When a unit cell is known,
   HKL data is transformed to Q through the reciprocal basis; without one, the override

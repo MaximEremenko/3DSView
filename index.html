@@ -769,6 +769,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <option value="h">K-L</option>
             <option value="k">H-L</option>
           </select>
+          <button type="button" id="triToggle" class="iconBtn ghost" title="Three linked slices through one point (G)" aria-pressed="false" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M15 17h4M17 15v4"/></svg></button>
         </span>
         <div class="barRight">
           <select id="scale" disabled title="Value scale">
@@ -977,6 +978,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="keyRow"><span>Ten slices at a time</span><span><kbd>Shift</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></span></div>
       <div class="keyRow"><span>First / last slice</span><span><kbd>Home</kbd><kbd>End</kbd></span></div>
       <div class="keyRow"><span>Fixed axis</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></div>
+      <div class="keyRow"><span>Three linked slices</span><span><kbd>G</kbd></span></div>
       <div class="keyRow"><span>Zoom the map</span><span><kbd>+</kbd><kbd>&minus;</kbd></span></div>
       <div class="keyRow"><span>Zoom into a box: drag on the map</span><span><kbd>Shift</kbd>+drag when zoomed</span></div>
       <div class="keyRow"><span>Data / comparison</span><span><kbd>C</kbd></span></div>
@@ -1112,7 +1114,9 @@ const state = {
   structurePairs:[],
   structureStale:true,
   vectorMarks:[],
-  plotRes:{map:null, plane:null}
+  plotRes:{map:null, plane:null},
+  tri:{views:{h:null, k:null, l:null}, panels:[], cache:new Map(), images:{}},
+  triDrag:null
 };
 
 const COLOR_MAPS = {
@@ -6902,6 +6906,10 @@ function onHeatmapPointerDown(ev){
   if(!state.res || !b) return;
   const pt = canvasPoint(ev);
   if(!pt) return;
+  if(triOn() && !pickColorBarHandle(pt.x, pt.y, b)){
+    onTriPointerDown(ev, pt);
+    return;
+  }
   if(state.cutMode && state.lastSlice && state.lastSlice.layout && pointInMapArea(pt) && !pickColorBarHandle(pt.x, pt.y, b)){
     startCutDrag(ev, pt);
     return;
@@ -6937,6 +6945,10 @@ function onHeatmapPointerMove(ev){
   const cv = $("heatmap");
   if(!pt || !b){
     cv.style.cursor = "default";
+    return;
+  }
+  if(triOn() && !(state.levelDrag && state.levelDrag.active)){
+    onTriPointerMove(ev, pt);
     return;
   }
   if(state.cutDrag){
@@ -6978,6 +6990,10 @@ function onHeatmapPointerMove(ev){
 }
 
 function onHeatmapPointerUp(ev){
+  if(state.triDrag){
+    onTriPointerUp(ev);
+    return;
+  }
   const drag = state.levelDrag;
   const cv = $("heatmap");
   if(state.cutDrag){
@@ -7131,6 +7147,7 @@ function draw2d(options={}){
   }
   octx.putImageData(img, 0, 0);
   state.lastSlice = {slice:sl, mode, transformed:stats, levels, stops};
+  if(triOn()) buildTriPanels(sl, mode, levels, lut, empty, fast);
   paint2d();
   if(!fast){
     state.plotRes.map = sliceSampling(sl);
@@ -7167,6 +7184,7 @@ function paint2d(){
 function paint2dOn(ctx, cssW, cssH){
   const last = state.lastSlice;
   if(!state.res || !last) return;
+  if(triOn() && state.tri.panels.length === 3) return paintTriOn(ctx, cssW, cssH);
   const {slice:sl, levels, transformed:stats, stops} = last;
   const off = state.offscreen;
   const layout = slice2dLayout(sl, cssW, cssH);
@@ -7193,6 +7211,274 @@ function paint2dOn(ctx, cssW, cssH){
   drawVectorOverlay(ctx, layout, sl);
   drawCutOverlay(ctx, layout, sl);
   drawColorbar(ctx, stops, levels, stats, cssW - 28, 20, 18, cssH - 40);
+}
+
+// ---- Three linked slices: HK, HL and KL through one point
+//
+// The point is the slice index each axis keeps. The panel of the axis chosen
+// above the map is the usual slice (slider, keys, readout, levels and
+// exports follow it); the other two are drawn beside it. A click in a panel
+// moves the other two through that point, and dashed lines show where they
+// cut. Each panel zooms and pans on its own.
+
+const TRI_SLOTS = {l:[0, 0], k:[1, 0], h:[0, 1]};
+const AXIS_COLOURS = ["#f87171", "#4ade80", "#60a5fa"];
+
+function triOn(){
+  return !!(state.ui && state.ui.tri && state.res && $("sliceMode").value === "axis");
+}
+
+// The slice index of an axis in the three-panel point, within the shown volume.
+function triIndexFor(axisName){
+  const res = state.res, a = {h:0, k:1, l:2}[axisName], [lo, hi] = displayIndexRanges(res)[a];
+  if(axisName === $("axis").value) return clamp(Number($("idx").value), lo, hi);
+  const saved = state.axisIndex[axisName];
+  const i = Number.isFinite(saved) ? clamp(saved, lo, hi) : nearestSliceWithData(res, a, clamp(indexNearestZero(res, a), lo, hi), [lo, hi]);
+  state.axisIndex[axisName] = i;
+  return i;
+}
+
+// Colours a slice's values into an offscreen canvas, one pixel per sample.
+function fillSliceImage(rec, sl, values, levels, lut, empty){
+  const off = rec.off;
+  if(off.width !== sl.cols) off.width = sl.cols;
+  if(off.height !== sl.rows) off.height = sl.rows;
+  const octx = off.getContext("2d");
+  if(!rec.img || rec.img.width !== sl.cols || rec.img.height !== sl.rows) rec.img = octx.createImageData(sl.cols, sl.rows);
+  const data = rec.img.data, den = levels.max - levels.min || 1;
+  for(let p=0;p<sl.rows*sl.cols;p++){
+    const v = values[p], q = p * 4;
+    if(Number.isFinite(v)){
+      const li = Math.max(0, Math.min(255, Math.round((v - levels.min) / den * 255))) * 3;
+      data[q] = lut[li]; data[q+1] = lut[li+1]; data[q+2] = lut[li+2]; data[q+3] = 255;
+    }else if(empty){
+      data[q] = empty[0]; data[q+1] = empty[1]; data[q+2] = empty[2]; data[q+3] = 255;
+    }else{
+      data[q] = 0; data[q+1] = 0; data[q+2] = 0; data[q+3] = 0;
+    }
+  }
+  octx.putImageData(rec.img, 0, 0);
+}
+
+// The other two panels, in the levels of the active one. While a slider is
+// dragged only the active panel changes, so the others are kept.
+function buildTriPanels(activeSl, mode, levels, lut, empty, fast){
+  const res = viewRes(), active = $("axis").value, half = state.sliceHalf || 0;
+  const ranges = JSON.stringify(displayIndexRanges(res));
+  state.tri.panels = ["l", "k", "h"].map(axisName => {
+    if(axisName === active) return {axisName, slice:activeSl, off:state.offscreen};
+    const index = triIndexFor(axisName);
+    const key = [axisName, index, half, ranges, mode, levels.min, levels.max, $("colorMap").value, $("colorReverse").checked].join("|");
+    const cached = state.tri.cache.get(axisName);
+    if(fast && cached && cached.key === key && cached.res === res) return {axisName, slice:cached.sl, off:cached.rec.off};
+    const sl = buildAxisSlice(res, axisName, index, fast ? MAX_LIVE_AXIS_SLICE_CELLS : MAX_AXIS_SLICE_CELLS, false, half);
+    const rec = state.tri.images[axisName] || (state.tri.images[axisName] = {off:document.createElement("canvas")});
+    fillSliceImage(rec, sl, sliceTransformed(sl, mode).values, levels, lut, empty);
+    state.tri.cache.set(axisName, {key, res, sl, rec});
+    return {axisName, slice:sl, off:rec.off};
+  });
+}
+
+function drawTriGuides(ctx, p, layout){
+  const res = state.res, axes = [res.h, res.k, res.l], names = ["h", "k", "l"], sl = p.slice, ext = layout.ext;
+  // A dark underlay keeps the dashed line visible over bright data.
+  const line = (a, from, to) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(from[0], from[1]);
+    ctx.lineTo(to[0], to[1]);
+    ctx.lineWidth = 3.2;
+    ctx.strokeStyle = "rgba(2,6,23,.55)";
+    ctx.stroke();
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = AXIS_COLOURS[a];
+    ctx.stroke();
+    ctx.restore();
+  };
+  // Where the panels fixing the column and the row axis cut this one.
+  const xv = axes[sl.colAxis][triIndexFor(names[sl.colAxis])], yv = axes[sl.rowAxis][triIndexFor(names[sl.rowAxis])];
+  line(sl.colAxis, layout.toCanvas(xv, ext.y0), layout.toCanvas(xv, ext.y1));
+  line(sl.rowAxis, layout.toCanvas(ext.x0, yv), layout.toCanvas(ext.x1, yv));
+}
+
+function paintTriOn(ctx, cssW, cssH){
+  const last = state.lastSlice, res = state.res, tc = themePlot(), active = $("axis").value;
+  const axes = [res.h, res.k, res.l], labels = nativeAxisLabels(res);
+  const pw = Math.floor(cssW / 2), ph = Math.floor(cssH / 2);
+  state.vectorMarks = [];
+  $("vectorLegend").classList.add("hidden");
+  for(const p of state.tri.panels){
+    const ox = TRI_SLOTS[p.axisName][0] * pw, oy = TRI_SLOTS[p.axisName][1] * ph;
+    const layout = slice2dLayout(p.slice, pw, ph, state.tri.views[p.axisName]);
+    state.tri.views[p.axisName] = layout.view;
+    Object.assign(p, {layout, origin:[ox, oy], size:[pw, ph]});
+    if(p.axisName === active) last.layout = null;
+    ctx.save();
+    ctx.translate(ox, oy);
+    const area = layout.area, t = layout.imageTransform;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(area.x, area.y, area.w, area.h);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    ctx.transform(t[0], t[1], t[2], t[3], t[4], t[5]);
+    ctx.drawImage(p.off, 0, 0);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(148,163,184,.8)";
+    ctx.beginPath();
+    layout.outline.forEach((pt, i) => (i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1])));
+    ctx.closePath();
+    ctx.stroke();
+    drawTriGuides(ctx, p, layout);
+    ctx.restore();
+    drawAxes(ctx, p.slice, layout, ph);
+    const a = p.slice.fixedAxis;
+    ctx.font = "12px Consolas";
+    ctx.fillStyle = AXIS_COLOURS[a];
+    ctx.fillText(`${p.slice.yLabel}${p.slice.xLabel}   ${labels[a]} = ${fmtAxis(axes[a][p.slice.fixedIndex], axes[a])}`, area.x, 13);
+    if(p.axisName === active){
+      ctx.strokeStyle = tc.handleActive;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(1.5, 1.5, pw - 3, ph - 3);
+    }
+    ctx.restore();
+  }
+  // The fourth tile: the shared colour bar and the point.
+  drawColorbar(ctx, last.stops, last.levels, last.transformed, cssW - 28, ph + 20, 18, Math.max(40, cssH - ph - 40));
+  const idx = ["h", "k", "l"].map(triIndexFor);
+  ctx.font = "12px Consolas";
+  ctx.fillStyle = tc.canvasText;
+  const lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), "",
+    "Click a view to move the", "other two through it.", "Drag a box to zoom.", "The framed view follows", "the slider and the keys."];
+  lines.forEach((text, i) => {
+    if(i >= 1 && i <= 3) ctx.fillStyle = AXIS_COLOURS[i - 1];
+    else ctx.fillStyle = i === 0 ? tc.canvasText : tc.mutedText;
+    ctx.fillText(text, pw + 18, ph + 30 + i * 18);
+  });
+}
+
+function triPanelAt(pt){
+  if(!pt) return null;
+  return state.tri.panels.find(p => p.origin && pt.x >= p.origin[0] && pt.x < p.origin[0] + p.size[0] && pt.y >= p.origin[1] && pt.y < p.origin[1] + p.size[1]) || null;
+}
+
+function triLocal(p, pt){
+  return {x:pt.x - p.origin[0], y:pt.y - p.origin[1]};
+}
+
+function inLayoutArea(layout, pt){
+  if(!layout || !pt) return false;
+  const a = layout.area;
+  return pt.x >= a.x && pt.x <= a.x + a.w && pt.y >= a.y && pt.y <= a.y + a.h;
+}
+
+// A click in a panel: the other two panels pass through the point, and the
+// clicked panel becomes the one the slider moves.
+function triNavigate(p, lp){
+  const res = state.res, sl = p.slice, [xv, yv] = p.layout.toSlice(lp.x, lp.y);
+  const axes = [res.h, res.k, res.l], metas = [res.axes.h, res.axes.k, res.axes.l], ranges = displayIndexRanges(res), names = ["h", "k", "l"];
+  state.axisIndex[$("axis").value] = Number($("idx").value);
+  for(const [a, v] of [[sl.colAxis, xv], [sl.rowAxis, yv]]){
+    const i = Math.round(axisToFraction(axes[a], metas[a], v));
+    if(Number.isFinite(i)) state.axisIndex[names[a]] = clamp(i, ranges[a][0], ranges[a][1]);
+  }
+  state.axisIndex[p.axisName] = sl.fixedIndex;
+  $("axis").value = p.axisName;
+  $("axis").dispatchEvent(new Event("change"));
+}
+
+function triPanelZoom(p, factor, X, Y){
+  const v = p.layout.view, area = p.layout.area, z = clamp(v.zoom * factor, 1, 64);
+  if(z <= 1){
+    state.tri.views[p.axisName] = {key:v.key, zoom:1, panX:0, panY:0};
+  }else{
+    const cx = area.x + area.w / 2, cy = area.y + area.h / 2;
+    const bx = (X - cx - v.panX * area.w) / v.zoom, by = (Y - cy - v.panY * area.h) / v.zoom;
+    state.tri.views[p.axisName] = clampView2d({key:v.key, zoom:z, panX:(X - cx - z * bx) / area.w, panY:(Y - cy - z * by) / area.h});
+  }
+  paint2d();
+}
+
+function onTriPointerDown(ev, pt){
+  const p = triPanelAt(pt);
+  if(!p || !inLayoutArea(p.layout, triLocal(p, pt))) return;
+  const v = p.layout.view;
+  state.triDrag = {axisName:p.axisName, pointerId:ev.pointerId, start:pt, moved:false,
+    pan:v.zoom > 1 && !ev.shiftKey ? {panX:v.panX, panY:v.panY} : null, box:null};
+  try{ $("heatmap").setPointerCapture(ev.pointerId); }catch(_){}
+  ev.preventDefault();
+}
+
+function onTriPointerMove(ev, pt){
+  const d = state.triDrag, cv = $("heatmap");
+  if(d){
+    const p = state.tri.panels.find(q => q.axisName === d.axisName);
+    if(!d.moved && Math.hypot(pt.x - d.start.x, pt.y - d.start.y) > 4) d.moved = true;
+    if(!d.moved || !p) return;
+    hideReadout();
+    if(d.pan){
+      const v = p.layout.view, a = p.layout.area;
+      state.tri.views[p.axisName] = clampView2d({key:v.key, zoom:v.zoom, panX:d.pan.panX + (pt.x - d.start.x) / a.w, panY:d.pan.panY + (pt.y - d.start.y) / a.h});
+      paint2d();
+    }else{
+      d.box = {x0:d.start.x, y0:d.start.y, x1:pt.x, y1:pt.y};
+      paint2d();
+      drawZoomBox(d.box);
+    }
+    return;
+  }
+  if(state.lastBar && pickColorBarHandle(pt.x, pt.y, state.lastBar)){
+    cv.style.cursor = "ns-resize";
+    hideReadout();
+    return;
+  }
+  const p = triPanelAt(pt), lp = p && triLocal(p, pt);
+  if(!p || !inLayoutArea(p.layout, lp)){
+    cv.style.cursor = "default";
+    hideReadout();
+    return;
+  }
+  cv.style.cursor = p.layout.view.zoom > 1 ? "grab" : "crosshair";
+  showReadout(pt);
+}
+
+function onTriPointerUp(){
+  const d = state.triDrag;
+  state.triDrag = null;
+  try{ $("heatmap").releasePointerCapture(d.pointerId); }catch(_){}
+  const p = state.tri.panels.find(q => q.axisName === d.axisName);
+  if(!p) return;
+  if(!d.moved){
+    triNavigate(p, triLocal(p, d.start));
+    return;
+  }
+  if(d.box){
+    const o = p.origin, v = p.layout.view, area = p.layout.area;
+    const box = {x0:d.box.x0 - o[0], y0:d.box.y0 - o[1], x1:d.box.x1 - o[0], y1:d.box.y1 - o[1]};
+    const w = Math.abs(box.x1 - box.x0), h = Math.abs(box.y1 - box.y0);
+    if(w >= 8 && h >= 8){
+      const z = clamp(v.zoom * Math.min(area.w / w, area.h / h), 1, 64);
+      const cx = area.x + area.w / 2, cy = area.y + area.h / 2;
+      const bx = ((box.x0 + box.x1) / 2 - cx - v.panX * area.w) / v.zoom, by = ((box.y0 + box.y1) / 2 - cy - v.panY * area.h) / v.zoom;
+      state.tri.views[p.axisName] = clampView2d({key:v.key, zoom:z, panX:-z * bx / area.w, panY:-z * by / area.h});
+    }
+  }
+  paint2d();
+}
+
+function toggleTri(){
+  if(!state.res) return;
+  const on = !state.ui.tri;
+  if(on && $("sliceMode").value !== "axis"){
+    $("sliceMode").value = "axis";
+    $("sliceMode").dispatchEvent(new Event("change"));
+  }
+  if(on) setCutMode(false);
+  setUi({tri:on});
+  hideReadout();
+  draw2d();
 }
 
 // ---- 2-D zoom and pan
@@ -7252,12 +7538,18 @@ function drawZoomBox(box){
 }
 
 function zoom2dCenter(factor){
+  if(triOn()){
+    const p = state.tri.panels.find(q => q.axisName === $("axis").value);
+    if(p && p.layout) triPanelZoom(p, factor, p.layout.area.x + p.layout.area.w / 2, p.layout.area.y + p.layout.area.h / 2);
+    return;
+  }
   const layout = view2dArea();
   if(!layout) return;
   zoom2dAt(factor, layout.area.x + layout.area.w / 2, layout.area.y + layout.area.h / 2);
 }
 
 function resetZoom2d(){
+  if(triOn()) state.tri.views[$("axis").value] = null;
   if(state.view2d) state.view2d = {key:state.view2d.key, zoom:1, panX:0, panY:0};
   paint2d();
 }
@@ -7265,9 +7557,9 @@ function resetZoom2d(){
 // What lies under a canvas point of the 2-D map: native coordinates, Q, and
 // the value of the voxel there (axis slices, at full resolution even when
 // the drawn slice is sampled) or of the drawn cell (plane and slab slices).
-function sliceReadout(pt){
-  const last = state.lastSlice, res = viewRes();
-  if(!res || !last || !last.layout || !pointInMapArea(pt)) return null;
+function sliceReadout(pt, last=state.lastSlice){
+  const res = viewRes();
+  if(!res || !last || !last.layout || !inLayoutArea(last.layout, pt)) return null;
   const sl = last.slice, [xv, yv] = last.layout.toSlice(pt.x, pt.y), ext = last.layout.ext;
   if(!(xv >= ext.x0 && xv <= ext.x1 && yv >= ext.y0 && yv <= ext.y1)) return null;
   const out = {};
@@ -7323,9 +7615,16 @@ function readoutText(o){
 function showReadout(pt){
   const box = $("mapReadout");
   state.readoutPt = pt;
-  const o = pt ? sliceReadout(pt) : null;
+  let o = null, extra = "";
+  if(pt && triOn()){
+    const p = triPanelAt(pt), lp = p && triLocal(p, pt);
+    o = p && p.layout ? sliceReadout(lp, {slice:p.slice, layout:p.layout}) : null;
+  }else if(pt){
+    o = sliceReadout(pt);
+    extra = vectorReadout(pt);
+  }
   if(!o){ box.classList.add("hidden"); return; }
-  box.textContent = readoutText(o) + vectorReadout(pt);
+  box.textContent = readoutText(o) + extra;
   box.classList.remove("hidden");
   const wrap = box.parentElement.getBoundingClientRect();
   const w = box.offsetWidth, h = box.offsetHeight;
@@ -8058,6 +8357,7 @@ function syncControls(){
   $("avgControls").classList.toggle("hidden", !avgMode);
   $("axisHelp").classList.toggle("hidden", !axisMode);
   $("sliceThick").disabled = !has || !axisMode;
+  $("triToggle").disabled = !has || !axisMode;
   updateSliceThickInfo();
   $("axisPick").classList.toggle("hidden", !axisMode);
   $("planeMoveGroup").classList.toggle("hidden", !planeMode);
@@ -10451,7 +10751,7 @@ async function onFile(file){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
@@ -10475,13 +10775,14 @@ function loadUiPrefs(){
     if(typeof saved.vectors === "boolean") ui.vectors = saved.vectors;
     if(Number.isFinite(saved.plane3dRes)) ui.plane3dRes = clamp(Math.round(saved.plane3dRes), 32, 520);
     if([1, 2, 3, 4].includes(saved.imageScale)) ui.imageScale = saved.imageScale;
+    if(typeof saved.tri === "boolean") ui.tri = saved.tri;
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri})); }catch(_){}
 }
 
 function applyUi(){
@@ -10517,6 +10818,8 @@ function applyUi(){
   $("camOrtho").checked = !!ui.ortho;
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
   for(const id of ["imageScale", "resImage"]) $(id).value = String(ui.imageScale);
+  $("triToggle").classList.toggle("on", !!ui.tri);
+  $("triToggle").setAttribute("aria-pressed", String(!!ui.tri));
   updatePlotResInfo();
   saveUiPrefs();
 }
@@ -10709,6 +11012,10 @@ function onShortcut(ev){
       break;
     case "v": case "V":
       if(vectorsAvailable()) toggleVectors();
+      else handled = false;
+      break;
+    case "g": case "G":
+      if(state.res && $("sliceMode").value === "axis") toggleTri();
       else handled = false;
       break;
     case "?": openHelp(); break;
@@ -10986,6 +11293,7 @@ function clearSymmetry(){
 
 // A new file: back to its own values, with a Laue class suggested for it.
 function resetViewsForNewData(res){
+  state.tri = {views:{h:null, k:null, l:null}, panels:[], cache:new Map(), images:{}};
   state.plotRes = {map:null, plane:null};
   if(state.viewDisplaySaved){
     applyViewDisplay(state.showMode, "data");
@@ -11195,6 +11503,10 @@ function setProfileOpen(open, kind=null){
 }
 
 function setCutMode(on){
+  if(on && triOn()){
+    status("The line cut works on a single map; turn off the three linked slices (G) first.", "warn");
+    on = false;
+  }
   state.cutMode = !!on;
   $("cutTool").classList.toggle("on", state.cutMode);
   $("cutTool").setAttribute("aria-pressed", String(state.cutMode));
@@ -11658,11 +11970,26 @@ function bind(){
   $("heatmap").addEventListener("pointerleave", hideReadout);
   $("heatmap").addEventListener("wheel", ev => {
     const pt = canvasPoint(ev);
+    if(state.res && triOn()){
+      const p = triPanelAt(pt), lp = p && triLocal(p, pt);
+      if(!p || !inLayoutArea(p.layout, lp)) return;
+      ev.preventDefault();
+      triPanelZoom(p, Math.pow(1.0015, -ev.deltaY), lp.x, lp.y);
+      return;
+    }
     if(!state.res || !pointInMapArea(pt)) return;
     ev.preventDefault();
     zoom2dAt(Math.pow(1.0015, -ev.deltaY), pt.x, pt.y);
   }, {passive:false});
-  $("heatmap").addEventListener("dblclick", ev => { if(pointInMapArea(canvasPoint(ev))) resetZoom2d(); });
+  $("heatmap").addEventListener("dblclick", ev => {
+    if(triOn()){
+      const p = triPanelAt(canvasPoint(ev));
+      if(p){ state.tri.views[p.axisName] = null; paint2d(); }
+      return;
+    }
+    if(pointInMapArea(canvasPoint(ev))) resetZoom2d();
+  });
+  $("triToggle").addEventListener("click", toggleTri);
   $("mapZoomIn").addEventListener("click", () => zoom2dCenter(1.4));
   $("mapZoomOut").addEventListener("click", () => zoom2dCenter(1 / 1.4));
   $("mapZoomReset").addEventListener("click", resetZoom2d);

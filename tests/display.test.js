@@ -243,3 +243,18 @@ test("thick slices count the voxels they average", () => {
   assert.equal(app.context.thickCount(res, 2, 0, 2, 2, 0, 4, 1), 1, "clipped at the lower end: L = 0..1");
   assert.equal(app.context.thickCount(res, 2, 2, 0, 0, 0, 4, 2), 5);
 });
+
+test("the three linked slices share one point, one index per axis", () => {
+  const app = loadApp();
+  const ax = Array.from({length:9}, (_, i) => -2 + 0.5 * i);
+  const res = app.context.makeVolumeResult("tri.h5", [9, 9, 9], ax, ax, ax, new Float64Array(729).fill(1), "test", "hkl");
+  app.state.res = res;
+  app.setControl("axis", {value:"l"});
+  app.setControl("idx", {value:"6"});
+  assert.equal(app.context.triIndexFor("l"), 6, "the framed panel follows the slider");
+  assert.equal(app.context.triIndexFor("h"), 4, "another axis opens at 0");
+  app.state.axisIndex.k = 2;
+  assert.equal(app.context.triIndexFor("k"), 2, "a remembered index is kept");
+  app.state.axisIndex.k = 40;
+  assert.equal(app.context.triIndexFor("k"), 8, "and kept inside the grid");
+});
