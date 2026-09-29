@@ -102,3 +102,32 @@ test("JSON export of data without a cell does not invent a basis", async () => {
   assert.equal(back.Bq, undefined);
   assert.equal(back.cellDeg, undefined);
 });
+
+test("Q exports follow projected HKL axes, in the RMCProfile frame for the cube too", () => {
+  const app = loadApp();
+  const cell = [4, 4, 6, 90, 90, 120];
+  const W = [[1, 1, 0], [-1, 1, 0], [0, 0, 1]];   // [H,H,0], [-K,K,0], [0,0,L]
+  const ax = n => Array.from({length:n}, (_, i) => -1 + 0.5 * i);
+  const res = app.context.makeVolumeResult("projected.nxs", [5, 5, 3], ax(5), ax(5), ax(3), new Float64Array(75).fill(1), "test", "hkl", null, 0, {projectionW:W, cellDeg:cell});
+  res.Bq = app.context.projectedBq(app.basisFromCell(cell, true).Bq, res);
+  const spec = app.unifiedExportSpec(res), rmc = app.context.rmcCartesianFrame(cell).Bq;
+  const q = app.context.rmcQMapping(res, spec)([1, 0, 0]), want = app.context.mul([1, 1, 0], rmc);
+  for(let c=0;c<3;c++) assertClose(q[c], want[c], 1e-12, `Q of (1, 0, 0) on [H,H,0] axes, component ${c}`);
+  const lines = textOf(app.context.cubeChunks(spec, res)).split("\n");
+  const step = lines[3].trim().split(/\s+/).slice(1).map(Number), wantStep = app.context.mul([0.5, 0.5, 0], rmc);
+  for(let c=0;c<3;c++) assertClose(step[c], wantStep[c], 1e-9, `cube step along [H,H,0], component ${c}`);
+});
+
+test("a Q grid in a rotated sample frame is written in the RMCProfile frame", () => {
+  const app = loadApp();
+  const cell = [4, 5, 6, 90, 90, 90], rmc = app.context.rmcCartesianFrame(cell).Bq;
+  const t = 0.3, U = [[Math.cos(t), Math.sin(t), 0], [-Math.sin(t), Math.cos(t), 0], [0, 0, 1]];
+  const Bq = rmc.map(row => app.context.mul(row, U));   // q = hkl·B·U
+  const ax = n => Array.from({length:n}, (_, i) => -0.5 + 0.25 * i);
+  const res = app.context.makeVolumeResult("rotated_q.nxs", [5, 5, 5], ax(5), ax(5), ax(5), new Float64Array(125).fill(1), "test", "q", null, 0, {Bq, cellDeg:cell});
+  const toQ = app.context.rmcQMapping(res, app.unifiedExportSpec(res));
+  const hkl = [1, 2, 3], got = toQ(app.context.mul(hkl, Bq)), want = app.context.mul(hkl, rmc);
+  for(let c=0;c<3;c++) assertClose(got[c], want[c], 1e-12, `component ${c}`);
+  const plain = app.context.makeVolumeResult("plain_q.dat", [5, 5, 5], ax(5), ax(5), ax(5), new Float64Array(125).fill(1), "test", "q");
+  assert.deepEqual(app.context.rmcQMapping(plain, app.unifiedExportSpec(plain))([0.1, 0.2, 0.3]), [0.1, 0.2, 0.3], "Q without a cell is written as stored");
+});

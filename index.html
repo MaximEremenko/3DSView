@@ -8978,14 +8978,22 @@ function isUnitMetricSpecCell(cell){
 }
 
 // Maps native grid coordinates to Cartesian Q in the RMCProfile/Scatty frame
-// (a along x), as the old text format and Scatty VTK store it.
+// (a along x), as the old text format and Scatty VTK store it. Projected HKL
+// axes go through their projection, and a Q grid in another frame (a sample
+// rotation from a UB) through its hkl.
 function rmcQMapping(res, spec){
   if(isRealSpaceData(res)) throw new Error("real-space volumes cannot be written as Q-space files.");
-  if(res.coordKind === "q") return x => x.slice();
+  const frame = isUnitMetricSpecCell(spec.cell) ? null : rmcCartesianFrame(spec.cell);
+  if(res.coordKind === "q"){
+    if(!frame || !validMatrix3(res.Bq)) return x => x.slice();
+    let M;
+    try{ M = inv3(res.Bq).map(row => mul(row, frame.Bq)); }catch(_){ return x => x.slice(); }
+    return x => mul(x, M);
+  }
   if(isUnitMetricSpecCell(spec.cell)) throw new Error("this format stores Cartesian Q; set the unit cell first (Unit Cell tool).");
-  const frame = rmcCartesianFrame(spec.cell);
   if(!frame) throw new Error("the unit cell is invalid.");
-  return x => mul(x, frame.Bq);
+  const Bq = projectedBq(frame.Bq, res);
+  return x => mul(x, Bq);
 }
 
 function specPoint(spec, i, j, k){
@@ -9068,12 +9076,15 @@ function* vtkChunks(spec, res, valuesPerChunk=65536){
 // Gaussian cube for ChimeraX / ParaView: the grid in the plotted frame (Q for
 // HKL data with a basis), any skew kept, values l fastest, 6 per line.
 function* cubeChunks(spec, res, linesPerChunk=16384){
-  const frame = v => (canTransformHklToQ(res) ? hklToQ(v[0], v[1], v[2], res.Bq) : v.slice());
+  // Q in the frame of the .dat and VTK writers (a along x); real-space grids
+  // and HKL grids without a cell keep their own coordinates.
+  const inQ = !isRealSpaceData(res) && (res.coordKind === "q" || (canTransformHklToQ(res) && !isUnitMetricSpecCell(spec.cell)));
+  const frame = inQ ? rmcQMapping(res, spec) : v => v.slice();
   const origin = frame(spec.corner);
   const steps = spec.vectors.map(frame);
   yield [
     `CUBE FILE: 3DSView ${valueLabel(res)} from ${res.file}`,
-    `grid in ${canTransformHklToQ(res) ? "Q (1/Angstrom)" : nativeAxisLabels(res).join(",")}; values ${valueColumnName(res)}`,
+    `grid in ${inQ ? "Q (1/Angstrom, a along x)" : nativeAxisLabels(res).join(",")}; values ${valueColumnName(res)}`,
     `0 ${origin.map(v => v.toExponential(9)).join(" ")}`,
     ...steps.map((v, axis) => `${spec.dims[axis]} ${v.map(x => x.toExponential(9)).join(" ")}`)
   ].join("\n") + "\n";
