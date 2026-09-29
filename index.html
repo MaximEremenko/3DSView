@@ -1461,6 +1461,37 @@ function looksLikeNumericMatrix(text){
   return rows >= 2 && cols >= 5;
 }
 
+// Tells "h k l I sigma" lists (Scatty *_list.txt, Spinteract *_xtal_data,
+// optionally with twin hkl triplets) from plain numeric matrices: the hkl
+// columns repeat on a grid and every row is a distinct (h,k,l) point.
+function looksLikeHklList(text){
+  const lines = text.slice(0, 262144).split(/\r?\n/);
+  const seen = [new Set(), new Set(), new Set()], points = new Set();
+  let rows = 0, cols = null;
+  for(const line of lines){
+    const s = line.trim();
+    if(!s || s[0] === "#" || s[0] === "!" || s[0] === ";") continue;
+    const nums = parseNumbers(s);
+    if(!nums) continue;
+    if(cols === null) cols = nums.length;
+    if(nums.length !== cols || cols < 5) return false;
+    const key = [0, 1, 2].map(c => numKey(nums[c]));
+    key.forEach((v, c) => seen[c].add(v));
+    points.add(key.join(","));
+    if(++rows >= 4096) break;
+  }
+  if(rows < 8) return false;
+  const repeating = seen.filter(set => set.size <= rows / 2).length;
+  return repeating >= 2 && points.size >= 0.9 * rows;
+}
+
+// Value column of an "h k l ... I" row: the intensity comes before sigma
+// when the row is hkl triplet(s) + I + sigma, otherwise it is the last column.
+function hklListValue(nums){
+  const n = nums.length;
+  return n >= 5 && (n - 2) % 3 === 0 ? nums[n - 2] : nums[n - 1];
+}
+
 function looksLikeIndexed3dRows(text){
   const lines = text.slice(0, 262144).split(/\r?\n/);
   let rows = 0, indexed = 0, firstNumeric = true;
@@ -1506,6 +1537,7 @@ function parseTextData(name, text){
   if(sample.startsWith("{") || sample.startsWith("[")) return parseJsonVolume(name, text);
   if(/^#\s*vtk\b/i.test(sample) || /\bDATASET\s+STRUCTURED_POINTS\b/i.test(sample)) return parseVtkVolume(name, text);
   if(looksLikeIndexed3dRows(text)) return parse3dsDat(name, text);
+  if(looksLikeHklList(text)) return parse3dsDat(name, text, {hklList:true});
   if(looksLikeNumericMatrix(text)) return parseMatrix2d(name, text);
   return parse3dsDat(name, text);
 }
@@ -2380,7 +2412,7 @@ async function parseStreamedVtkVolume(file, sampleText, progress=null){
   );
 }
 
-async function parseStreamedPointTextFile(file, sampleText, progress=null){
+async function parseStreamedPointTextFile(file, sampleText, progress=null, options={}){
   let header = null, firstNumeric = true, skipped = 0, commentText = "";
   const idxStats = {rows:0, minI:Infinity, minJ:Infinity, minK:Infinity, maxI:-Infinity, maxJ:-Infinity, maxK:-Infinity, rawMin:Infinity, rawMax:-Infinity};
   const plainStats = {rows:0, h:new Map(), k:new Map(), l:new Map(), rawMin:Infinity, rawMax:-Infinity};
@@ -2398,7 +2430,7 @@ async function parseStreamedPointTextFile(file, sampleText, progress=null){
       firstNumeric = false;
       if(looksLikeHeader(nums)){ header = headerFromNums(nums); return; }
     }
-    if(nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
+    if(!options.hklList && nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
       const val = valueFromRmcDiffuse3dRow(nums, header);
       if(!Number.isFinite(val)){ skipped++; return; }
       if(isAmplitudeRow(nums.length, header)) idxStats.amplitude = true;
@@ -2409,7 +2441,7 @@ async function parseStreamedPointTextFile(file, sampleText, progress=null){
       if(val < idxStats.rawMin) idxStats.rawMin = val; if(val > idxStats.rawMax) idxStats.rawMax = val;
       idxStats.rows++;
     }else if(nums.length >= 4){
-      const val = nums[nums.length - 1];
+      const val = hklListValue(nums);
       if(!Number.isFinite(val)){ skipped++; return; }
       addUniqueAxisValue(plainStats.h, nums[0]);
       addUniqueAxisValue(plainStats.k, nums[1]);
@@ -2432,7 +2464,7 @@ async function parseStreamedPointTextFile(file, sampleText, progress=null){
     return buildStreamedIndexedResult(file, sampleText, header, skipped, commentText, idxStats, meta, progress);
   }
   if(plainStats.rows > 0){
-    return buildStreamedPlainResult(file, sampleText, header, skipped, commentText, plainStats, meta, progress);
+    return buildStreamedPlainResult(file, sampleText, header, skipped, commentText, plainStats, meta, progress, options);
   }
   if(tripStats.rows > 0){
     return buildStreamedTriplet2dResult(file, sampleText, header, skipped, commentText, tripStats, meta, progress);
@@ -2475,7 +2507,7 @@ async function buildStreamedIndexedResult(file, sampleText, header, skipped, com
   return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:indexedFormat("indexed text stream", stats.amplitude), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta});
 }
 
-async function buildStreamedPlainResult(file, sampleText, header, skipped, commentText, stats, meta, progress=null){
+async function buildStreamedPlainResult(file, sampleText, header, skipped, commentText, stats, meta, progress=null, options={}){
   const hAxis = sortedAxisFromMap(stats.h), kAxis = sortedAxisFromMap(stats.k), lAxis = sortedAxisFromMap(stats.l);
   const nH = hAxis.length, nK = kAxis.length, nL = lAxis.length;
   const {total} = assertVolumeFits([nH,nK,nL], "4-column grid");
@@ -2495,8 +2527,8 @@ async function buildStreamedPlainResult(file, sampleText, header, skipped, comme
       if(looksLikeHeader(nums)) return;
     }
     if(nums.length < 4) return;
-    if(nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])) return;
-    const val = nums[nums.length - 1];
+    if(!options.hklList && nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])) return;
+    const val = hklListValue(nums);
     if(!Number.isFinite(val)) return;
     const a = hMap.get(numKey(nums[0])), b = kMap.get(numKey(nums[1])), c = lMap.get(numKey(nums[2]));
     if(a === undefined || b === undefined || c === undefined) return;
@@ -2504,8 +2536,8 @@ async function buildStreamedPlainResult(file, sampleText, header, skipped, comme
     if(!Number.isFinite(I[p])) filled++;
     I[p] = val;
   }, {progress, phase:"Filling 4-column grid"});
-  const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "calculator dat");
-  return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:"4-column text stream", coordKind, shape:[nH,nK,nL], h:Float64Array.from(hAxis), k:Float64Array.from(kAxis), l:Float64Array.from(lAxis), I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta});
+  const coordKind = inferCoordKind(file.name, commentText || sampleText || "", options.hklList ? "hkl list" : "calculator dat");
+  return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:options.hklList ? "h k l I sigma list stream" : "4-column text stream", coordKind, shape:[nH,nK,nL], h:Float64Array.from(hAxis), k:Float64Array.from(kAxis), l:Float64Array.from(lAxis), I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta});
 }
 
 async function buildStreamedTriplet2dResult(file, sampleText, header, skipped, commentText, stats, meta, progress=null){
@@ -2561,6 +2593,7 @@ async function parseStreamedTextData(file, sampleText, progress=null){
     }
     return parseFastIndexedTextFile(file, sampleText, progress);
   }
+  if(looksLikeHklList(sampleText)) return parseStreamedPointTextFile(file, sampleText, progress, {hklList:true});
   if(looksLikeNumericMatrix(sampleText)) return parseStreamedMatrixFile(file, sampleText, progress);
   return parseStreamedPointTextFile(file, sampleText, progress);
 }
@@ -3450,7 +3483,7 @@ async function parseFile(file, progress=null){
   return parsed;
 }
 
-function parse3dsDat(name, text){
+function parse3dsDat(name, text, options={}){
   const lines = text.split(/\r?\n/);
   const pi=[], pj=[], pk=[], hs=[], ks=[], ls=[], vals=[];
   const ph=[], plainK=[], plainL=[], plainVals=[];
@@ -3481,7 +3514,7 @@ function parse3dsDat(name, text){
         continue;
       }
     }
-    if(nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
+    if(!options.hklList && nums.length >= 7 && isIntLike(nums[0]) && isIntLike(nums[1]) && isIntLike(nums[2])){
       const ii = Math.round(nums[0]), jj = Math.round(nums[1]), kk = Math.round(nums[2]);
       const inten = valueFromRmcDiffuse3dRow(nums, header);
       if(!Number.isFinite(inten)){ skipped++; continue; }
@@ -3494,7 +3527,7 @@ function parse3dsDat(name, text){
       if(inten < rawMinIdx) rawMinIdx = inten; if(inten > rawMaxIdx) rawMaxIdx = inten;
       indexedRows++;
     }else if(nums.length >= 4){
-      const inten = nums[nums.length - 1];
+      const inten = hklListValue(nums);
       if(!Number.isFinite(inten)){ skipped++; continue; }
       ph.push(nums[0]); plainK.push(nums[1]); plainL.push(nums[2]); plainVals.push(inten);
       if(inten < rawMinPlain) rawMinPlain = inten; if(inten > rawMaxPlain) rawMaxPlain = inten;
@@ -3516,8 +3549,8 @@ function parse3dsDat(name, text){
     return buildIndexedResult(name, header, skipped, pi, pj, pk, hs, ks, ls, vals, minI, minJ, minK, maxI, maxJ, maxK, rawMinIdx, rawMaxIdx, coordKind, indexedFormat("indexed text", amplitude), meta);
   }
   if(plainRows > 0){
-    const coordKind = inferCoordKind(name, commentText, "calculator dat");
-    return buildPlainResult(name, header, skipped, ph, plainK, plainL, plainVals, rawMinPlain, rawMaxPlain, coordKind, "4-column text", meta);
+    const coordKind = inferCoordKind(name, commentText, options.hklList ? "hkl list" : "calculator dat");
+    return buildPlainResult(name, header, skipped, ph, plainK, plainL, plainVals, rawMinPlain, rawMaxPlain, coordKind, options.hklList ? "h k l I sigma list" : "4-column text", meta);
   }
   if(tv.length > 0){
     const coordKind = inferCoordKind(name, commentText, "3-column text");

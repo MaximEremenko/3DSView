@@ -56,6 +56,9 @@ Fortran `D` exponents are handled:
   `*_amp_calc.dat` or `*_aver_interf_calc.dat`) are loaded as amplitude magnitudes |A|;
   the section count comes from the header, or is 1 without one.
 - **4-column text**: `H K L intensity` rows (diffuse-scattering calculator output).
+- **h k l I σ lists**: Scatty `*_list.txt` and Spinteract `*_xtal_data_NN.txt` rows, also
+  with extra twin hkl triplets before `I σ`. They are read as HKL volumes of I (not as
+  a 2-D matrix); the σ column is not shown.
 - **3-column text**: `x y value` triplets, shown as a 2-D map.
 - **2-D numeric matrix**: plain rectangular matrices of numbers.
 - **JSON volume** (`.json`): an object with `shape`, an `intensity`/`signal` array and

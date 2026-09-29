@@ -84,3 +84,43 @@ for(const streamed of [false, true]){
     assertValues(res, shape, (i, j, k) => Math.hypot(...reIm(i, j, k)));
   });
 }
+
+// "h k l I sigma" rows (Scatty *_list.txt, Spinteract *_xtal_data), h fastest.
+function hklSigmaList(shape, {twins=1}={}){
+  const lines = [];
+  for(let k=0;k<shape[2];k++) for(let j=0;j<shape[1];j++) for(let i=0;i<shape[0];i++){
+    const hkl = [-1.5 + 0.25 * i, -1 + 0.5 * j, 0.1 * k];
+    const triplets = [];
+    for(let t=0;t<twins;t++) triplets.push(...(t ? [hkl[1], hkl[0], -hkl[2]] : hkl));
+    lines.push(`${triplets.join(" ")} ${code(i, j, k)} ${0.1 * code(i, j, k)}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+for(const streamed of [false, true]){
+  const mode = streamed ? "streamed" : "in memory";
+  const load = (name, text) => loadApp(streamed ? {streamThreshold:0} : {}).parseFile(textFile(name, text));
+
+  test(`h k l I sigma lists load as HKL volumes, not matrices (${mode})`, async () => {
+    const shape = [6, 5, 4];
+    const res = await load("MnO_xtal_data_01.txt", hklSigmaList(shape));
+    assertValues(res, shape);
+    assert.equal(res.coordKind, "hkl");
+    assert.deepEqual(Array.from(res.h).slice(0, 3), [-1.5, -1.25, -1]);
+  });
+
+  test(`twinned h k l lists take I before sigma (${mode})`, async () => {
+    const shape = [6, 5, 4];
+    const res = await load("twins_xtal_data_01.txt", hklSigmaList(shape, {twins:2}));
+    assertValues(res, shape);
+  });
+}
+
+test("a plain 5-column numeric matrix still loads as a 2-D map", async () => {
+  const app = loadApp();
+  const rows = [];
+  for(let r=0;r<12;r++) rows.push(Array.from({length:5}, (_, c) => (Math.sin(r * 7.1 + c * 3.3) * 100).toFixed(4)).join(" "));
+  const res = await app.parseFile(textFile("image.txt", rows.join("\n")));
+  assert.deepEqual(Array.from(res.shape), [12, 5, 1]);
+  assert.match(res.format, /matrix/);
+});
