@@ -2040,6 +2040,7 @@ async function parseParallelIndexedTextFile(file, sampleText, progress=null){
   I.fill(NaN);
   const hAxis = new Float64Array(shape[0]), kAxis = new Float64Array(shape[1]), lAxis = new Float64Array(shape[2]);
   const hSeen = new Uint8Array(shape[0]), kSeen = new Uint8Array(shape[1]), lSeen = new Uint8Array(shape[2]);
+  const probe = makeGridProbe();
   let merged = 0;
   for(const chunk of chunks){
     if(!chunk || !chunk.rows) continue;
@@ -2052,6 +2053,7 @@ async function parseParallelIndexedTextFile(file, sampleText, progress=null){
       if(!hSeen[a]){ hAxis[a] = chunk.h[n]; hSeen[a] = 1; }
       if(!kSeen[b]){ kAxis[b] = chunk.q[n]; kSeen[b] = 1; }
       if(!lSeen[c]){ lAxis[c] = chunk.l[n]; lSeen[c] = 1; }
+      probeRow(probe, chunk.i[n], chunk.j[n], chunk.k[n], chunk.h[n], chunk.q[n], chunk.l[n]);
       merged++;
       if(progress && (merged & 0x7ffff) === 0){
         progress({phase:"Merging worker chunks", offset:merged, size:rows, units:"rows"});
@@ -2066,7 +2068,9 @@ async function parseParallelIndexedTextFile(file, sampleText, progress=null){
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
   const meta = extractBasisFromText(commentText || sampleText.slice(0, 8192));
-  return finalizeResult({file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text parallel stream", ampMode), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
+  const base = {file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text parallel stream", ampMode), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta};
+  applyGridProbe(base, probe, [minI, minJ, minK]);
+  return finalizeResult(base);
 }
 
 function inferOrderedIndexedLayoutFromText(text){
@@ -2207,6 +2211,7 @@ async function parseOrderedIndexedTextFile(file, sampleText, progress=null){
   let firstNumeric = true, header = layout.header, skipped = 0, rows = 0, rowOrdinal = 0, filled = 0, rawMin = Infinity, rawMax = -Infinity, commentText = "";
   const plane = shape[0] * shape[1];
   const fields = [0, 0, 0, 0];
+  const probe = makeGridProbe();
   await forEachFileLineRange(file, (text, start, end) => {
     const firstChar = firstContentCharRange(text, start, end);
     if(!firstChar) return;
@@ -2233,7 +2238,8 @@ async function parseOrderedIndexedTextFile(file, sampleText, progress=null){
     const b = Math.floor(rem / shape[0]);
     const a = rem - b * shape[0];
     const needH = !hSeen[a], needK = !kSeen[b], needL = !lSeen[c];
-    if(!parseOrderedIndexedFieldsRange(text, start, end, ampMode, needH, needK, needL, fields)){ skipped++; return; }
+    const probed = probeWantsRow(ordinal) || ordinal === total - 1;
+    if(!parseOrderedIndexedFieldsRange(text, start, end, ampMode, needH || probed, needK || probed, needL || probed, fields)){ skipped++; return; }
     const val = fields[3];
     const p = idx3(shape, a, b, c);
     if(!Number.isFinite(I[p])) filled++;
@@ -2241,6 +2247,7 @@ async function parseOrderedIndexedTextFile(file, sampleText, progress=null){
     if(needH){ hAxis[a] = fields[0]; hSeen[a] = 1; }
     if(needK){ kAxis[b] = fields[1]; kSeen[b] = 1; }
     if(needL){ lAxis[c] = fields[2]; lSeen[c] = 1; }
+    if(probed) probeKeepRow(probe, a, b, c, fields[0], fields[1], fields[2]);
     if(val < rawMin) rawMin = val; if(val > rawMax) rawMax = val;
     rows++;
   }, {progress, phase:"Reading ordered indexed text"});
@@ -2250,7 +2257,9 @@ async function parseOrderedIndexedTextFile(file, sampleText, progress=null){
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
   const meta = extractBasisFromText(commentText || sampleText.slice(0, 8192));
-  return finalizeResult({file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text ordered stream", ampMode), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
+  const base = {file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text ordered stream", ampMode), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta};
+  applyGridProbe(base, probe, [0, 0, 0]);
+  return finalizeResult(base);
 }
 
 async function parseFastIndexedTextFile(file, sampleText, progress=null){
@@ -2303,6 +2312,7 @@ async function parseFastIndexedTextFile(file, sampleText, progress=null){
   I.fill(NaN);
   const hAxis = new Float64Array(shape[0]), kAxis = new Float64Array(shape[1]), lAxis = new Float64Array(shape[2]);
   const hSeen = new Uint8Array(shape[0]), kSeen = new Uint8Array(shape[1]), lSeen = new Uint8Array(shape[2]);
+  const probe = makeGridProbe();
   let filled = 0;
   for(let n=0;n<rows;n++){
     if(progress && (n & 0x7ffff) === 0){
@@ -2317,6 +2327,7 @@ async function parseFastIndexedTextFile(file, sampleText, progress=null){
     if(!hSeen[a]){ hAxis[a] = buf.h[n]; hSeen[a] = 1; }
     if(!kSeen[b]){ kAxis[b] = buf.q[n]; kSeen[b] = 1; }
     if(!lSeen[c]){ lAxis[c] = buf.l[n]; lSeen[c] = 1; }
+    probeRow(probe, buf.i[n], buf.j[n], buf.k[n], buf.h[n], buf.q[n], buf.l[n]);
   }
   if(progress) progress({phase:"Building indexed grid", offset:rows, size:rows, units:"rows", force:true});
   fillMissingAxis(hAxis, hSeen);
@@ -2324,7 +2335,9 @@ async function parseFastIndexedTextFile(file, sampleText, progress=null){
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
   const meta = extractBasisFromText(commentText || sampleText.slice(0, 8192));
-  return finalizeResult({file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text fast stream", amplitude), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
+  const base = {file:file.name, header, skipped, rows, filled, format:indexedFormat("indexed text fast stream", amplitude), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta};
+  applyGridProbe(base, probe, [minI, minJ, minK]);
+  return finalizeResult(base);
 }
 
 async function parseStreamedMatrixFile(file, sampleText, progress=null){
@@ -2478,6 +2491,7 @@ async function buildStreamedIndexedResult(file, sampleText, header, skipped, com
   I.fill(NaN);
   const hAxis = new Float64Array(shape[0]), kAxis = new Float64Array(shape[1]), lAxis = new Float64Array(shape[2]);
   const hSeen = new Uint8Array(shape[0]), kSeen = new Uint8Array(shape[1]), lSeen = new Uint8Array(shape[2]);
+  const probe = makeGridProbe();
   let firstNumeric = true, filled = 0;
   await forEachFileLine(file, line => {
     const s = line.trim();
@@ -2499,12 +2513,15 @@ async function buildStreamedIndexedResult(file, sampleText, header, skipped, com
     if(!hSeen[a]){ hAxis[a] = nums[3]; hSeen[a] = 1; }
     if(!kSeen[b]){ kAxis[b] = nums[4]; kSeen[b] = 1; }
     if(!lSeen[c]){ lAxis[c] = nums[5]; lSeen[c] = 1; }
+    probeRow(probe, a, b, c, nums[3], nums[4], nums[5]);
   }, {progress, phase:"Filling indexed grid"});
   fillMissingAxis(hAxis, hSeen);
   fillMissingAxis(kAxis, kSeen);
   fillMissingAxis(lAxis, lSeen);
   const coordKind = inferCoordKind(file.name, commentText || sampleText || "", "indexed 3ds");
-  return finalizeResult({file:file.name, header, skipped, rows:stats.rows, filled, format:indexedFormat("indexed text stream", stats.amplitude), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta});
+  const base = {file:file.name, header, skipped, rows:stats.rows, filled, format:indexedFormat("indexed text stream", stats.amplitude), coordKind, shape, h:hAxis, k:kAxis, l:lAxis, I, rawMin:stats.rawMin, rawMax:stats.rawMax, ...meta};
+  applyGridProbe(base, probe, [0, 0, 0]);
+  return finalizeResult(base);
 }
 
 async function buildStreamedPlainResult(file, sampleText, header, skipped, commentText, stats, meta, progress=null, options={}){
@@ -3593,6 +3610,95 @@ function axisMeta(axis){
   return {step, maxDev, uniform:maxDev <= Math.max(1e-8, Math.abs(step) * 1e-5)};
 }
 
+// RMCProfile Q columns are Cartesian, so for a non-orthogonal cell every
+// coordinate depends on all three indices. Parsers feed each row to a probe,
+// which keeps rows spread over the file (0-3, 2^n, 3*2^n and the last one)
+// for an affine fit of the index -> coordinate map.
+const isPowerOfTwo = n => n > 0 && (n & (n - 1)) === 0;
+function probeWantsRow(n){
+  return n < 4 || isPowerOfTwo(n) || (n % 3 === 0 && isPowerOfTwo(n / 3));
+}
+
+function makeGridProbe(){
+  return {rows:[], count:0, last:null};
+}
+
+function probeRow(probe, i, j, k, x, y, z){
+  const row = [i, j, k, x, y, z];
+  if(probeWantsRow(probe.count++)) probe.rows.push(row);
+  probe.last = row;
+}
+
+// For parsers that pick the probed rows themselves.
+function probeKeepRow(probe, i, j, k, x, y, z){
+  const row = [i, j, k, x, y, z];
+  probe.rows.push(row);
+  probe.last = row;
+}
+
+// Least-squares fit of coord = o + i*a + j*b + k*c over the probed rows.
+function fitAffineGrid(rows){
+  if(rows.length < 5) return null;
+  const M = Array.from({length:4}, () => new Array(7).fill(0));
+  for(const r of rows){
+    const u = [1, r[0], r[1], r[2]];
+    for(let p=0;p<4;p++){
+      for(let q=0;q<4;q++) M[p][q] += u[p] * u[q];
+      for(let c=0;c<3;c++) M[p][4 + c] += u[p] * r[3 + c];
+    }
+  }
+  for(let col=0;col<4;col++){
+    let pivot = col;
+    for(let r=col+1;r<4;r++) if(Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+    if(!(Math.abs(M[pivot][col]) > 1e-9 * Math.abs(M[0][0]))) return null;
+    [M[col], M[pivot]] = [M[pivot], M[col]];
+    for(let r=0;r<4;r++){
+      if(r === col) continue;
+      const f = M[r][col] / M[col][col];
+      for(let c=col;c<7;c++) M[r][c] -= f * M[col][c];
+    }
+  }
+  const X = M.map((row, p) => row.slice(4).map(v => v / M[p][p]));
+  let maxResidual = 0;
+  for(const r of rows){
+    for(let c=0;c<3;c++){
+      const fit = X[0][c] + r[0] * X[1][c] + r[1] * X[2][c] + r[2] * X[3][c];
+      maxResidual = Math.max(maxResidual, Math.abs(fit - r[3 + c]));
+    }
+  }
+  return {origin:X[0], steps:[X[1], X[2], X[3]], maxResidual};
+}
+
+// Gives a 3-D indexed grid affine grid vectors when its coordinates are
+// skewed (hexagonal, monoclinic, ...) and every probed row fits the map.
+function applyGridProbe(base, probe, minIndex){
+  if(!probe || base.shape.some(n => n < 2)) return false;
+  const rows = probe.last ? [...probe.rows, probe.last] : probe.rows;
+  const fit = fitAffineGrid(rows);
+  if(!fit) return false;
+  const norms = fit.steps.map(v => Math.hypot(v[0], v[1], v[2]));
+  if(norms.some(v => !(v > 0))) return false;
+  const skewed = fit.steps.some((v, axis) => v.some((c, comp) => comp !== axis && Math.abs(c) > 1e-5 * norms[axis]));
+  if(!skewed || fit.maxResidual > 1e-6 + 1e-4 * Math.min(...norms)) return false;
+  const origin = [0, 1, 2].map(c => fit.origin[c] + minIndex[0] * fit.steps[0][c] + minIndex[1] * fit.steps[1][c] + minIndex[2] * fit.steps[2][c]);
+  base.gridOrigin = origin;
+  base.gridVectors = [0, 1, 2].map(c => fit.steps.map(v => v[c]));
+  base.gridVectorSource = "indexed coordinates (affine fit)";
+  base.h = regularAxis(base.shape[0], origin[0], fit.steps[0][0]);
+  base.k = regularAxis(base.shape[1], origin[1], fit.steps[1][1]);
+  base.l = regularAxis(base.shape[2], origin[2], fit.steps[2][2]);
+  return true;
+}
+
+function isSkewedGrid(res){
+  const v = res && res.gridVectors;
+  if(!validMatrix3(v)) return false;
+  return [0, 1, 2].some(axis => {
+    const norm = Math.hypot(v[0][axis], v[1][axis], v[2][axis]);
+    return [0, 1, 2].some(c => c !== axis && Math.abs(v[c][axis]) > 1e-5 * norm);
+  });
+}
+
 // A non-uniform axis whose points all sit on one regular lattice, with gaps
 // (the PMN "(halves)" files hold 8 disjoint 19-point blocks per axis), maps
 // to lattice positions. Returns null for regular or truly irregular axes.
@@ -3888,6 +3994,7 @@ function buildIndexedResult(name, header, skipped, pi, pj, pk, hs, ks, ls, vals,
   I.fill(NaN);
   const hAxis = new Float64Array(nH), kAxis = new Float64Array(nK), lAxis = new Float64Array(nL);
   const hSeen = new Uint8Array(nH), kSeen = new Uint8Array(nK), lSeen = new Uint8Array(nL);
+  const probe = makeGridProbe();
   let filled = 0;
   for(let n=0;n<vals.length;n++){
     const a = pi[n] - minI, b = pj[n] - minJ, c = pk[n] - minK;
@@ -3897,11 +4004,14 @@ function buildIndexedResult(name, header, skipped, pi, pj, pk, hs, ks, ls, vals,
     if(!hSeen[a]){ hAxis[a] = hs[n]; hSeen[a] = 1; }
     if(!kSeen[b]){ kAxis[b] = ks[n]; kSeen[b] = 1; }
     if(!lSeen[c]){ lAxis[c] = ls[n]; lSeen[c] = 1; }
+    probeRow(probe, pi[n], pj[n], pk[n], hs[n], ks[n], ls[n]);
   }
   fillMissingAxis(hAxis, hSeen);
   fillMissingAxis(kAxis, kSeen);
   fillMissingAxis(lAxis, lSeen);
-  return finalizeResult({file:name, header, skipped, rows:vals.length, filled, format, coordKind, shape:[nH,nK,nL], h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta});
+  const base = {file:name, header, skipped, rows:vals.length, filled, format, coordKind, shape:[nH,nK,nL], h:hAxis, k:kAxis, l:lAxis, I, rawMin, rawMax, ...meta};
+  applyGridProbe(base, probe, [minI, minJ, minK]);
+  return finalizeResult(base);
 }
 
 function uniqueSorted(values){
@@ -4807,7 +4917,7 @@ function draw2d(options={}){
   const mapX = marginL, mapY = marginT, mapW = Math.max(1, barX - mapX - 10), mapH = Math.max(1, cssH - marginT - marginB);
   ctx.imageSmoothingEnabled = false;
   let drawX, drawY, drawW, drawH, mapXY = null;
-  if(usePlotBasis(state.res) && Array.isArray(sl.xVec) && Array.isArray(sl.yVec)){
+  if((usePlotBasis(state.res) || isSkewedGrid(state.res)) && Array.isArray(sl.xVec) && Array.isArray(sl.yVec)){
     const qxVec = plotVector(state.res, sl.xVec), qyVec = plotVector(state.res, sl.yVec);
     const qxLen = normVec(qxVec), qyLen = normVec(qyVec);
     if(qxLen > 1e-12 && qyLen > 1e-12){
@@ -6057,7 +6167,8 @@ async function renderIso3d(Plotly){
   }
   let trace;
   const activeBasis = useBasisToQ(state.res) ? state.res.Bq : directPlotBasis(state.res);
-  if(usePlotBasis(state.res) && isNonOrthBq(activeBasis)){
+  // Plotly isosurfaces need a rectilinear grid; skewed geometry gets a point cloud.
+  if((usePlotBasis(state.res) && isNonOrthBq(activeBasis)) || isSkewedGrid(state.res)){
     const keep = [];
     for(let i=0;i<sample.value.length;i++) if(sample.value[i] >= isoMin) keep.push(i);
     const maxPts = 120000, stride = Math.max(1, Math.ceil(keep.length / maxPts)), n = Math.max(0, Math.ceil(keep.length / stride));

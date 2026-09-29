@@ -146,3 +146,37 @@ for(const streamed of [false, true]){
     assert.deepEqual(Array.from(res.gapPadding.from), [8, 3, 2]);
   });
 }
+
+// Hexagonal cell (a = 4, c = 6) in the RMCProfile Cartesian frame with a
+// along x: Q = h a* + k b* + l c*, which is not axis-aligned.
+const TWO_PI = 2 * Math.PI;
+const A_STAR = [TWO_PI / 4, TWO_PI / 4 / Math.sqrt(3), 0];
+const B_STAR = [0, 2 * TWO_PI / 4 / Math.sqrt(3), 0];
+const C_STAR = [0, 0, TWO_PI / 6];
+const hexHkl = (i, j, k) => [-1 + 0.25 * i, -1 + 0.25 * j, 0.5 * k];
+const hexQ = (i, j, k) => {
+  const [h, kk, l] = hexHkl(i, j, k);
+  return [0, 1, 2].map(c => h * A_STAR[c] + kk * B_STAR[c] + l * C_STAR[c]);
+};
+
+for(const streamed of [false, true]){
+  const mode = streamed ? "streamed" : "in memory";
+  test(`skewed Q grids from non-orthogonal cells get affine grid vectors (${mode})`, async () => {
+    const app = loadApp(streamed ? {streamThreshold:0} : {});
+    const shape = [9, 7, 5];
+    const res = await app.parseFile(textFile("hexagonal_d3d.dat", indexedText(shape, hexQ)));
+    assertValues(res, shape);
+    assert.ok(res.gridVectors, "grid vectors were fitted");
+    for(const [i, j, k] of [[0, 0, 0], [8, 0, 0], [0, 6, 0], [3, 5, 4], [8, 6, 4]]){
+      const p = app.pointAtIndex(res, i, j, k), q = hexQ(i, j, k);
+      for(let c=0;c<3;c++) assertClose(p[c], q[c], 2e-6, `Q component ${c} at ${i},${j},${k}`);
+    }
+  });
+}
+
+test("axis-aligned indexed grids keep separable axes", async () => {
+  const app = loadApp();
+  const shape = [4, 3, 5];
+  const res = await app.parseFile(textFile("cubic_d3d.dat", indexedText(shape, (i, j, k) => [i * 0.1, j * 0.1, k * 0.1])));
+  assert.equal(res.gridVectors, undefined);
+});
