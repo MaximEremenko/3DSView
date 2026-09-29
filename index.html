@@ -504,6 +504,11 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
           <div class="fine">Shown volume</div>
           <div class="btns" id="volumeExports">
             <button id="saveUnified" class="alt" disabled>Unified .h5</button>
+            <button id="saveYell" class="alt" disabled title="Yell 1.0 HDF5 (DISCUS, Yell, Meerkat)">Yell .h5</button>
+            <button id="saveOldDat" class="alt" disabled title="RMCProfile old 3-D diffuse text: i j k qx qy qz I, Cartesian Q">RMCProfile .dat</button>
+            <button id="saveVtk" class="alt" disabled title="Scatty-style VTK STRUCTURED_POINTS in Cartesian Q (axis-aligned grids)">VTK</button>
+            <button id="saveCube" class="alt" disabled title="Gaussian cube for ChimeraX / ParaView">Cube</button>
+            <button id="saveJson" class="alt" disabled title="3DSView JSON volume">JSON</button>
           </div>
         </div>
       </details>
@@ -1417,14 +1422,16 @@ function flatNumericArray(value){
     });
   }
   if(Array.isArray(value) && value.every(v => !Array.isArray(v) && !ArrayBuffer.isView(v))){
+    // JSON writes empty values as null, which Number() would turn into 0.
     return Float64Array.from(value, v => {
-      const n = Number(v);
+      const n = v === null ? NaN : Number(v);
       return Number.isFinite(n) ? n : NaN;
     });
   }
   const out = [];
   const walk = (v) => {
-    if(v === null || v === undefined) return;
+    if(v === null){ out.push(NaN); return; }
+    if(v === undefined) return;
     if(ArrayBuffer.isView(v)){
       for(let i=0;i<v.length;i++){
         const n = Number(v[i]);
@@ -1523,9 +1530,17 @@ function parseJsonVolume(name, text){
   const hAxis = axisFromPayload(payload, ["hAxis","xAxis","qxAxis","qAxis0","axis0"], nH);
   const kAxis = axisFromPayload(payload, ["kAxis","yAxis","qyAxis","qAxis1","axis1"], nK);
   const lAxis = axisFromPayload(payload, ["lAxis","zAxis","qzAxis","qAxis2","axis2"], nL);
-  const coordKind = inferCoordKind(name, JSON.stringify(Object.keys(payload)), "calculator json");
+  const declared = String(payload.coordKind || "").toLowerCase();
+  const coordKind = ["hkl", "q", "xyz", "uvw"].includes(declared) ? declared : inferCoordKind(name, JSON.stringify(Object.keys(payload)), "calculator json");
   const meta = extractBasisFromPayload(payload);
-  return makeVolumeResult(name, [nH,nK,nL], hAxis, kAxis, lAxis, values, "calculator json", coordKind, null, 0, meta);
+  const origin = flatNumericArray(payload.gridOrigin), vectors = matrixFromFlat(flatNumericArray(payload.gridVectors));
+  if(origin.length >= 3 && vectors) Object.assign(meta, {gridOrigin:Array.from(origin).slice(0, 3), gridVectors:vectors, gridVectorSource:"JSON gridVectors"});
+  if(payload.content || ["xyz", "uvw"].includes(coordKind)){
+    meta.dataKind = dataKindForAxes(classifyDataKind({content:payload.content, name, format:"calculator json", shape:[nH,nK,nL]}), coordKind, [nH,nK,nL]);
+  }
+  if(Array.isArray(payload.axisLabels) && payload.axisLabels.length >= 3) meta.axisLabels = payload.axisLabels.slice(0, 3).map(String);
+  const format = payload.format === "3DSView volume" ? "3DSView JSON volume" : "calculator json";
+  return makeVolumeResult(name, [nH,nK,nL], hAxis, kAxis, lAxis, values, format, coordKind, null, 0, meta);
 }
 
 function parseVtkVolume(name, text){
@@ -5836,7 +5851,7 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","exportName","exportTransparent","savePng","saveSliceSvg","saveCsv","saveUnified","saveYell","saveOldDat","saveVtk","saveCube","saveJson","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
@@ -7035,6 +7050,221 @@ function unifiedExportSpec(res, ranges=displayIndexRanges(res)){
   };
 }
 
+// ---- volume writers; spec is unifiedExportSpec(res): the shown region with
+// corner, step vectors[axis][component] in native coordinates, C-order values
+// (l fastest, hidden zeros restored) and the cell.
+
+function isUnitMetricSpecCell(cell){
+  return cell.slice(0, 3).every(v => Math.abs(v - 1) < 1e-12) && cell.slice(3, 6).every(v => Math.abs(v - 90) < 1e-9);
+}
+
+// Maps native grid coordinates to Cartesian Q in the RMCProfile/Scatty frame
+// (a along x), as the old text format and Scatty VTK store it.
+function rmcQMapping(res, spec){
+  if(isRealSpaceData(res)) throw new Error("real-space volumes cannot be written as Q-space files.");
+  if(res.coordKind === "q") return x => x.slice();
+  if(isUnitMetricSpecCell(spec.cell)) throw new Error("this format stores Cartesian Q; set the unit cell first (Unit Cell tool).");
+  const frame = rmcCartesianFrame(spec.cell);
+  if(!frame) throw new Error("the unit cell is invalid.");
+  return x => mul(x, frame.Bq);
+}
+
+function specPoint(spec, i, j, k){
+  return [0, 1, 2].map(c => spec.corner[c] + i * spec.vectors[0][c] + j * spec.vectors[1][c] + k * spec.vectors[2][c]);
+}
+
+function writeYellBytes(h5, spec, isDirect){
+  const path = `/tmp/yell_${Date.now()}_${Math.random().toString(36).slice(2)}.h5`;
+  let f = new h5.File(path, "w");
+  try{
+    f.create_dataset({name:"format", data:["Yell 1.0"], shape:[1], dtype:"S8"});
+    f.create_dataset({name:"is_direct", data:[isDirect ? 1 : 0], shape:[1], dtype:"<b"});
+    f.create_dataset({name:"lower_limits", data:spec.corner, shape:[3], dtype:"<d"});
+    f.create_dataset({name:"step_sizes", data:[spec.vectors[0][0], spec.vectors[1][1], spec.vectors[2][2]], shape:[3], dtype:"<d"});
+    ["abs", "ord", "top"].forEach((name, axis) => f.create_dataset({name:`step_sizes_${name}`, data:spec.vectors[axis], shape:[3], dtype:"<d"}));
+    f.create_dataset({name:"unit_cell", data:spec.cell, shape:[6], dtype:"<d"});
+    f.create_dataset({name:"data", data:spec.values, shape:spec.dims, dtype:"<d"});
+    f.flush();
+    f.close();
+    f = null;
+    return Uint8Array.from(h5.FS.readFile(path));
+  }finally{
+    try{ if(f) f.close(); }catch(_){}
+    try{ h5.FS.unlink(path); }catch(_){}
+  }
+}
+
+// RMCProfile old 3-D diffuse text: "npoints 1", then "i j k qx qy qz I" rows,
+// 1-based, i fastest, Q Cartesian in 1/A with 2pi; empty voxels are 0.
+function* oldDatChunks(spec, res, linesPerChunk=16384){
+  const toQ = rmcQMapping(res, spec);
+  const [nh, nk, nl] = spec.dims;
+  let out = [`${nh * nk * nl} 1`];
+  for(let k=0;k<nl;k++) for(let j=0;j<nk;j++) for(let i=0;i<nh;i++){
+    const q = toQ(specPoint(spec, i, j, k));
+    const raw = spec.values[(i * nk + j) * nl + k];
+    const v = Number.isFinite(raw) ? raw : 0;
+    out.push(`${i + 1} ${j + 1} ${k + 1} ${q[0].toExponential(9)} ${q[1].toExponential(9)} ${q[2].toExponential(9)} ${v.toExponential(9)}`);
+    if(out.length >= linesPerChunk){
+      yield out.join("\n") + "\n";
+      out = [];
+    }
+  }
+  if(out.length) yield out.join("\n") + "\n";
+}
+
+// Scatty-style legacy VTK STRUCTURED_POINTS: ORIGIN and SPACING in Cartesian
+// Q, x fastest, empty voxels 0. The grid must be axis-aligned in Q.
+function* vtkChunks(spec, res, valuesPerChunk=65536){
+  const toQ = rmcQMapping(res, spec);
+  const origin = toQ(spec.corner), zero = toQ([0, 0, 0]);
+  const spacing = [0, 1, 2].map(axis => {
+    const q = toQ(spec.vectors[axis]).map((v, c) => v - zero[c]);
+    if(spec.dims[axis] <= 1) return 1;
+    const len = normVec(q);
+    if([0, 1, 2].some(c => c !== axis && Math.abs(q[c]) > 1e-6 * len)) throw new Error("the grid axes are not aligned with Cartesian x, y, z in Q, which VTK STRUCTURED_POINTS cannot describe.");
+    if(!(q[axis] > 0)) throw new Error("VTK STRUCTURED_POINTS needs a grid ascending along every axis.");
+    return q[axis];
+  });
+  const [nh, nk, nl] = spec.dims;
+  yield [
+    "# vtk DataFile Version 2.0", "3DSView diffuse scattering", "ASCII", "DATASET STRUCTURED_POINTS",
+    `DIMENSIONS ${nh} ${nk} ${nl}`,
+    `ORIGIN ${origin.map(v => v.toExponential(12)).join(" ")}`,
+    `SPACING ${spacing.map(v => v.toExponential(12)).join(" ")}`,
+    `POINT_DATA ${nh * nk * nl}`, "SCALARS diffuse_scattering float", "LOOKUP_TABLE default"
+  ].join("\n") + "\n";
+  let out = [];
+  for(let k=0;k<nl;k++) for(let j=0;j<nk;j++) for(let i=0;i<nh;i++){
+    const v = spec.values[(i * nk + j) * nl + k];
+    out.push((Number.isFinite(v) ? v : 0).toExponential(9));
+    if(out.length >= valuesPerChunk){
+      yield out.join("\n") + "\n";
+      out = [];
+    }
+  }
+  if(out.length) yield out.join("\n") + "\n";
+}
+
+// Gaussian cube for ChimeraX / ParaView: the grid in the plotted frame (Q for
+// HKL data with a basis), any skew kept, values l fastest, 6 per line.
+function* cubeChunks(spec, res, linesPerChunk=16384){
+  const frame = v => (canTransformHklToQ(res) ? hklToQ(v[0], v[1], v[2], res.Bq) : v.slice());
+  const origin = frame(spec.corner);
+  const steps = spec.vectors.map(frame);
+  yield [
+    `CUBE FILE: 3DSView ${valueLabel(res)} from ${res.file}`,
+    `grid in ${canTransformHklToQ(res) ? "Q (1/Angstrom)" : nativeAxisLabels(res).join(",")}; values ${valueColumnName(res)}`,
+    `0 ${origin.map(v => v.toExponential(9)).join(" ")}`,
+    ...steps.map((v, axis) => `${spec.dims[axis]} ${v.map(x => x.toExponential(9)).join(" ")}`)
+  ].join("\n") + "\n";
+  let out = [], row = [];
+  for(let n=0;n<spec.values.length;n++){
+    const v = spec.values[n];
+    row.push((Number.isFinite(v) ? v : 0).toExponential(6));
+    if(row.length === 6){ out.push(row.join(" ")); row = []; }
+    if(out.length >= linesPerChunk){ yield out.join("\n") + "\n"; out = []; }
+  }
+  if(row.length) out.push(row.join(" "));
+  if(out.length) yield out.join("\n") + "\n";
+}
+
+// JSON volume in the schema parseJsonVolume reads, with the coordinate kind
+// and grid vectors so skewed grids come back intact; empty voxels are null.
+function volumeJson(spec, res){
+  const ranges = displayIndexRanges(res);
+  const axis = n => Array.from([res.h, res.k, res.l][n].slice(ranges[n][0], ranges[n][1] + 1));
+  const payload = {
+    format:"3DSView volume", version:1, source:res.file,
+    coordKind:res.coordKind, content:res.dataKind ? res.dataKind.label : "",
+    shape:spec.dims, hAxis:axis(0), kAxis:axis(1), lAxis:axis(2),
+    gridOrigin:spec.corner, gridVectors:[0, 1, 2].map(c => spec.vectors.map(v => v[c])),
+    // Only a real cell: a placeholder would invent a reciprocal basis on reload.
+    ...(Array.isArray(res.cellDeg) && res.cellDeg.length >= 6 ? {cellDeg:res.cellDeg.slice(0, 6)} : {}),
+    ...(validMatrix3(res.Bq) ? {Bq:res.Bq} : {}),
+    ...(res.axisLabels ? {axisLabels:res.axisLabels} : {}),
+    intensity:Array.from(spec.values, v => (Number.isFinite(v) ? v : null))
+  };
+  return JSON.stringify(payload);
+}
+
+// Big text output goes straight to disk through the File System Access API
+// where the browser has it (Chromium), else into a chunked Blob download.
+async function saveTextChunks(name, chunks, mime){
+  if(typeof window.showSaveFilePicker === "function"){
+    let handle = null;
+    try{
+      handle = await window.showSaveFilePicker({suggestedName:name});
+    }catch(err){
+      if(err && err.name === "AbortError") return false;
+    }
+    if(handle){
+      const writable = await handle.createWritable();
+      try{
+        for(const chunk of chunks) await writable.write(chunk);
+        await writable.close();
+      }catch(err){
+        try{ await writable.abort(); }catch(_){}
+        throw err;
+      }
+      return true;
+    }
+  }
+  const parts = [];
+  for(const chunk of chunks) parts.push(chunk);
+  const url = URL.createObjectURL(new Blob(parts, {type:mime}));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return true;
+}
+
+async function saveVolumeText(kind){
+  if(!state.res) return;
+  const res = state.res;
+  const formats = {
+    dat:{ext:"_d3d.dat", label:"RMCProfile .dat", chunks:spec => oldDatChunks(spec, res)},
+    vtk:{ext:".vtk", label:"VTK", chunks:spec => vtkChunks(spec, res)},
+    cube:{ext:".cube", label:"Gaussian cube", chunks:spec => cubeChunks(spec, res)},
+    json:{ext:".json", label:"JSON", chunks:spec => [volumeJson(spec, res)]}
+  };
+  const f = formats[kind];
+  try{
+    const spec = unifiedExportSpec(res);
+    // Build the first chunk before asking for a file so format errors show at once.
+    const iterator = f.chunks(spec)[Symbol.iterator]();
+    const first = iterator.next();
+    const all = (function*(){ if(!first.done) yield first.value; for(let r = iterator.next(); !r.done; r = iterator.next()) yield r.value; })();
+    status(`Writing ${f.label} ...`);
+    const saved = await saveTextChunks(`${baseName()}${f.ext}`, all, kind === "json" ? "application/json" : "text/plain");
+    if(saved) status(`Saved the shown ${spec.dims.join(" x ")} volume as ${f.label}.`, "ok");
+    else status(`${f.label} export cancelled.`, "warn");
+  }catch(err){
+    status(`${f.label} export failed: ${err.message}`, "err");
+  }
+}
+
+async function saveYell(){
+  if(!state.res) return;
+  const res = state.res;
+  try{
+    if(!isRealSpaceData(res) && res.coordKind !== "hkl") throw new Error("Yell files hold HKL grids; convert Q to HKL first (Unit Cell tool).");
+    const h5 = await ensureH5wasm();
+    const spec = unifiedExportSpec(res);
+    const bytes = writeYellBytes(h5, spec, isRealSpaceData(res));
+    const url = URL.createObjectURL(new Blob([bytes], {type:"application/x-hdf5"}));
+    downloadDataUrl(`${baseName()}_yell.h5`, url);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    status(`Saved the shown ${spec.dims.join(" x ")} volume as Yell 1.0 HDF5.`, "ok");
+  }catch(err){
+    status(`Yell export failed: ${err.message}`, "err");
+  }
+}
+
 async function saveUnified(){
   if(!state.res) return;
   if(!window.UnifiedH5 || typeof window.UnifiedH5.writeData !== "function"){
@@ -7390,6 +7620,11 @@ function bind(){
   $("saveSliceSvg").addEventListener("click", saveSliceSvg);
   $("saveCsv").addEventListener("click", saveCsv);
   $("saveUnified").addEventListener("click", saveUnified);
+  $("saveYell").addEventListener("click", saveYell);
+  $("saveOldDat").addEventListener("click", () => saveVolumeText("dat"));
+  $("saveVtk").addEventListener("click", () => saveVolumeText("vtk"));
+  $("saveCube").addEventListener("click", () => saveVolumeText("cube"));
+  $("saveJson").addEventListener("click", () => saveVolumeText("json"));
   $("savePlaneSvg").addEventListener("click", () => savePlotSvg("plot3dPlane", "plane3d"));
   $("saveIsoSvg").addEventListener("click", () => savePlotSvg("plot3dIso", "iso3d"));
   $("themeToggle").textContent = isLightTheme() ? "🌙" : "☀️";

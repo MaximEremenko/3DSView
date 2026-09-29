@@ -73,10 +73,17 @@ and slab-average slicing with linked 2-D and 3-D views.
     embedded slice image; and CSV, with native coordinates, u/v for plane slices, Q when
     a reciprocal basis is known, and the value.
   - **3-D views:** SVG snapshots and standalone interactive HTML copies of either 3-D plot.
-  - **Shown (cropped) volume:** a unified HDF5 file (`*_unified.h5`, written in the
-    browser via `js/unified_hdf5.js` and h5wasm). The experiment type is kept from the
-    source file, and the cell is derived from the reciprocal basis when only a basis is
-    known.
+  - **Shown (cropped) volume:**
+    - Unified HDF5 (`*_unified.h5`, written in the browser via `js/unified_hdf5.js` and
+      h5wasm). The experiment type is kept from the source file, and the cell is derived
+      from the reciprocal basis when only a basis is known.
+    - Yell 1.0 HDF5, with full step vectors, so skewed grids survive.
+    - RMCProfile old `.dat` (`i j k qx qy qz I`, Cartesian Q with a along x).
+    - Scatty-style VTK (Cartesian Q; the grid must be axis-aligned in Q).
+    - Gaussian `.cube` (Q frame, any skew).
+    - 3DSView JSON, which the JSON loader reads back with its grid and coordinate kind.
+    - Empty voxels are written as 0 in the text formats. Large text files stream straight
+      to disk in browsers with the File System Access API.
   - **File name and backgrounds:** a file-name field overrides the default base name,
     and **Transparent background** drops the page colour from PNG, SVG and HTML output.
 
