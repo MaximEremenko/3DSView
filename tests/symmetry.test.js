@@ -1,0 +1,149 @@
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const {loadApp} = require("./harness");
+const {code, assertClose} = require("./fixtures");
+
+const axis = (n, lo, step) => Array.from({length:n}, (_, i) => lo + i * step);
+
+// An HKL (or other) volume with values code(i, j, k) on the given axes.
+function volume(app, {name="volume.h5", h, k, l, coordKind="hkl", meta={}, value=code}){
+  const shape = [h.length, k.length, l.length];
+  const values = new Float64Array(shape[0] * shape[1] * shape[2]);
+  let p = 0;
+  for(let i=0;i<shape[0];i++) for(let j=0;j<shape[1];j++) for(let q=0;q<shape[2];q++) values[p++] = value(i, j, q);
+  return app.context.makeVolumeResult(name, shape, h, k, l, values, "test", coordKind, null, 0, meta);
+}
+
+// Mean of the data over the images of voxel (i, j, k) that land on the grid.
+function orbitMean(app, res, cls, i, j, k){
+  // Each operator counts once, as in the average, so repeated images repeat.
+  const hkl = [res.h[i], res.k[j], res.l[k]], values = [];
+  for(const R of app.context.laueGroup(cls)){
+    const p = app.context.mul(hkl, R);
+    const idx = [res.h, res.k, res.l].map((ax, a) => Array.from(ax).findIndex(v => Math.abs(v - p[a]) < 1e-9));
+    if(idx.some(v => v < 0)) continue;
+    const v = res.I[(idx[0] * res.shape[1] + idx[1]) * res.shape[2] + idx[2]];
+    if(Number.isFinite(v)) values.push(v);
+  }
+  return values.reduce((s, v) => s + v, 0) / values.length;
+}
+
+test("every Laue class closes into a group of the right order", () => {
+  const app = loadApp();
+  const orders = {"-1":2, "2/m_b":4, "2/m_c":4, "mmm":8, "4/m":8, "4/mmm":16, "-3":6, "-3m1":12, "-31m":12, "-3R":6, "-3mR":12, "6/m":12, "6/mmm":24, "m-3":24, "m-3m":48};
+  for(const [cls, n] of Object.entries(orders)) assert.equal(app.context.laueGroup(cls).length, n, cls);
+});
+
+test("m-3m averages each voxel over its orbit on a cubic grid", async () => {
+  const app = loadApp();
+  const ax = axis(5, -1, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax});
+  const out = await app.context.symmetrizeVolume(res, "m-3m", "average");
+  assert.equal(out.used, 48);
+  assert.equal(out.skipped, 0);
+  const at = (i, j, k) => out.I[(i * 5 + j) * 5 + k];
+  for(const [i, j, k] of [[3, 4, 1], [0, 2, 4], [2, 2, 2], [4, 4, 4]]){
+    assertClose(at(i, j, k), orbitMean(app, res, "m-3m", i, j, k), 1e-9, `orbit mean at ${i},${j},${k}`);
+  }
+  // Symmetry-equivalent voxels agree: (0.5, 1, -0.5) ~ (1, -0.5, 0.5) ~ (-1, 0.5, 0.5).
+  assertClose(at(3, 4, 1), at(4, 1, 3), 1e-12, "cyclic permutation");
+  assertClose(at(3, 4, 1), at(0, 3, 3), 1e-12, "signed permutation");
+});
+
+test("fill mode keeps measured voxels and fills empty ones from their equivalents", async () => {
+  const app = loadApp();
+  const ax = axis(5, -1, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax});
+  const hole = (4 * 5 + 3) * 5 + 2;             // (1, 0.5, 0)
+  const measured = res.I[(1 * 5 + 2) * 5 + 0];  // (-0.5, 0, -1)
+  res.I[hole] = NaN;
+  const out = await app.context.symmetrizeVolume(res, "4/mmm", "fill");
+  assert.equal(out.filled, 1);
+  assert.equal(out.I[(1 * 5 + 2) * 5 + 0], measured, "measured voxel unchanged");
+  assertClose(out.I[hole], orbitMean(app, res, "4/mmm", 4, 3, 2), 1e-9, "hole filled with the mean of its equivalents");
+  assert.ok(Number.isNaN(res.I[hole]), "the data itself is not changed");
+});
+
+test("operators that do not map the grid onto itself are skipped", async () => {
+  const app = loadApp();
+  const hk = axis(5, -1, 0.5), l = axis(3, -1, 1);
+  const res = volume(app, {h:hk, k:hk, l});
+  const {total, skipped} = app.context.gridSymmetryMaps(res, "m-3m");
+  // Only the operators that keep L along L (the 4/mmm subgroup) fit.
+  assert.equal(total, 48);
+  assert.equal(total - skipped, 16);
+  const off = volume(app, {h:axis(5, -0.9, 0.5), k:hk, l:hk});
+  assert.equal(app.context.gridSymmetryMaps(off, "mmm").skipped, 4, "a grid not centred on 0 loses the sign flips of its axis");
+});
+
+test("hexagonal classes work on HKL grids and need a cell for Q grids", async () => {
+  const app = loadApp();
+  const hk = axis(5, -1, 0.5), l = axis(3, -0.5, 0.5);
+  const res = volume(app, {h:hk, k:hk, l});
+  const maps = app.context.gridSymmetryMaps(res, "6/mmm");
+  assert.equal(maps.total - maps.skipped, 24);
+  const out = await app.context.symmetrizeVolume(res, "6/mmm", "average");
+  // (0.5, 0, 0) ~ (0, -0.5, 0) under the threefold (k, -h-k, l) and the inversion.
+  const at = (i, j, q) => out.I[(i * 5 + j) * 3 + q];
+  assertClose(at(3, 2, 1), at(2, 1, 1), 1e-12, "threefold image");
+  const q = volume(app, {h:hk, k:hk, l, coordKind:"q"});
+  assert.throws(() => app.context.gridSymmetryMaps(q, "6/mmm"), /unit cell/);
+  assert.equal(app.context.gridSymmetryMaps(q, "m-3").skipped, 0, "cubic classes work on Cartesian Q with a along x");
+});
+
+test("projected axes such as [H,H,0] get the operators in their own frame", () => {
+  const app = loadApp();
+  const ax = axis(5, -1, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax, meta:{projectionW:[[1, 1, 0], [-1, 1, 0], [0, 0, 1]]}});
+  const {total, skipped} = app.context.gridSymmetryMaps(res, "4/mmm");
+  assert.equal(total, 16);
+  assert.equal(skipped, 0);
+});
+
+test("sigma of a symmetrized voxel is that of the mean", async () => {
+  const app = loadApp();
+  const ax = axis(3, -0.5, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax});
+  res.sigma = new Float64Array(res.I.length).fill(0.3);
+  const out = await app.context.symmetrizeVolume(res, "mmm", "average");
+  const v = (2 * 3 + 2) * 3 + 2;  // (0.5, 0.5, 0.5): 8 distinct images
+  assert.equal(out.count[v], 8);
+  assertClose(out.sigma[v], 0.3 / Math.sqrt(8), 1e-12, "sigma of the mean of 8");
+});
+
+test("uneven grids are refused", () => {
+  const app = loadApp();
+  const res = volume(app, {h:[-1, -0.4, 0, 0.5, 1], k:axis(5, -1, 0.5), l:axis(5, -1, 0.5)});
+  assert.throws(() => app.context.gridSymmetryMaps(res, "-1"), /regular grid/);
+});
+
+test("the Laue class is suggested from the file name or the cell", () => {
+  const app = loadApp();
+  const ax = axis(3, -0.5, 0.5);
+  const s = app.context.suggestLaueClass;
+  assert.equal(s(volume(app, {name:"PMN_x0p0_300K_cc_m-3m.nxs", h:ax, k:ax, l:ax})).cls, "m-3m");
+  assert.equal(s(volume(app, {name:"CuAu_Fm-3m_sym.h5", h:ax, k:ax, l:ax})).cls, "m-3m");
+  assert.equal(s(volume(app, {name:"tetra.h5", h:ax, k:ax, l:ax, meta:{cellDeg:[4, 4, 6, 90, 90, 90]}})).cls, "4/mmm");
+  assert.equal(s(volume(app, {name:"hex.h5", h:ax, k:ax, l:ax, meta:{cellDeg:[3, 3, 5, 90, 90, 120]}})).cls, "6/mmm");
+  assert.equal(s(volume(app, {name:"plain.h5", h:ax, k:ax, l:ax})).cls, "-1");
+});
+
+test("the deviation and equivalents views derive from the symmetrized result", async () => {
+  const app = loadApp();
+  const ax = axis(5, -1, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax});
+  app.state.res = res;
+  app.state.sym = await app.context.symmetrizeVolume(res, "m-3m", "average");
+  const dev = app.context.buildView("symdev");
+  const count = app.context.buildView("symcount");
+  const sym = app.context.buildView("sym");
+  assert.equal(dev.valueName, "Data − symmetrized");
+  for(const v of [0, 17, 62, 124]){
+    assertClose(dev.I[v], res.I[v] - app.state.sym.mean[v], 1e-12, `deviation at ${v}`);
+    assert.equal(count.I[v], app.state.sym.count[v]);
+  }
+  assert.equal(count.I[62], 48, "the centre (0,0,0) is its own image 48 times");
+  assert.equal(sym.columnName, "intensity_symmetrized");
+  assert.equal(sym.fileTag, "_sym");
+});

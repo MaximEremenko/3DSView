@@ -343,6 +343,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
     <button type="button" data-tab="slice" title="Slice geometry and the shown volume"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>Slice</button>
     <button type="button" data-tab="levels" title="Colour levels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>Levels</button>
     <button type="button" data-tab="render" title="3-D rendering"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>3-D</button>
+    <button type="button" data-tab="process" title="Symmetry and other processing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="M9 7l-5 5 5 5z"/><path d="M15 7l5 5-5 5z"/></svg>Process</button>
     <button type="button" data-tab="export" title="Save images and volumes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Export</button>
   </nav>
 
@@ -571,6 +572,37 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       </div>
     </section>
 
+    <section class="page" data-page="process">
+      <div class="group">
+        <h3>Symmetry</h3>
+        <label>Laue class
+          <select id="laueClass" disabled>
+            <optgroup label="Triclinic"><option value="-1" selected>&minus;1 (Friedel pairs)</option></optgroup>
+            <optgroup label="Monoclinic"><option value="2/m_b">2/m (b unique)</option><option value="2/m_c">2/m (c unique)</option></optgroup>
+            <optgroup label="Orthorhombic"><option value="mmm">mmm</option></optgroup>
+            <optgroup label="Tetragonal"><option value="4/m">4/m</option><option value="4/mmm">4/mmm</option></optgroup>
+            <optgroup label="Trigonal, hexagonal axes"><option value="-3">&minus;3</option><option value="-3m1">&minus;3m1</option><option value="-31m">&minus;31m</option></optgroup>
+            <optgroup label="Trigonal, rhombohedral axes"><option value="-3R">&minus;3 (R)</option><option value="-3mR">&minus;3m (R)</option></optgroup>
+            <optgroup label="Hexagonal"><option value="6/m">6/m</option><option value="6/mmm">6/mmm</option></optgroup>
+            <optgroup label="Cubic"><option value="m-3">m&minus;3</option><option value="m-3m">m&minus;3m</option></optgroup>
+          </select>
+        </label>
+        <div id="laueHint" class="fine">Load data to symmetrize it.</div>
+        <label>Result
+          <select id="symMode" disabled>
+            <option value="average" selected>Average the equivalents</option>
+            <option value="fill">Fill empty voxels only</option>
+          </select>
+        </label>
+        <div class="btns">
+          <button id="symApply" disabled>Symmetrize</button>
+          <button id="symClear" class="alt" disabled>Clear</button>
+        </div>
+        <div id="symInfo" class="mono fine"></div>
+        <p class="fine">Each voxel is averaged with its symmetry equivalents that hold data; empty voxels stay out of the average. <b>Fill empty voxels only</b> keeps the measured values and fills the gaps; with &minus;1 it completes Friedel pairs. Then pick <b>Data &minus; symmetrized</b> above the map to see where the data break the symmetry, or <b>Equivalents found</b> for the coverage. Exports save the values on show.</p>
+      </div>
+    </section>
+
     <section class="page" data-page="export">
       <div class="group">
         <h3>Names</h3>
@@ -611,6 +643,14 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
   <main class="work" id="work" data-layout="split">
     <section class="mapPanel" id="mapPanel">
       <div class="mapBar" id="mapBar">
+        <select id="showMode" disabled title="Values shown: the data, or a volume derived from it">
+          <option value="data" selected>Data</option>
+          <option value="sym">Symmetrized</option>
+          <option value="symdev">Data &minus; symmetrized</option>
+          <option value="symcount">Equivalents found</option>
+          <option value="sigma">&sigma;</option>
+          <option value="snr">I/&sigma;</option>
+        </select>
         <select id="sliceMode" disabled title="Slice mode">
           <option value="axis" selected>Axis slice</option>
           <option value="plane">Normal plane</option>
@@ -857,7 +897,12 @@ const state = {
   stepTimer:0,
   axisIndex:{},
   lastHist:null,
-  histDrag:null
+  histDrag:null,
+  showMode:"data",
+  sym:null,
+  symBusy:false,
+  viewDisplaySaved:null,
+  laueGuess:null
 };
 
 const COLOR_MAPS = {
@@ -1322,6 +1367,7 @@ function valueLabel(res=state.res){
 }
 
 function valueColumnName(res=state.res){
+  if(res && res.columnName) return res.columnName;
   const name = {"\u03c3":"sigma", "I/\u03c3":"i_over_sigma"}[valueLabel(res)] || valueLabel(res);
   return name.toLowerCase().replace(/\u2212/g, "minus").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value";
 }
@@ -4241,13 +4287,16 @@ function viewRes(){
 
 const VIEW_NAMES = {
   sigma:"\u03c3", snr:"I/\u03c3",
-  cmp:"Comparison", diff:"Data \u2212 comparison", ratio:"Data / comparison", resid:"(Data \u2212 comparison)/\u03c3"
+  cmp:"Comparison", diff:"Data \u2212 comparison", ratio:"Data / comparison", resid:"(Data \u2212 comparison)/\u03c3",
+  symdev:"Data \u2212 symmetrized", symcount:"Equivalents found"
 };
-const SIGNED_VIEWS = new Set(["diff", "resid"]);
+const VIEW_COLUMNS = {sigma:"sigma", snr:"i_over_sigma", cmp:"comparison", diff:"data_minus_comparison", ratio:"data_over_comparison", resid:"normalized_residual"};
+const SIGNED_VIEWS = new Set(["diff", "resid", "symdev"]);
 
 // Builds the volume for a Show mode on the data grid; null for the data itself.
 function buildView(mode, res=state.res){
   if(!res || !mode || mode === "data") return null;
+  if(mode === "sym" || mode === "symdev" || mode === "symcount") return buildSymView(mode, res);
   const n = res.I.length, I = res.I, sig = res.sigma;
   const cmp = state.cmpAligned, fit = state.cmpFit || {scale:1, offset:0};
   const needs = {sigma:sig, snr:sig, cmp, diff:cmp, ratio:cmp, resid:cmp && sig};
@@ -4265,7 +4314,273 @@ function buildView(mode, res=state.res){
     out[i] = Number.isFinite(v) ? v : NaN;
   }
   const b = finiteBounds(out);
-  const view = {...res, I:out, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma:null, valueName:VIEW_NAMES[mode], viewMode:mode};
+  const view = {...res, I:out, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma:null,
+    valueName:VIEW_NAMES[mode], columnName:VIEW_COLUMNS[mode], fileTag:`_${mode}`, viewMode:mode};
+  view.global = computeGlobalDisplayBounds(view);
+  return view;
+}
+
+// ---- Crystal symmetry: Laue-class averaging on the data grid
+
+// Generators act on Miller indices as row vectors, h' = h·R. Trigonal and
+// hexagonal classes use hexagonal axes unless marked rhombohedral, and every
+// class gets the inversion. "oblique" classes need the crystal frame, so
+// Cartesian data without a cell cannot use them.
+const LAUE_CLASSES = (() => {
+  const R3 = [[0,-1,0],[1,-1,0],[0,0,1]];     // (h,k,l) -> (k, -h-k, l)
+  const R4 = [[0,1,0],[-1,0,0],[0,0,1]];      // -> (-k, h, l)
+  const C3 = [[0,1,0],[0,0,1],[1,0,0]];       // -> (l, h, k)
+  const SWAP = [[0,1,0],[1,0,0],[0,0,1]];     // -> (k, h, l)
+  const SWAP_L = [[0,1,0],[1,0,0],[0,0,-1]];  // -> (k, h, -l)
+  const TWO_A = [[1,0,0],[0,-1,0],[0,0,-1]];
+  const TWO_B = [[-1,0,0],[0,1,0],[0,0,-1]];
+  const TWO_C = [[-1,0,0],[0,-1,0],[0,0,1]];
+  return {
+    "-1":{label:"−1", gens:[]},
+    "2/m_b":{label:"2/m (b unique)", gens:[TWO_B]},
+    "2/m_c":{label:"2/m (c unique)", gens:[TWO_C]},
+    "mmm":{label:"mmm", gens:[TWO_A, TWO_B]},
+    "4/m":{label:"4/m", gens:[R4]},
+    "4/mmm":{label:"4/mmm", gens:[R4, TWO_A]},
+    "-3":{label:"−3", gens:[R3], oblique:true},
+    "-3m1":{label:"−3m1", gens:[R3, SWAP_L], oblique:true},
+    "-31m":{label:"−31m", gens:[R3, SWAP], oblique:true},
+    "-3R":{label:"−3 (rhombohedral axes)", gens:[C3], oblique:true},
+    "-3mR":{label:"−3m (rhombohedral axes)", gens:[C3, SWAP], oblique:true},
+    "6/m":{label:"6/m", gens:[R3, TWO_C], oblique:true},
+    "6/mmm":{label:"6/mmm", gens:[R3, TWO_C, SWAP], oblique:true},
+    "m-3":{label:"m−3", gens:[TWO_A, TWO_B, C3]},
+    "m-3m":{label:"m−3m", gens:[R4, C3, TWO_A]}
+  };
+})();
+
+// All operators of a Laue class, as integer 3x3 matrices acting on Miller indices.
+function laueGroup(cls){
+  const def = LAUE_CLASSES[cls];
+  if(!def) throw new Error(`Unknown Laue class "${cls}".`);
+  const key = m => m.map(row => row.join(",")).join(";");
+  const group = [[[1,0,0],[0,1,0],[0,0,1]]], seen = new Set([key(group[0])]);
+  const gens = [...def.gens, [[-1,0,0],[0,-1,0],[0,0,-1]]];
+  for(let n=0;n<group.length;n++){
+    for(const g of gens){
+      const p = group[n].map(row => mul(row, g));
+      const k = key(p);
+      if(!seen.has(k)){ seen.add(k); group.push(p); }
+    }
+  }
+  return group;
+}
+
+// Reciprocal basis in plain HKL: a projected file (axes such as [H,H,0])
+// stores W·Bq.
+function unprojectedBq(res){
+  if(!res || !validMatrix3(res.Bq)) return null;
+  if(!validMatrix3(res.projectionW)) return res.Bq;
+  try{ return inv3(res.projectionW).map(row => mul(row, res.Bq)); }catch(_){ return null; }
+}
+
+// The Laue operators in the data's own coordinates, p' = p·M. The group acts
+// on Miller indices in reciprocal space and on fractional coordinates in
+// real space (as Rᵀ); crystal coordinates c relate to native ones by c = p·T.
+function nativeLaueOps(res, cls){
+  const def = LAUE_CLASSES[cls];
+  if(!def) throw new Error(`Unknown Laue class "${cls}".`);
+  const direct = isRealSpaceData(res), kind = String(res.coordKind || "").toLowerCase();
+  let T = null;
+  if(!direct){
+    if(kind === "hkl") T = validMatrix3(res.projectionW) ? res.projectionW : null;
+    else if(validMatrix3(res.Bq)) T = inv3(res.Bq);
+    else if(def.oblique) throw new Error("Trigonal and hexagonal classes need the unit cell for Q data; enter it under Data, Unit cell.");
+  }else if(kind !== "uvw" && !(res.h5 && res.h5.isDirect)){
+    if(validMatrix3(res.Bp)) T = inv3(res.Bp);
+    else if(def.oblique) throw new Error("Trigonal and hexagonal classes need the cell for Cartesian real-space data.");
+  }
+  const Ti = T ? inv3(T) : null;
+  return laueGroup(cls).map(R => {
+    const Rc = direct ? transpose3(R) : R;
+    return T ? T.map(row => mul(mul(row, Rc), Ti)) : Rc;
+  });
+}
+
+// Integer index maps idx' = idx·A + t for the operators that carry the grid
+// onto itself, to within a small fraction of a step anywhere on it. The
+// others are skipped: a swap of two axes needs equal steps and matching
+// ranges on them, and a sign flip needs a grid centred on zero.
+function gridSymmetryMaps(res, cls){
+  const shape = res.shape, o = pointAtIndex(res, 0, 0, 0);
+  const G = [0, 1, 2].map(a => {
+    if(shape[a] < 2) return null;
+    const at = [0, 0, 0];
+    at[a] = 1;
+    const p = pointAtIndex(res, at[0], at[1], at[2]);
+    return p.map((v, c) => v - o[c]);
+  });
+  const known = G.filter(Boolean);
+  const size = known.length ? known.reduce((s, v) => s + normVec(v), 0) / known.length : 1;
+  for(let a=0;a<3;a++){
+    if(G[a]) continue;
+    // A single-point axis gets a step of the usual size across the other two.
+    const others = G.filter((v, b) => v && b !== a);
+    let d = others.length === 2 ? cross(others[0], others[1]) : null;
+    if(!d || normVec(d) < 1e-12) d = [0, 1, 2].map(c => (c === a ? 1 : 0));
+    const n = normVec(d);
+    G[a] = d.map(v => v / n * size);
+  }
+  let Gi;
+  try{ Gi = inv3(G); }catch(_){ throw new Error("The grid steps are degenerate."); }
+  const corners = [[0,0,0], [shape[0]-1,0,0], [0,shape[1]-1,0], [0,0,shape[2]-1], [shape[0]-1,shape[1]-1,shape[2]-1]];
+  for(const corner of corners){
+    const p = pointAtIndex(res, corner[0], corner[1], corner[2]);
+    const idx = mul(p.map((v, c) => v - o[c]), Gi);
+    if(idx.some((v, c) => Math.abs(v - corner[c]) > 0.05)) throw new Error("Symmetrizing needs a regular grid; the steps along an axis are uneven.");
+  }
+  const mapped = (idx, A, t) => [0, 1, 2].map(c => t[c] + idx[0] * A[0][c] + idx[1] * A[1][c] + idx[2] * A[2][c]);
+  const ops = nativeLaueOps(res, cls), maps = [];
+  for(const M of ops){
+    const A = G.map(row => mul(mul(row, M), Gi));
+    const t = mul(mul(o, M).map((v, c) => v - o[c]), Gi);
+    const Ar = A.map(row => row.map(Math.round)), tr = t.map(Math.round);
+    let worst = 0;
+    for(const corner of corners){
+      const exact = mapped(corner, A, t), whole = mapped(corner, Ar, tr);
+      for(let c=0;c<3;c++) worst = Math.max(worst, Math.abs(exact[c] - whole[c]));
+    }
+    if(worst <= 0.05) maps.push({A:Ar, t:tr});
+  }
+  return {maps, total:ops.length, skipped:ops.length - maps.length};
+}
+
+// Averages every voxel with its symmetry equivalents that hold data (the
+// voxel itself included); empty voxels stay out of the average. "fill" keeps
+// the measured values and fills only the empty voxels. σ of a mean of n
+// values is sqrt(Σσ²)/n. onStep(done, total) runs after each operator.
+async function symmetrizeVolume(res, cls, mode="average", onStep=null){
+  const {maps, total, skipped} = gridSymmetryMaps(res, cls);
+  const [n0, n1, n2] = res.shape, N = res.I.length, I = res.I, sig = res.sigma || null;
+  const sum = new Float64Array(N), count = new Uint8Array(N), sig2 = sig ? new Float64Array(N) : null;
+  // Along a row of the last axis the image moves by a fixed step, so the run
+  // of k whose image stays on the grid is found once per row: the first and
+  // last k with 0 <= u + k·d <= n - 1.
+  const first = (u, d, n) => (d === 0 ? (u >= 0 && u < n ? 0 : n2) : d > 0 ? Math.max(0, Math.ceil(-u / d)) : Math.max(0, Math.ceil((n - 1 - u) / d)));
+  const last = (u, d, n) => (d === 0 ? (u >= 0 && u < n ? n2 - 1 : -1) : d > 0 ? Math.floor((n - 1 - u) / d) : Math.floor(-u / d));
+  for(let m=0;m<maps.length;m++){
+    const {A, t} = maps[m];
+    const a00 = A[0][0], a01 = A[0][1], a02 = A[0][2], a10 = A[1][0], a11 = A[1][1], a12 = A[1][2], a20 = A[2][0], a21 = A[2][1], a22 = A[2][2];
+    const step = (a20 * n1 + a21) * n2 + a22;
+    for(let i=0;i<n0;i++){
+      const b0 = t[0] + i * a00, b1 = t[1] + i * a01, b2 = t[2] + i * a02;
+      for(let j=0;j<n1;j++){
+        const u0 = b0 + j * a10, u1 = b1 + j * a11, u2 = b2 + j * a12;
+        const lo = Math.max(first(u0, a20, n0), first(u1, a21, n1), first(u2, a22, n2));
+        const hi = Math.min(n2 - 1, last(u0, a20, n0), last(u1, a21, n1), last(u2, a22, n2));
+        if(lo > hi) continue;
+        const row = (i * n1 + j) * n2;
+        let src = (u0 * n1 + u1) * n2 + u2 + lo * step;
+        if(sig2){
+          for(let k=lo;k<=hi;k++, src += step){
+            const x = I[src];
+            if(x !== x) continue;
+            const v = row + k, e = sig[src];
+            sum[v] += x;
+            count[v]++;
+            sig2[v] += e * e;
+          }
+        }else{
+          for(let k=lo;k<=hi;k++, src += step){
+            const x = I[src];
+            if(x !== x) continue;
+            sum[row + k] += x;
+            count[row + k]++;
+          }
+        }
+      }
+    }
+    if(onStep) await onStep(m + 1, maps.length);
+  }
+  const mean = new Float64Array(N), meanSigma = sig2 ? new Float64Array(N) : null;
+  let covered = 0, equivalents = 0, filled = 0;
+  for(let v=0;v<N;v++){
+    const c = count[v];
+    mean[v] = c ? sum[v] / c : NaN;
+    if(meanSigma) meanSigma[v] = c ? Math.sqrt(sig2[v]) / c : NaN;
+    if(c){ covered++; equivalents += c; if(I[v] !== I[v]) filled++; }
+  }
+  let out = mean, outSigma = meanSigma;
+  if(mode === "fill"){
+    out = Float64Array.from(I);
+    outSigma = sig ? Float64Array.from(sig) : null;
+    for(let v=0;v<N;v++){
+      if(out[v] === out[v] || !count[v]) continue;
+      out[v] = mean[v];
+      if(outSigma) outSigma[v] = meanSigma[v];
+    }
+  }
+  return {res, cls, mode, I:out, mean, count, sigma:outSigma, used:maps.length, total, skipped, covered, filled,
+    meanEquivalents:covered ? equivalents / covered : 0};
+}
+
+// A likely Laue class: one named in the file name (symmetrized files often
+// carry it, e.g. "_m-3m"), else the highest one the cell's metric allows,
+// else −1.
+const LAUE_NAME_TOKENS = {
+  "m-3m":"m-3m", "m3m":"m-3m", "m-3":"m-3", "6/mmm":"6/mmm", "6mmm":"6/mmm", "6/m":"6/m",
+  "4/mmm":"4/mmm", "4mmm":"4/mmm", "4/m":"4/m", "-3m1":"-3m1", "-31m":"-31m", "mmm":"mmm", "-1":"-1"
+};
+function suggestLaueClass(res){
+  const stem = String(res && res.file || "").replace(/\.[^.]+$/, "").toLowerCase();
+  for(const raw of stem.split(/[_\s.,()]+/)){
+    // Space-group style tokens carry a lattice letter: fm-3m, p6mmm.
+    for(const token of [raw, raw.replace(/^[pfibcar]/, "")]){
+      if(LAUE_NAME_TOKENS[token]) return {cls:LAUE_NAME_TOKENS[token], source:"the file name"};
+    }
+  }
+  const cell = res && (Array.isArray(res.cellDeg) && res.cellDeg.length >= 6 ? res.cellDeg.map(Number) : cellFromBq(unprojectedBq(res)));
+  if(cell && cell.every(Number.isFinite)){
+    const [a, b, c, al, be, ga] = cell;
+    const same = (x, y) => Math.abs(x - y) <= 2e-3 * Math.max(Math.abs(x), Math.abs(y));
+    const deg = (x, y) => Math.abs(x - y) < 0.05;
+    const right = deg(al, 90) && deg(be, 90) && deg(ga, 90);
+    let cls = "-1";
+    if(right && same(a, b) && same(b, c)) cls = "m-3m";
+    else if(right && same(a, b)) cls = "4/mmm";
+    else if(deg(al, 90) && deg(be, 90) && deg(ga, 120) && same(a, b)) cls = "6/mmm";
+    else if(same(a, b) && same(b, c) && deg(al, be) && deg(be, ga)) cls = "-3mR";
+    else if(right) cls = "mmm";
+    else if(deg(al, 90) && deg(ga, 90)) cls = "2/m_b";
+    else if(deg(al, 90) && deg(be, 90)) cls = "2/m_c";
+    return {cls, source:"the unit cell (the highest class its metric allows)"};
+  }
+  return {cls:"-1", source:null};
+}
+
+// Volume for a symmetry Show mode: the symmetrized values, their deviation
+// from the data, or the number of equivalents found per voxel.
+function buildSymView(mode, res){
+  const s = state.sym;
+  if(!s || s.res !== res) return null;
+  const n = res.I.length;
+  let I, sigma = null, valueName, columnName;
+  if(mode === "sym"){
+    I = s.I;
+    sigma = s.sigma;
+    valueName = `${valueLabel(res)} (${LAUE_CLASSES[s.cls].label} ${s.mode === "fill" ? "filled" : "averaged"})`;
+    columnName = `${valueColumnName(res)}_symmetrized`;
+  }else if(mode === "symdev"){
+    I = new Float64Array(n);
+    for(let i=0;i<n;i++){
+      const d = res.I[i] - s.mean[i];
+      I[i] = Number.isFinite(d) ? d : NaN;
+    }
+    valueName = VIEW_NAMES.symdev;
+    columnName = "symmetry_deviation";
+  }else{
+    I = Float64Array.from(s.count);
+    valueName = VIEW_NAMES.symcount;
+    columnName = "equivalents";
+  }
+  const b = finiteBounds(I);
+  const view = {...res, I, rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled, zeroMask:null, zeroMasked:0, sigma,
+    valueName, columnName, fileTag:{sym:"_sym", symdev:"_symdev", symcount:"_symcount"}[mode], viewMode:mode};
   view.global = computeGlobalDisplayBounds(view);
   return view;
 }
@@ -5116,9 +5431,10 @@ function buildAvgVolSlice(res, resOverride=null, include3d=true, options={}){
 
 function currentSlice(resOverride=null, axisCellCap=MAX_AXIS_SLICE_CELLS, include3d=true, options={}){
   if(!state.res) return null;
-  if($("sliceMode").value === "plane") return buildNormalPlaneSlice(state.res, resOverride, include3d);
-  if($("sliceMode").value === "avgvol") return buildAvgVolSlice(state.res, resOverride, include3d, options);
-  return buildAxisSlice(state.res, $("axis").value, Number($("idx").value), axisCellCap, include3d);
+  const res = viewRes();
+  if($("sliceMode").value === "plane") return buildNormalPlaneSlice(res, resOverride, include3d);
+  if($("sliceMode").value === "avgvol") return buildAvgVolSlice(res, resOverride, include3d, options);
+  return buildAxisSlice(res, $("axis").value, Number($("idx").value), axisCellCap, include3d);
 }
 
 function fastMoveSliceResolution(){
@@ -5217,7 +5533,7 @@ function histogramQuantile(hist, q){
 
 // Histogram of the whole volume in the given display scale, built on first use.
 function globalHistogram(mode){
-  const res = state.res;
+  const res = viewRes();
   if(!res || !res.global || !res.global[mode]) return null;
   if(!state.globalHist || state.globalHist.res !== res) state.globalHist = {res, byMode:{}};
   const cache = state.globalHist.byMode;
@@ -5228,11 +5544,12 @@ function globalHistogram(mode){
 const AUTO_RANGES = {p995:[0.005, 0.995], p99:[0.01, 0.99], p98:[0.02, 0.98], minmax:[0, 1]};
 
 function levelBoundsForMode(slStats, mode, levelMode){
-  if(levelMode === "global" && state.res && state.res.global[mode]) return state.res.global[mode];
+  const res = viewRes();
+  if(levelMode === "global" && res && res.global[mode]) return res.global[mode];
   if(levelMode === "manual"){
     const b = state.manualLevelBounds;
     if(b && b.mode === mode && Number.isFinite(b.min) && Number.isFinite(b.max) && b.max > b.min) return {min:b.min, max:b.max};
-    if(state.res && state.res.global[mode]) return state.res.global[mode];
+    if(res && res.global[mode]) return res.global[mode];
   }
   return {min:slStats.min, max:slStats.max};
 }
@@ -5682,7 +5999,7 @@ function resetZoom2d(){
 // the value of the voxel there (axis slices, at full resolution even when
 // the drawn slice is sampled) or of the drawn cell (plane and slab slices).
 function sliceReadout(pt){
-  const last = state.lastSlice, res = state.res;
+  const last = state.lastSlice, res = viewRes();
   if(!res || !last || !last.layout || !pointInMapArea(pt)) return null;
   const sl = last.slice, [xv, yv] = last.layout.toSlice(pt.x, pt.y), ext = last.layout.ext;
   if(!(xv >= ext.x0 && xv <= ext.x1 && yv >= ext.y0 && yv <= ext.y1)) return null;
@@ -5718,7 +6035,7 @@ function readoutNumber(v){
 }
 
 function readoutText(o){
-  const res = state.res, labels = nativeAxisLabels(res);
+  const res = viewRes(), labels = nativeAxisLabels(res);
   const lines = [labels.map((l, i) => `${l} ${readoutNumber(o.native[i])}`).join("   ")];
   if(o.uv) lines.push(`u ${readoutNumber(o.uv[0])}   v ${readoutNumber(o.uv[1])}`);
   if(o.q){
@@ -6337,6 +6654,9 @@ function syncControls(){
   if(has && planeMode) setPlaneInputs();
   if(has && avgMode) setAvgVolInputs();
   updateCellInfo();
+  syncSymControls();
+  syncShowOptions();
+  updateSymInfo();
 }
 
 function updateAxisIndexBounds(){
@@ -6518,6 +6838,7 @@ function updateCellInfo(){
 
 function refreshAfterBasisChange(message){
   state.res = finalizeResult(state.res);
+  dataChanged();
   state.cameras = {plane:null, iso:null};
   updateAxisOptionText();
   updateMeta();
@@ -7092,7 +7413,7 @@ function makePlane3dTrace(sl, stats, levels){
   const labels = renderAxisLabels(state.res);
   const nativeLabels = nativeAxisLabels(state.res);
   const transformedLabels = useBasisToQ(state.res) ? ["Qx","Qy","Qz"] : ["Cartesian X","Cartesian Y","Cartesian Z"];
-  const valLabel = valueLabel(state.res);
+  const valLabel = valueLabel(viewRes());
   if(!plot.i.length){
     if(!plot.x.length) return {trace:null, plot};
     return {
@@ -7220,7 +7541,7 @@ async function renderPlane3d(Plotly){
   const labels = renderAxisLabels(state.res);
   const nativeLabels = nativeAxisLabels(state.res);
   const transformedLabels = useBasisToQ(state.res) ? ["Qx","Qy","Qz"] : ["Cartesian X","Cartesian Y","Cartesian Z"];
-  const valLabel = valueLabel(state.res);
+  const valLabel = valueLabel(viewRes());
   if(!plot.i.length){
     if(plot.x.length){
       const trace = {
@@ -7295,7 +7616,7 @@ async function renderIso3d(Plotly){
   const cap = Math.max(5000, Math.floor(Number($("voxelCap").value) || 220000));
   const pct = Math.max(50, Math.min(99.99, Number($("isoPct").value) || 95));
   const count = Math.max(1, Math.min(12, Math.floor(Number($("isoCount").value) || 4)));
-  const sample = buildVolumeSample(state.res, mode, cap);
+  const sample = buildVolumeSample(viewRes(), mode, cap);
   if(!sample.count){
     await Plotly.react("plot3dIso", [], sceneLayout("No finite isosurface values", isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
     $("empty3dIso").textContent = "No finite values for isosurface.";
@@ -7308,7 +7629,7 @@ async function renderIso3d(Plotly){
   const labels = renderAxisLabels(state.res);
   const nativeLabels = nativeAxisLabels(state.res);
   const transformedLabels = useBasisToQ(state.res) ? ["Qx","Qy","Qz"] : ["Cartesian X","Cartesian Y","Cartesian Z"];
-  const valLabel = valueLabel(state.res);
+  const valLabel = valueLabel(viewRes());
   if(!(isoMax > isoMin)){
     isoMin = sample.min;
     isoMax = sample.max + Math.max(1e-12, Math.abs(sample.max - sample.min) * 1e-6);
@@ -7425,7 +7746,8 @@ function saveText(name, text, mime){
 function baseName(){
   const custom = $("exportName") ? $("exportName").value.trim() : "";
   if(custom) return custom.replace(/[\\/:*?"<>|]+/g, "_");
-  return state.res ? state.res.file.replace(/\.[^.]+$/, "") : "3dsview";
+  // A derived view tags the default name, e.g. _sym or _symdev.
+  return state.res ? state.res.file.replace(/\.[^.]+$/, "") + (state.view && state.view.fileTag || "") : "3dsview";
 }
 
 function exportTransparent(){
@@ -7501,7 +7823,7 @@ function csvColumnName(label){
 // where a reciprocal basis is known.
 function sliceCsv(sl=currentSlice(null, MAX_AXIS_SLICE_CELLS, true)){
   if(!sl) return "";
-  const res = state.res, plane = sl.type !== "axis", withQ = useBasisToQ(res);
+  const res = viewRes(), plane = sl.type !== "axis", withQ = useBasisToQ(res);
   const head = [...(plane ? ["u", "v"] : []), ...nativeAxisLabels(res).map(csvColumnName), ...(withQ ? ["qx", "qy", "qz"] : []), valueColumnName(res)];
   const du = sl.cols > 1 ? (sl.xMax - sl.xMin) / (sl.cols - 1) : 0, dv = sl.rows > 1 ? (sl.yMax - sl.yMin) / (sl.rows - 1) : 0;
   const out = [head.join(",")];
@@ -7594,7 +7916,7 @@ function unifiedExportSpec(res, ranges=displayIndexRanges(res)){
   return {
     dims, corner, vectors:grid.vectors, values, cell,
     axesType:unifiedAxesTypeForResult(res),
-    content:res.h5 && res.h5.content || valueColumnName(res),
+    content:res.viewMode ? valueColumnName(res) : res.h5 && res.h5.content || valueColumnName(res),
     radiation:res.h5 && res.h5.radiation || "unknown",
     experiment:unifiedExperimentType(res),
     creationMethod:"3DSView unified data export"
@@ -7776,7 +8098,7 @@ async function saveTextChunks(name, chunks, mime){
 
 async function saveVolumeText(kind){
   if(!state.res) return;
-  const res = state.res;
+  const res = viewRes();
   const formats = {
     dat:{ext:"_d3d.dat", label:"RMCProfile .dat", chunks:spec => oldDatChunks(spec, res)},
     vtk:{ext:".vtk", label:"VTK", chunks:spec => vtkChunks(spec, res)},
@@ -7801,7 +8123,7 @@ async function saveVolumeText(kind){
 
 async function saveYell(){
   if(!state.res) return;
-  const res = state.res;
+  const res = viewRes();
   try{
     if(!isRealSpaceData(res) && res.coordKind !== "hkl") throw new Error("Yell files hold HKL grids; convert Q to HKL first (Unit Cell tool).");
     const h5 = await ensureH5wasm();
@@ -7827,7 +8149,7 @@ async function saveUnified(){
   try{
     status("Writing unified HDF5 data ...");
     const h5 = await ensureH5wasm();
-    const res = state.res;
+    const res = viewRes();
     const spec = unifiedExportSpec(res);
     const bytes = window.UnifiedH5.writeData(h5, spec);
     const blob = new Blob([bytes], {type:"application/x-hdf5"});
@@ -7986,6 +8308,7 @@ async function onFile(file){
   $("idx").value = String(Math.floor((parsed.shape[2] - 1) / 2));
   // Levels stay global while slicing unless per-slice levels were chosen.
   $("levelMode").value = autoLevelMode();
+  resetViewsForNewData(parsed);
   const signed = applySignedDefaults(parsed);
   // RMCProfile text uses 0 for "no data" (the PMN coverage masks, for example).
   const autoZero = /^indexed text/.test(parsed.format || "") && zeroFraction(parsed) >= 0.01;
@@ -8015,7 +8338,7 @@ async function onFile(file){
 
 const UI_KEY = "view3ds-ui";
 const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global"};
-const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", render:"3-D rendering", export:"Export"};
+const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
   let saved = null;
@@ -8338,6 +8661,172 @@ function bindLayout(){
   observeViewSizes();
 }
 
+// ---- Show modes and the symmetry tool
+
+const SHOW_NEEDS = {
+  data:res => !!res,
+  sym:res => !!(state.sym && state.sym.res === res),
+  symdev:res => !!(state.sym && state.sym.res === res),
+  symcount:res => !!(state.sym && state.sym.res === res),
+  sigma:res => !!(res && res.sigma),
+  snr:res => !!(res && res.sigma)
+};
+
+function syncShowOptions(){
+  const sel = $("showMode");
+  if(!sel) return;
+  const res = state.res;
+  for(const opt of sel.options){
+    const ok = !!(SHOW_NEEDS[opt.value] && SHOW_NEEDS[opt.value](res));
+    opt.disabled = !ok;
+    opt.hidden = !ok && opt.value !== "data";
+  }
+  sel.disabled = !res;
+  sel.value = state.showMode || "data";
+}
+
+// Signed views (differences) open on a linear scale with a diverging map and
+// symmetric levels, and counts on a linear scale; the previous settings come
+// back when a plain view is shown again.
+function applyViewDisplay(prev, next){
+  const special = mode => SIGNED_VIEWS.has(mode) || mode === "symcount";
+  if(special(next)){
+    if(!state.viewDisplaySaved) state.viewDisplaySaved = {scale:$("scale").value, colorMap:$("colorMap").value, symmetric:$("levelSymmetric").checked};
+    $("scale").value = "linear";
+    if(SIGNED_VIEWS.has(next)){
+      $("colorMap").value = "rdbu";
+      $("levelSymmetric").checked = true;
+    }else{
+      if(DIVERGING_MAPS.has($("colorMap").value)) $("colorMap").value = "viridis";
+      $("levelSymmetric").checked = false;
+    }
+  }else if(state.viewDisplaySaved && special(prev)){
+    const saved = state.viewDisplaySaved;
+    $("scale").value = saved.scale;
+    $("colorMap").value = saved.colorMap;
+    $("levelSymmetric").checked = saved.symmetric;
+    state.viewDisplaySaved = null;
+  }
+}
+
+function setShowMode(mode){
+  const prev = state.showMode || "data";
+  const view = mode === "data" ? null : buildView(mode);
+  const next = view ? mode : "data";
+  state.showMode = next;
+  state.view = view;
+  applyViewDisplay(prev, next);
+  // Levels start from auto for the new values.
+  state.manualLevelBounds = null;
+  if($("levelMode").value === "manual") $("levelMode").value = autoLevelMode();
+  syncShowOptions();
+  syncControls();
+  draw2d();
+  scheduleRender3d(0);
+}
+
+// The data changed (mask, axis order, cell): symmetrized results no longer
+// fit it, and the other views are rebuilt.
+function dataChanged(){
+  const hadSym = !!state.sym;
+  state.sym = null;
+  const mode = state.showMode || "data";
+  state.view = mode === "data" ? null : buildView(mode);
+  if(mode !== "data" && !state.view){
+    applyViewDisplay(mode, "data");
+    state.showMode = "data";
+  }
+  syncShowOptions();
+  updateSymInfo(hadSym ? "The data changed, so the symmetrized result was cleared." : null);
+}
+
+function updateSymInfo(note=null){
+  const hint = $("laueHint"), info = $("symInfo");
+  if(!hint || !info) return;
+  const res = state.res;
+  if(!res){
+    hint.textContent = "Load data to symmetrize it.";
+    info.textContent = "";
+    return;
+  }
+  const cls = $("laueClass").value, guess = state.laueGuess;
+  const from = guess && guess.source && guess.cls === cls ? `Suggested by ${guess.source}. ` : "";
+  try{
+    const {total, skipped} = gridSymmetryMaps(res, cls);
+    hint.textContent = from + (skipped
+      ? `${total} operators; ${total - skipped} land on grid points and ${skipped} are skipped (the axes they swap differ in step, or a flipped axis is not centred on 0).`
+      : `${total} operators, all landing on grid points.`);
+  }catch(err){
+    hint.textContent = from + err.message;
+  }
+  const s = state.sym && state.sym.res === res ? state.sym : null;
+  info.textContent = note || (s
+    ? `${LAUE_CLASSES[s.cls].label}, ${s.mode === "fill" ? "empty voxels filled" : "averaged"}: ${s.used} of ${s.total} operators; ${s.covered.toLocaleString()} voxels with data, ${fmt(s.meanEquivalents, 3)} equivalents each on average; ${s.filled.toLocaleString()} empty voxels filled.`
+    : "");
+}
+
+function syncSymControls(){
+  const has = !!state.res, busy = !!state.symBusy;
+  for(const id of ["laueClass", "symMode"]) $(id).disabled = !has || busy;
+  $("symApply").disabled = !has || busy;
+  $("symClear").disabled = !has || busy || !state.sym;
+}
+
+async function runSymmetry(){
+  const res = state.res;
+  if(!res || state.symBusy) return;
+  const cls = $("laueClass").value, mode = $("symMode").value, label = LAUE_CLASSES[cls].label;
+  state.symBusy = true;
+  syncSymControls();
+  const t0 = performance.now();
+  let lastYield = t0;
+  try{
+    status(`Symmetrizing with ${label} ...`);
+    await nextFrame();
+    const out = await symmetrizeVolume(res, cls, mode, async (done, total) => {
+      if(performance.now() - lastYield < 120) return;
+      status(`Symmetrizing with ${label}: operator ${done} of ${total} ...`);
+      await nextFrame();
+      lastYield = performance.now();
+    });
+    // A file loaded meanwhile takes over.
+    if(state.res !== res) return;
+    state.sym = out;
+    setShowMode("sym");
+    const skipped = out.skipped ? ` ${out.skipped} operators were skipped because their images fall between grid points.` : "";
+    status(`Symmetrized with ${label} in ${fmt((performance.now() - t0) / 1000, 2)} s: ${out.used} of ${out.total} operators, ${fmt(out.meanEquivalents, 3)} equivalents per voxel on average, ${out.filled.toLocaleString()} empty voxels filled.${skipped}`, out.skipped ? "warn" : "ok");
+  }catch(err){
+    status(`Symmetrization failed: ${err.message}`, "err");
+  }finally{
+    state.symBusy = false;
+    syncSymControls();
+    updateSymInfo();
+  }
+}
+
+function clearSymmetry(){
+  state.sym = null;
+  if(SHOW_NEEDS[state.showMode] && !SHOW_NEEDS[state.showMode](state.res)) setShowMode("data");
+  else syncShowOptions();
+  syncSymControls();
+  updateSymInfo();
+  status("Cleared the symmetrized result.", "ok");
+}
+
+// A new file: back to its own values, with a Laue class suggested for it.
+function resetViewsForNewData(res){
+  if(state.viewDisplaySaved){
+    applyViewDisplay(state.showMode, "data");
+    state.viewDisplaySaved = null;
+  }
+  state.sym = null;
+  state.view = null;
+  state.showMode = "data";
+  const guess = suggestLaueClass(res);
+  if($("laueClass")) $("laueClass").value = guess.cls;
+  state.laueGuess = guess;
+}
+
 function bind(){
   $("file").addEventListener("change", e => {
     const file = e.target.files && e.target.files[0];
@@ -8364,6 +8853,7 @@ function bind(){
   $("zeroMask").addEventListener("change", () => {
     if(!state.res) return;
     const hidden = setZeroMask(state.res, $("zeroMask").checked);
+    dataChanged();
     updateMeta();
     syncControls();
     draw2d();
@@ -8374,6 +8864,7 @@ function bind(){
     if(!state.res) return;
     try{
       transposeFirstAndLastAxes(state.res);
+      dataChanged();
       updateMeta();
       draw2d();
       scheduleRender3d(0);
@@ -8458,6 +8949,10 @@ function bind(){
   $("levelMin").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("levelMax").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("resetLevels").addEventListener("click", () => resetDisplayLevels(true));
+  $("showMode").addEventListener("change", () => setShowMode($("showMode").value));
+  $("laueClass").addEventListener("change", () => updateSymInfo());
+  $("symApply").addEventListener("click", runSymmetry);
+  $("symClear").addEventListener("click", clearSymmetry);
   $("heatmap").addEventListener("click", onHeatmapClick);
   $("heatmap").addEventListener("pointerdown", onHeatmapPointerDown);
   $("heatmap").addEventListener("pointermove", onHeatmapPointerMove);

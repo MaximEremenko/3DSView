@@ -77,6 +77,22 @@ and slab-average slicing with linked 2-D and 3-D views.
     range, both zoom onto it, and arrows on the bar mark the range beyond.
   - **Signed data:** real-space volumes (delta-PDF, Patterson, density) open on a linear
     scale with RdBu and symmetric levels.
+- **Show selector**: above the map, choose what the map, the 3-D views, the readout and the
+  exports show: the data, the symmetrized volume, data − symmetrized, the number of
+  equivalents found per voxel, or σ and I/σ when the file has uncertainties. Differences
+  open on a linear scale with RdBu and symmetric levels, and the earlier settings come
+  back with the data; exported file names get a tag such as `_sym` or `_symdev`.
+- **Symmetry** (Process page): Laue-class symmetrization for all 11 Laue classes, with
+  −3m1 and −31m, and rhombohedral settings for the trigonal classes. Each voxel is
+  averaged with its symmetry equivalents that hold data (empty voxels stay out, σ is that
+  of the mean), or only the empty voxels are filled; with −1 this completes Friedel
+  pairs. The operators act in the data's own frame: HKL grids (projected axes such as
+  [H,H,0] included), Q grids through the cell, Cartesian Q with a along x for the
+  non-hexagonal classes, and real-space grids. Operators whose images fall between grid
+  points are skipped and reported. For example, when L has a different step from H and
+  K, m−3m keeps only its 4/mmm part. The class is suggested from the file name (e.g.
+  `_m-3m`) or from the cell metric. *Data − symmetrized* shows where the data break the
+  symmetry, and *Equivalents found* shows the coverage.
 - **No-data masks**: voxels without data are shown empty and left out of levels and
   isosurfaces. That covers NaN values, a Mantid `mask`, and I = 0 in RMCProfile text,
   which RMCProfile uses for "no data". The zero mask switches on automatically when at
@@ -129,7 +145,8 @@ Fortran `D` exponents are handled:
 - **4-column text**: `H K L intensity` rows (diffuse-scattering calculator output).
 - **h k l I σ lists**: Scatty `*_list.txt` and Spinteract `*_xtal_data_NN.txt` rows, also
   with extra twin hkl triplets before `I σ`. They are read as HKL volumes of I (not as
-  a 2-D matrix); the σ column is not shown.
+  a 2-D matrix), with σ kept for the σ and I/σ views. Mantid `errors_squared` and NeXus
+  `errors` next to a signal are read as σ too.
 - **3-column text**: `x y value` triplets, shown as a 2-D map.
 - **2-D numeric matrix**: plain rectangular matrices of numbers.
 - **JSON volume** (`.json`): an object with `shape`, an `intensity`/`signal` array and
