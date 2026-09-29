@@ -187,7 +187,7 @@ test("HDF5 files are recognised by signature, whatever their extension", async (
 
 // Mantid SaveMD layout: signal stored [D2][D1][D0] with axes "D2:D1:D0",
 // D0-D2 holding bin edges with long_name such as "[H,0,0]".
-async function mantidFile(app, name, {shape, longNames=["[H,0,0]", "[0,K,0]", "[0,0,L]"], cell=[4, 4, 6, 90, 90, 90], mask=null}){
+async function mantidFile(app, name, {shape, longNames=["[H,0,0]", "[0,K,0]", "[0,0,L]"], cell=[4, 4, 6, 90, 90, 90], mask=null, edgeRange=null}){
   const [n0, n1, n2] = shape;
   return h5File(app, name, f => {
     const ws = f.create_group("MDHistoWorkspace");
@@ -199,8 +199,12 @@ async function mantidFile(app, name, {shape, longNames=["[H,0,0]", "[0,K,0]", "[
     signal.create_attribute("axes", "D2:D1:D0");
     signal.create_attribute("signal", 1, [], "<i");
     shape.forEach((n, axis) => {
-      const edges = Array.from({length:n + 1}, (_, i) => -1 + 0.5 * i - 0.25);
-      const ds = data.create_dataset({name:`D${axis}`, data:edges, shape:[n + 1], dtype:"<d"});
+      // Mantid computes edges as lo + i*step in float32; edgeRange=[lo, hi] mimics that.
+      const f = Math.fround;
+      const edges = edgeRange
+        ? Float32Array.from({length:n + 1}, (_, i) => f(edgeRange[0] + f(i * f((edgeRange[1] - edgeRange[0]) / n))))
+        : Array.from({length:n + 1}, (_, i) => -1 + 0.5 * i - 0.25);
+      const ds = data.create_dataset({name:`D${axis}`, data:edges, shape:[n + 1], dtype:edgeRange ? "<f" : "<d"});
       ds.create_attribute("long_name", longNames[axis]);
       ds.create_attribute("units", "r.l.u.");
       ds.create_attribute("frame", "HKL");
@@ -330,4 +334,25 @@ test("unified structure types_names separated by ';' are read", async () => {
   const h5 = await app.ensureH5wasm();
   const structure = app.context.UnifiedH5.readStructure(h5, new Uint8Array(await file.arrayBuffer()), file.name);
   assert.deepEqual(Array.from(structure.elements), ["O", "H", "N", "H"]);
+});
+
+test("float32 Mantid bin edges still give regular axes for export", async () => {
+  const app = loadApp();
+  const res = await app.parseFile(await mantidFile(app, "float32_edges.nxs", {shape:[501, 3, 41], edgeRange:[-8, 8]}));
+  assert.ok(res.axes.h.uniform, "H axis counts as regular");
+  const spec = app.unifiedExportSpec(res);
+  assertClose(spec.vectors[0][0], 16 / 501, 1e-6, "H step");
+});
+
+test("files that cannot be opened as HDF5 fail with a clear message", async () => {
+  const app = loadApp();
+  await assert.rejects(app.parseFile(new File(["null"], "broken.h5", {lastModified:0})), /could not be opened as an HDF5 file/);
+});
+
+test("shown-volume limits read back from 9-decimal fields keep the end points", async () => {
+  const app = loadApp();
+  // Bin centres of the PMN Mantid L axis: the end points have more than 9 decimals.
+  const axis = Float64Array.from({length:41}, (_, i) => -1.9512194991111755 + i * (1.9512193202972412 + 1.9512194991111755) / 40);
+  const shown = [axis[0], axis[40]].map(v => Number(v.toFixed(9)));
+  assert.deepEqual(Array.from(app.context.gridRangeForLimits(axis, shown[0], shown[1])), [0, 40]);
 });

@@ -3418,6 +3418,8 @@ async function parseNexusFile(file){
     h5.FS.writeFile(safeName, bytes);
     bytes = null;
     h5file = new h5.File(safeName, "r");
+    // h5wasm reports a failed open with a negative file id instead of throwing.
+    if(Number(h5file.file_id) < 0) throw new Error(`${file.name} could not be opened as an HDF5 file.`);
     const commonUnified = parseCommonScatteringH5(h5file, file.name);
     if(commonUnified) return commonUnified;
     const fortranUnified = parseFortranUnifiedH5(h5file, file.name);
@@ -3637,12 +3639,14 @@ function fillMissingAxis(axis, seen){
 function axisMeta(axis){
   const n = axis.length;
   const step = n > 1 ? (axis[n-1] - axis[0]) / (n - 1) : 1;
-  let maxDev = 0;
+  let maxDev = 0, maxAbs = 0;
   for(let i=0;i<n;i++){
     const dev = Math.abs(axis[i] - (axis[0] + step * i));
     if(dev > maxDev) maxDev = dev;
+    if(Math.abs(axis[i]) > maxAbs) maxAbs = Math.abs(axis[i]);
   }
-  return {step, maxDev, uniform:maxDev <= Math.max(1e-8, Math.abs(step) * 1e-5)};
+  // Also allow float32 rounding of the coordinates (e.g. Mantid bin edges).
+  return {step, maxDev, uniform:maxDev <= Math.max(1e-8, Math.abs(step) * 1e-5, maxAbs * 4e-7)};
 }
 
 // RMCProfile Q columns are Cartesian, so for a non-orthogonal cell every
@@ -5118,10 +5122,14 @@ function gridRangeForLimits(axis, requestedMin, requestedMax){
   const fullMax = Math.max(Number(axis[0]), Number(axis[axis.length - 1]));
   const lo = clamp(requestedMin, fullMin, fullMax);
   const hi = clamp(requestedMax, fullMin, fullMax);
+  // The limit fields show values rounded to 9 decimals; do not lose the end
+  // points to that rounding.
+  const step = axis.length > 1 ? (fullMax - fullMin) / (axis.length - 1) : 0;
+  const tol = Math.max(1e-9, step * 1e-6);
   let first = -1, last = -1;
   for(let i=0;i<axis.length;i++){
     const value = Number(axis[i]);
-    if(value >= lo - 1e-12 && value <= hi + 1e-12){
+    if(value >= lo - tol && value <= hi + tol){
       if(first < 0) first = i;
       last = i;
     }
