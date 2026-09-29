@@ -147,6 +147,25 @@ and slab-average slicing with linked 2-D and 3-D views.
   **Cell from structure file** takes the parent cell from an `.rmc6f` configuration (the
   supercell cell divided by the supercell dimensions), a unified structure `.h5` or a
   CIF, and applies it; the structure opens in the Structure view as well.
+- **UB matrix** (Data page, under the unit cell): the orientation matrix in Mantid's
+  convention, Q = 2π·UB·h, which 3DSConvert uses as well. The box shows the UB the data
+  were indexed with: the file's, with its sample rotation; for a Q grid, the one its
+  cell gives with a along x. Its elements show to six digits, the exact values kept
+  behind them, and nine numbers pasted into any field (Mantid's printout, say) fill them
+  all. Below the fields, the cell the UB implies and how far it is turned from a* along x.
+  - **Apply UB** indexes the data with it. A Q grid is put on HKL, h = (2π·UB)⁻¹·Q, and
+    keeps its measured frame. An HKL grid is re-indexed from the UB its file was
+    indexed with, so each voxel keeps its Q and takes the HKL of the new UB. An HKL grid
+    without a UB or cell of its own keeps its HKL, and the UB sets the lattice.
+  - A grid that ends up turned or sheared in HKL is resampled onto H, K and L axes
+    through 0, at about its own steps (trilinear, empty voxels left out, σ carried), so
+    axis slices are HKL planes and symmetry operators land on grid points. It opens as
+    a volume of its own, up to 48 million voxels.
+  - **Rotate** turns the UB about the x, y and z axes of Q by the angles given and
+    applies it, for lining Bragg peaks up with integer HKL by eye.
+  - Every UB starts from the file's own geometry, so corrections do not add up;
+    **Restore file UB** returns to the file. Projected axes such as [H,H,0] are not
+    re-indexed yet.
 - **Structure view** (the Structure tab of the dock): the unit cell, or a block of 2 × 2 × 2
   or 3 × 3 × 3 cells, with its atoms in Cartesian Å (a along x). Load a structure with
   **Load…**, or open or drop one; without data the dock switches to it.

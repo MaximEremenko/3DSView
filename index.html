@@ -196,6 +196,10 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .vecHead{font-size:.72rem;color:var(--muted);text-align:center}
 .exportGrid{display:grid;grid-template-columns:78px repeat(3,minmax(0,1fr));gap:6px 7px;align-items:center}
 .exportGrid .k{font-size:.8rem;color:var(--subtle)}
+.ubGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 7px}
+.ubGrid input,.ubRotate input{padding:5px 5px;font:11.5px Consolas,"Courier New",monospace}
+.ubRotate{display:grid;grid-template-columns:58px repeat(3,minmax(0,1fr)) auto;gap:6px;align-items:center}
+.ubRotate .k{font-size:.8rem;color:var(--subtle)}
 .cropRow{display:grid;grid-template-columns:30px 64px minmax(0,1fr) 64px;gap:6px;align-items:center}
 .cropRow input{padding:4px 6px}
 .cropRow .dualRange{margin:0 5px}
@@ -461,6 +465,35 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <button id="cellFromStructure" class="alt" disabled title="Cell from a structure file: the parent cell of an .rmc6f configuration (supercell / dimensions) or a unified structure .h5, or the cell of a CIF; the structure opens in the Structure view too">Cell from structure file</button>
           </div>
           <div class="fine" id="cellInfo">Load reciprocal-space data to inspect or enter its unit cell.</div>
+        </div>
+      </details>
+      <details class="toolbox hidden" id="ubTool">
+        <summary>UB matrix (orientation)</summary>
+        <div class="toolbody">
+          <p class="fine">Q = 2&pi;&middot;UB&middot;(h, k, l), as Mantid writes it. Nine numbers pasted into any field fill them all.</p>
+          <div class="ubGrid" id="ubGrid">
+            <input id="ub00" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 1, column 1" disabled>
+            <input id="ub01" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 1, column 2" disabled>
+            <input id="ub02" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 1, column 3" disabled>
+            <input id="ub10" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 2, column 1" disabled>
+            <input id="ub11" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 2, column 2" disabled>
+            <input id="ub12" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 2, column 3" disabled>
+            <input id="ub20" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 3, column 1" disabled>
+            <input id="ub21" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 3, column 2" disabled>
+            <input id="ub22" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="UB row 3, column 3" disabled>
+          </div>
+          <div class="ubRotate">
+            <span class="k" title="Turns the UB about the x, y and z axes of Q, in that order, and applies it">Rotate (&deg;)</span>
+            <input id="ubRotX" type="number" step="any" placeholder="x" aria-label="Rotation about x, degrees" disabled>
+            <input id="ubRotY" type="number" step="any" placeholder="y" aria-label="Rotation about y, degrees" disabled>
+            <input id="ubRotZ" type="number" step="any" placeholder="z" aria-label="Rotation about z, degrees" disabled>
+            <button id="ubRotate" class="alt" type="button" title="Turn the UB by these angles about the Q axes and apply it" disabled>Rotate</button>
+          </div>
+          <div class="btns">
+            <button id="ubApply" disabled title="Index the data with this UB: a Q grid is put on HKL, an HKL grid is re-indexed from its file's UB">Apply UB</button>
+            <button id="ubRestore" class="alt" disabled>Restore file UB</button>
+          </div>
+          <div class="fine" id="ubInfo"></div>
         </div>
       </details>
     </section>
@@ -5913,8 +5946,11 @@ function cleanFileGeometry(res){
     }
     if(axes) notes.push(`${axes === 1 ? "one axis" : `${axes} axes`} set to exact steps (moved by up to ${moved.toExponential(1)})`);
   }
+  const rawBq = unprojectedBq(res);
   const basis = cleanReciprocalBasis(res);
   if(basis){
+    // The UB box re-indexes against the file's own basis, rotation included.
+    if(rawBq) res.fileBq = rawBq.map(row => row.slice());
     res.Bq = validMatrix3(res.projectionW) ? res.projectionW.map(row => mul(row, basis.Bq)) : basis.Bq;
     res.cellDeg = basis.cell.slice();
     if(validMatrix3(res.Bp)) res.Bp = transpose3(inv3(basis.Bq)).map(row => row.map(v => v * 2 * Math.PI));
@@ -8643,6 +8679,7 @@ function syncControls(){
   $("swapAxes").disabled = !swappable;
   for(const id of CELL_INPUT_IDS) $(id).disabled = !cellAllowed;
   $("cellApply").disabled = !cellAllowed;
+  for(const id of [...UB_INPUT_IDS, "ubRotX", "ubRotY", "ubRotZ", "ubRotate", "ubApply", "ubRestore"]) $(id).disabled = !cellAllowed;
   $("cellFromStructure").disabled = !cellAllowed;
   $("cellRestore").disabled = !cellAllowed;
   for(const id of ["axis","idx","sliceCoord","sliceIndex"]){
@@ -8709,6 +8746,7 @@ function fileAxisRanges(r){
 function updateMeta(){
   const r = state.res;
   for(const id of ["fileGroup", "readingGroup", "cellTool"]) $(id).classList.toggle("hidden", !r);
+  $("ubTool").classList.toggle("hidden", !r || isRealSpaceData(r));
   if(!r){
     for(const id of ["mFile","mFormat","mKind","mRows","mGrid","mH","mK","mL","mI","mRead","mHeader"]) $(id).textContent = "-";
     for(const id of ["mProcName","mProc","mFrameName","mFrame","mHeaderName","mHeader"]) $(id).classList.add("hidden");
@@ -8793,6 +8831,18 @@ function convertQGridToHkl(res, cellDeg){
   if(!res || res.coordKind !== "q") throw new Error("Only Q-space data can be converted to HKL.");
   const frame = rmcCartesianFrame(cellDeg);
   if(!frame) throw new Error("The supplied unit cell is singular or geometrically invalid.");
+  qGridToHkl(res, frame.Bq, "Q grid converted with the unit cell");
+  res.Bq = frame.Bq;
+  res.Bp = transpose3(frame.A);
+  res.cellDeg = cellDeg.slice(0, 6).map(Number);
+  res.basisSource = "manual unit cell (Q converted to HKL, a along x)";
+  return res;
+}
+
+// Puts a Q-native grid on HKL through the reciprocal basis Bq (q = h·Bq):
+// its origin and steps become h = q·Bq⁻¹, a sheared HKL grid in general.
+function qGridToHkl(res, Bq, source){
+  const toHklBasis = inv3(Bq);
   let origin, steps;
   if(validMatrix3(res.gridVectors) && Array.isArray(res.gridOrigin)){
     origin = res.gridOrigin.slice(0, 3);
@@ -8803,26 +8853,27 @@ function convertQGridToHkl(res, cellDeg){
     origin = [res.h[0], res.k[0], res.l[0]];
     steps = metas.map((m, axis) => [0, 1, 2].map(c => c === axis ? m.step : 0));
   }
-  const toHkl = q => mul(q, frame.A).map(v => v / (2 * Math.PI));
-  const o = toHkl(origin), v = steps.map(toHkl);
+  const toHkl = q => mul(q, toHklBasis);
   res.coordKind = "hkl";
+  setGridFrame(res, toHkl(origin), steps.map(toHkl), source);
+  if(res.h5) res.h5 = Object.assign({}, res.h5, {axesType:"hkl"});
+  return res;
+}
+
+// A grid given by its origin and the step of each index axis (native
+// coordinates); axis-aligned grids keep plain axes only.
+function setGridFrame(res, o, steps, source){
   res.gridOrigin = o;
-  res.gridVectors = [0, 1, 2].map(c => v.map(step => step[c]));
-  res.gridVectorSource = "Q grid converted with the unit cell";
-  res.h = regularAxis(res.shape[0], o[0], v[0][0]);
-  res.k = regularAxis(res.shape[1], o[1], v[1][1]);
-  res.l = regularAxis(res.shape[2], o[2], v[2][2]);
+  res.gridVectors = [0, 1, 2].map(c => steps.map(step => step[c]));
+  res.gridVectorSource = source;
+  res.h = regularAxis(res.shape[0], o[0], steps[0][0]);
+  res.k = regularAxis(res.shape[1], o[1], steps[1][1]);
+  res.l = regularAxis(res.shape[2], o[2], steps[2][2]);
   if(!isSkewedGrid(res)){
     delete res.gridOrigin;
     delete res.gridVectors;
     delete res.gridVectorSource;
   }
-  if(res.h5) res.h5 = Object.assign({}, res.h5, {axesType:"hkl"});
-  res.Bq = frame.Bq;
-  res.Bp = transpose3(frame.A);
-  res.cellDeg = cellDeg.slice(0, 6).map(Number);
-  res.basisSource = "manual unit cell (Q converted to HKL, a along x)";
-  return res;
 }
 
 // Parent cell from an .rmc6f header: the supercell cell (or its lattice
@@ -9444,6 +9495,7 @@ function populateCellInputs(cell){
 
 function updateCellInfo(){
   const r = state.res;
+  syncUbTool();
   if(!r){
     $("cellInfo").textContent = "Load reciprocal-space data to inspect or enter its unit cell.";
     return;
@@ -9508,17 +9560,325 @@ function applyManualCell(source="manual unit cell"){
   refreshAfterBasisChange(`Applied the ${source} and rebuilt reciprocal Q axes.`);
 }
 
-function restoreFileCell(){
-  if(!state.res) return;
-  for(const key of ["Bq","Bp","cellDeg","basisSource"]) delete state.res[key];
-  if(state.sourceGeometry){
-    // Undo a Q to HKL conversion as well.
-    for(const key of GEOMETRY_KEYS) delete state.res[key];
-    Object.assign(state.res, snapshotGeometry(state.sourceGeometry));
+// The file's own geometry and basis, undoing a cell or a UB applied here
+// (and so a Q to HKL conversion).
+function restoreSourceGeometry(res){
+  const origin = volumeOrigin(res);
+  for(const key of ["Bq","Bp","cellDeg","basisSource","ub"]) delete res[key];
+  if(origin.geometry){
+    for(const key of GEOMETRY_KEYS) delete res[key];
+    Object.assign(res, snapshotGeometry(origin.geometry));
   }
-  Object.assign(state.res, snapshotCellBasis(state.sourceBasis));
+  Object.assign(res, snapshotCellBasis(origin.basis));
+}
+
+// The geometry and basis a volume came with.
+function volumeOrigin(res){
+  return res && res.origin || {geometry:state.sourceGeometry, basis:state.sourceBasis};
+}
+
+function restoreFileCell(message=null){
+  if(!state.res) return;
+  restoreSourceGeometry(state.res);
   populateCellInputs(state.res.cellDeg);
-  refreshAfterBasisChange(validMatrix3(state.res.Bq) ? "Restored unit cell from file metadata." : "Removed manual unit cell; the file contains no reciprocal basis.");
+  refreshAfterBasisChange(message || (validMatrix3(state.res.Bq) ? "Restored unit cell from file metadata." : "Removed manual unit cell; the file contains no reciprocal basis."));
+}
+
+// ---- UB matrix (orientation)
+//
+// Mantid/Busing-Levy UB: Q = 2pi UB h for column vectors; 3DSView's Bq is
+// 2pi UB^T for row vectors. A UB indexes the data's measured positions: a Q
+// grid is put on HKL through it, and an HKL grid is re-indexed from the UB
+// its file was indexed with, so each voxel keeps its Q.
+
+const UB_INPUT_IDS = [0, 1, 2].flatMap(i => [0, 1, 2].map(j => `ub${i}${j}`));
+
+function bqToUb(Bq){
+  return transpose3(Bq).map(row => row.map(v => v / (2 * Math.PI)));
+}
+
+function fmtUb(v){
+  return Math.abs(v) < 1e-12 ? "0" : String(Number(Number(v).toPrecision(6)));
+}
+
+// A UB from pasted text: its first nine numbers, row by row.
+function ubFromText(text){
+  const nums = parseNumberList(text);
+  return nums.length >= 9 ? matrixFromFlat(nums.slice(0, 9)) : null;
+}
+
+// Rotation by angles (degrees) about x, then y, then z, for column vectors:
+// R = Rz Ry Rx.
+function rotationXYZ(deg){
+  const [x, y, z] = deg.map(v => (Number(v) || 0) * Math.PI / 180);
+  const Rx = [[1, 0, 0], [0, Math.cos(x), -Math.sin(x)], [0, Math.sin(x), Math.cos(x)]];
+  const Ry = [[Math.cos(y), 0, Math.sin(y)], [0, 1, 0], [-Math.sin(y), 0, Math.cos(y)]];
+  const Rz = [[Math.cos(z), -Math.sin(z), 0], [Math.sin(z), Math.cos(z), 0], [0, 0, 1]];
+  return Rz.map(row => mul(row, Ry)).map(row => mul(row, Rx));
+}
+
+function isIdentity3(m){
+  return validMatrix3(m) && m.every((row, i) => row.every((v, j) => Math.abs(v - (i === j ? 1 : 0)) < 1e-12));
+}
+
+// Whether the file's own grid is in Q, so a UB puts it on HKL.
+function ubSourceIsQ(res){
+  const src = volumeOrigin(res).geometry;
+  return String((src && src.coordKind) || (res && res.coordKind) || "").toLowerCase() === "q";
+}
+
+// The file's reciprocal basis with its sample rotation, which loading drops
+// for HKL grids; null when the file gives none.
+function fileFullBq(res){
+  if(res && validMatrix3(res.fileBq)) return res.fileBq;
+  const basis = volumeOrigin(res).basis, b = basis && basis.Bq;
+  return validMatrix3(b) ? b : null;
+}
+
+// The UB in the fields: the one applied here, else the file's, else the one
+// the cell gives a Q grid (a along x, as Apply cell converts it).
+function ubInUse(res){
+  if(!res || isRealSpaceData(res)) return null;
+  if(validMatrix3(res.ub)) return res.ub;
+  if(!ubSourceIsQ(res)){
+    const file = fileFullBq(res);
+    if(file) return bqToUb(file);
+  }
+  const Bq = unprojectedBq(res);
+  if(validMatrix3(Bq)) return bqToUb(Bq);
+  const frame = Array.isArray(res.cellDeg) && res.cellDeg.length >= 6 ? rmcCartesianFrame(res.cellDeg) : null;
+  return frame ? bqToUb(frame.Bq) : null;
+}
+
+// Indexes res with the UB, starting from the file's geometry so corrections
+// do not add up. Returns what was done.
+function indexWithUb(res, UB){
+  if(!validMatrix3(UB)) throw new Error("Enter all nine UB elements.");
+  const Bq = ubToBq(UB);
+  try{ inv3(Bq); }catch(_){ throw new Error("The UB matrix is singular."); }
+  const fromQ = ubSourceIsQ(res), fileBq = fromQ ? null : fileFullBq(res);
+  restoreSourceGeometry(res);
+  const direct = B => transpose3(inv3(B)).map(row => row.map(v => v * 2 * Math.PI));
+  if(fromQ){
+    qGridToHkl(res, Bq, "Q grid indexed with a UB matrix");
+    // A Q grid keeps its measured frame: the UB with its rotation.
+    res.Bq = Bq;
+    res.Bp = direct(Bq);
+    res.cellDeg = cellFromBq(Bq);
+    res.ub = UB.map(row => row.slice());
+    return "q";
+  }
+  if(validMatrix3(res.projectionW) && !isIdentity3(res.projectionW)) throw new Error("a UB matrix cannot re-index projected axes such as [H,H,0] yet.");
+  if(fileBq){
+    // Each voxel keeps its Q, h·Bq_file, and takes h' = h·Bq_file·Bq⁻¹.
+    const T = fileBq.map(row => mul(row, inv3(Bq)));
+    const frame = gridFrame(res);
+    setGridFrame(res, mul(frame.o, T), frame.G.map(g => mul(g, T)), "HKL re-indexed with a UB matrix");
+  }
+  // HKL grids show Q in the crystal frame: the UB's lattice without its rotation.
+  const cell = cellFromBq(Bq), lattice = cell && basisFromCell(cell, true);
+  if(!lattice) throw new Error("the UB matrix gives no valid cell.");
+  res.Bq = lattice.Bq;
+  res.Bp = lattice.Bp;
+  res.cellDeg = lattice.cellDeg;
+  res.ub = UB.map(row => row.slice());
+  return fileBq ? "reindexed" : "lattice";
+}
+
+const UB_RESAMPLE_LIMIT = 48e6;
+
+// A turned or sheared HKL grid resampled onto regular H, K and L axes that
+// pass through 0, at about its own steps, so axis slices are HKL planes.
+// Each new point is the trilinear mean of its neighbours with data.
+async function resampleOnHklAxes(res, onStep=null){
+  const frame = gridFrame(res), shape = res.shape, I = res.I, sig = res.sigma || null;
+  const steps = frame.G.map(g => normVec(g));
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for(const i of [0, shape[0] - 1]) for(const j of [0, shape[1] - 1]) for(const k of [0, shape[2] - 1]){
+    for(let c=0;c<3;c++){
+      const v = frame.o[c] + i * frame.G[0][c] + j * frame.G[1][c] + k * frame.G[2][c];
+      if(v < lo[c]) lo[c] = v;
+      if(v > hi[c]) hi[c] = v;
+    }
+  }
+  const first = lo.map((v, c) => (shape[c] > 1 ? Math.ceil(v / steps[c] - 1e-9) * steps[c] : v));
+  const count = hi.map((v, c) => (shape[c] > 1 ? Math.max(1, Math.floor((v - first[c]) / steps[c] + 1e-9) + 1) : 1));
+  const N = count[0] * count[1] * count[2];
+  if(N > UB_RESAMPLE_LIMIT) throw new Error(`the grid on H, K, L axes would hold ${N.toLocaleString()} voxels (${count.join(" x ")}); crop the shown volume on the Slice page first.`);
+  const Gi = inv3(frame.G), [n0, n1, n2] = shape, n12 = n1 * n2;
+  const out = new Float64Array(N), outSigma = sig ? new Float64Array(N) : null;
+  let p = 0;
+  for(let a=0;a<count[0];a++){
+    const x = first[0] + a * steps[0] - frame.o[0];
+    for(let b=0;b<count[1];b++){
+      const y = first[1] + b * steps[1] - frame.o[1];
+      for(let c=0;c<count[2];c++, p++){
+        const z = first[2] + c * steps[2] - frame.o[2];
+        const fx = x * Gi[0][0] + y * Gi[1][0] + z * Gi[2][0];
+        const fy = x * Gi[0][1] + y * Gi[1][1] + z * Gi[2][1];
+        const fz = x * Gi[0][2] + y * Gi[1][2] + z * Gi[2][2];
+        const i0 = Math.floor(fx), j0 = Math.floor(fy), k0 = Math.floor(fz);
+        const rx = fx - i0, ry = fy - j0, rz = fz - k0;
+        let sum = 0, wsum = 0, var2 = 0;
+        for(let dx=0;dx<2;dx++){
+          const ii = i0 + dx;
+          if(ii < 0 || ii >= n0) continue;
+          const wx = dx ? rx : 1 - rx;
+          for(let dy=0;dy<2;dy++){
+            const jj = j0 + dy;
+            if(jj < 0 || jj >= n1) continue;
+            const wxy = wx * (dy ? ry : 1 - ry);
+            for(let dz=0;dz<2;dz++){
+              const kk = k0 + dz;
+              if(kk < 0 || kk >= n2) continue;
+              const q = ii * n12 + jj * n2 + kk, v = I[q];
+              if(v !== v) continue;
+              const w = wxy * (dz ? rz : 1 - rz);
+              if(!(w > 0)) continue;
+              sum += w * v;
+              wsum += w;
+              if(sig){ const e = sig[q]; var2 += w * w * e * e; }
+            }
+          }
+        }
+        out[p] = wsum > 0 ? sum / wsum : NaN;
+        if(outSigma) outSigma[p] = wsum > 0 ? Math.sqrt(var2) / wsum : NaN;
+      }
+    }
+    if(onStep && a % 16 === 15) await onStep(a + 1, count[0]);
+  }
+  const meta = {dataKind:res.dataKind};
+  for(const key of ["Bq", "Bp", "cellDeg", "basisSource", "ub", "h5"]) if(res[key] !== undefined) meta[key] = res[key];
+  if(outSigma) meta.sigma = outSigma;
+  const name = `${String(res.file).replace(/\.[^.]+$/, "")}_ub`;
+  const result = makeVolumeResult(name, count, regularAxis(count[0], first[0], steps[0]), regularAxis(count[1], first[1], steps[1]), regularAxis(count[2], first[2], steps[2]),
+    out, `${res.format || "data"}, resampled onto HKL axes for a UB matrix`, "hkl", null, 0, meta);
+  result.header = {points:N, sections:1, scale:null, offset:null};
+  return {result, shape:count, steps};
+}
+
+// How far a grid is turned from its HKL axes: the largest angle between an
+// index axis and the H, K or L axis it runs nearest.
+function gridTurnDegrees(res){
+  const G = gridFrame(res).G;
+  return Math.max(...G.map((g, a) => {
+    const n = normVec(g);
+    return n > 0 ? Math.acos(clamp(Math.abs(g[a]) / n, 0, 1)) * 180 / Math.PI : 0;
+  }));
+}
+
+// The cell a UB implies and its rotation from the Busing-Levy frame.
+function ubDescription(UB){
+  const Bq = ubToBq(UB), cell = cellFromBq(Bq);
+  const lattice = cell && basisFromCell(cell, true);
+  if(!lattice) return "The UB matrix gives no valid cell.";
+  let rotation = "";
+  try{
+    const U = inv3(lattice.Bq).map(row => mul(row, Bq));
+    const angle = Math.acos(clamp((U[0][0] + U[1][1] + U[2][2] - 1) / 2, -1, 1)) * 180 / Math.PI;
+    rotation = angle > 1e-4 ? `; turned ${fmt(angle, 3)}° from a* along x` : "; a* along x";
+  }catch(_){}
+  return `a ${fmt(cell[0], 5)}, b ${fmt(cell[1], 5)}, c ${fmt(cell[2], 5)} Å, α ${fmt(cell[3], 3)}, β ${fmt(cell[4], 3)}, γ ${fmt(cell[5], 3)}°${rotation}`;
+}
+
+// A field left as shown gives back the exact value behind its six digits.
+function readUbInputs(){
+  const nums = UB_INPUT_IDS.map(id => {
+    const el = $(id), text = String(el.value).trim();
+    if(text === "") throw new Error("Enter all nine UB elements.");
+    return el.dataset && el.dataset.exact !== undefined && el.dataset.shown === text ? Number(el.dataset.exact) : Number(text);
+  });
+  if(!nums.every(Number.isFinite)) throw new Error("UB elements must be numbers.");
+  return [0, 1, 2].map(i => nums.slice(3 * i, 3 * i + 3));
+}
+
+function populateUbInputs(UB){
+  UB_INPUT_IDS.forEach((id, n) => {
+    const el = $(id), v = UB ? UB[Math.floor(n / 3)][n % 3] : null;
+    el.value = v === null ? "" : fmtUb(v);
+    if(el.dataset){
+      if(v === null){ delete el.dataset.exact; delete el.dataset.shown; }
+      else{ el.dataset.exact = String(v); el.dataset.shown = el.value; }
+    }
+  });
+}
+
+// Fields follow the UB in use when it changes; typing is left alone.
+function syncUbTool(){
+  const res = state.res;
+  if(!$("ubInfo")) return;
+  const UB = ubInUse(res), key = UB ? JSON.stringify(UB) : "";
+  if(key !== state.ubShownKey){
+    state.ubShownKey = key;
+    populateUbInputs(UB);
+  }
+  if(!res || isRealSpaceData(res)){
+    $("ubInfo").textContent = "";
+    return;
+  }
+  const whence = validMatrix3(res.ub) ? (state.ubSource ? "applied here, the grid resampled onto H, K, L axes" : "applied here") : ubSourceIsQ(res) ? (validMatrix3(res.Bq) ? "the file's" : "from the cell, a along x") : fileFullBq(res) ? "the file's" : "from the cell";
+  $("ubInfo").textContent = UB
+    ? `UB ${whence}: ${ubDescription(UB)}.`
+    : ubSourceIsQ(res) ? "Q data: type the UB of the experiment, or enter the cell above, to put the grid on HKL." : "No UB or cell in the file: a typed UB sets the lattice.";
+}
+
+// Indexes the file's volume with the UB. A grid that stays on HKL axes is
+// changed in place; a turned or sheared one is resampled onto H, K and L
+// axes and shown as a volume of its own, the file kept for Restore.
+async function applyUbMatrix(UB, source="typed UB matrix"){
+  const file = state.ubSource || state.res;
+  if(!file) throw new Error("Load a data file before applying a UB matrix.");
+  if(isRealSpaceData(file)) throw new Error("A UB matrix applies to reciprocal-space data.");
+  if(state.ubBusy) return;
+  const how = indexWithUb(file, UB);
+  file.basisSource = how === "q" ? `${source}; Q indexed as HKL` : source;
+  $("coordMode").value = "auto";
+  state.ubShownKey = null;
+  const said = how === "q" ? "Put the Q grid on HKL with the UB matrix: h = (2π UB)⁻¹ Q."
+    : how === "reindexed" ? "Re-indexed the HKL grid from the file's UB to this one; each voxel keeps its Q."
+    : "The file has no UB or cell of its own: the grid's HKL are kept, and the UB sets the lattice.";
+  if(how !== "lattice" && isSkewedGrid(file)){
+    const turn = gridTurnDegrees(file), t0 = performance.now();
+    let lastYield = t0;
+    state.ubBusy = true;
+    try{
+      status("Resampling onto H, K, L axes ...");
+      await nextFrame();
+      const out = await resampleOnHklAxes(file, async (done, total) => {
+        if(performance.now() - lastYield < 120) return;
+        status(`Resampling onto H, K, L axes: ${Math.round(100 * done / total)} % ...`);
+        await nextFrame();
+        lastYield = performance.now();
+      });
+      showDataset(out.result, {note:` ${said} The grid was turned ${fmt(turn, 3)}° from the HKL axes, so it was resampled onto H, K, L axes (steps ${out.steps.map(fmtStep).join(" x ")} r.l.u., ${out.shape.join(" x ")}) in ${fmt((performance.now() - t0) / 1000, 2)} s. "Restore file UB" returns to the file.`});
+      state.ubSource = file;
+    }finally{
+      state.ubBusy = false;
+    }
+    populateCellInputs(state.res.cellDeg);
+    updateCellInfo();
+    return;
+  }
+  populateCellInputs(file.cellDeg);
+  if(state.res !== file){
+    state.ubSource = null;
+    showDataset(file, {note:` ${said}`});
+    return;
+  }
+  refreshAfterBasisChange(said);
+}
+
+function restoreFileUb(){
+  const file = state.ubSource;
+  state.ubShownKey = null;
+  if(!file){
+    restoreFileCell("Restored the file's geometry and UB.");
+    return;
+  }
+  state.ubSource = null;
+  restoreSourceGeometry(file);
+  populateCellInputs(file.cellDeg);
+  showDataset(file, {note:" Restored the file's geometry and UB."});
 }
 
 function scheduleRender3d(delay=180, force=false){
@@ -11095,6 +11455,7 @@ async function onFile(file){
   status(`Finalizing ${file.name} ...`);
   await nextFrame();
   state.symSource = null;
+  state.ubSource = null;
   showDataset(parsed, {name:file.name});
 }
 
@@ -11102,8 +11463,11 @@ async function onFile(file){
 // load message.
 function showDataset(parsed, {name=parsed.file, note=""}={}){
   state.res = parsed;
-  state.sourceBasis = snapshotCellBasis(parsed);
-  state.sourceGeometry = snapshotGeometry(parsed);
+  // The geometry the volume came with stays on it, so a cell or UB applied
+  // later always starts from there.
+  if(!parsed.origin) parsed.origin = {basis:snapshotCellBasis(parsed), geometry:snapshotGeometry(parsed)};
+  state.sourceBasis = parsed.origin.basis;
+  state.sourceGeometry = parsed.origin.geometry;
   state.displayRanges = fullDisplayRanges(parsed);
   state.cameras = {plane:null, iso:null};
   state.lastSlice = null;
@@ -12336,6 +12700,25 @@ function bind(){
   });
   $("cellApply").addEventListener("click", () => {
     try{ applyManualCell(); }catch(err){ status(`Cell error: ${err.message}`, "err"); }
+  });
+  const ubFailed = err => status(`UB error: ${err.message}`, "err");
+  $("ubApply").addEventListener("click", () => {
+    try{ applyUbMatrix(readUbInputs()).catch(ubFailed); }catch(err){ ubFailed(err); }
+  });
+  $("ubRotate").addEventListener("click", () => {
+    try{
+      const R = rotationXYZ(["ubRotX", "ubRotY", "ubRotZ"].map(id => Number($(id).value) || 0));
+      applyUbMatrix(R.map(row => mul(row, readUbInputs())), "UB matrix turned by hand").catch(ubFailed);
+    }catch(err){ ubFailed(err); }
+  });
+  $("ubRestore").addEventListener("click", () => {
+    try{ restoreFileUb(); }catch(err){ ubFailed(err); }
+  });
+  $("ubGrid").addEventListener("paste", ev => {
+    const UB = ubFromText((ev.clipboardData || window.clipboardData).getData("text"));
+    if(!UB) return;
+    ev.preventDefault();
+    populateUbInputs(UB);
   });
   $("zeroMask").addEventListener("change", () => {
     if(!state.res) return;
