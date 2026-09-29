@@ -461,7 +461,10 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="group" id="axisHelp">
         <h3>Axis slices</h3>
         <p class="fine">Choose the fixed axis above the map and step through the slices with the slider, the &lsaquo; &rsaquo; buttons or the <kbd>&larr;</kbd> <kbd>&rarr;</kbd> keys. Switch the mode there to cut a normal plane or average a slab.</p>
-        <label>Average over &plusmn; neighbouring slices<input id="sliceThick" type="number" min="0" max="100" step="1" value="0" disabled></label>
+        <div class="row2">
+          <label>Average over &plusmn; slices<input id="sliceThick" type="number" min="0" max="100" step="1" value="0" disabled></label>
+          <label>&plusmn; in axis units<input id="sliceThickUnits" type="number" min="0" step="any" value="0" title="Half-width of the averaged slab along the fixed axis, rounded to whole slices" disabled></label>
+        </div>
         <div id="sliceThickInfo" class="fine"></div>
       </div>
       <div id="planeControls" class="group hidden">
@@ -8237,9 +8240,24 @@ function drawColorbar(ctx, stops, levels, stats, x, y, w, h){
   state.lastBar = b;
 }
 
+// The step of the fixed axis: the smallest spacing along it.
+function fixedAxisStep(res, axis){
+  const values = [res.h, res.k, res.l][axis];
+  let step = Infinity;
+  for(let i=1;i<values.length;i++){
+    const d = Math.abs(values[i] - values[i - 1]);
+    if(d > 0 && d < step) step = d;
+  }
+  return Number.isFinite(step) ? step : NaN;
+}
+
 function updateSliceThickInfo(){
   const out = $("sliceThickInfo"), res = state.res, half = state.sliceHalf || 0;
   if(!out) return;
+  if(res && $("sliceThickUnits")){
+    const axis = {h:0, k:1, l:2}[$("axis").value], step = fixedAxisStep(res, axis);
+    setFieldUnlessEditing("sliceThickUnits", Number.isFinite(step) ? fmtAxis(half * step, [res.h, res.k, res.l][axis]) : "");
+  }
   if(!res || !half){ out.textContent = half ? "" : "Each map shows one slice."; return; }
   const axis = {h:0, k:1, l:2}[$("axis").value], values = [res.h, res.k, res.l][axis], idx = Number($("idx").value);
   const range = displayIndexRanges(res)[axis], lo = Math.max(range[0], idx - half), hi = Math.min(range[1], idx + half);
@@ -8679,6 +8697,7 @@ function syncControls(){
   $("avgControls").classList.toggle("hidden", !avgMode);
   $("axisHelp").classList.toggle("hidden", !axisMode);
   $("sliceThick").disabled = !has || !axisMode;
+  $("sliceThickUnits").disabled = !has || !axisMode;
   $("triToggle").disabled = !has || !axisMode;
   updateSliceThickInfo();
   $("axisPick").classList.toggle("hidden", !axisMode);
@@ -12322,6 +12341,13 @@ function bind(){
   $("levelMin").addEventListener("change", typedLevels);
   $("levelMax").addEventListener("change", typedLevels);
   $("resetLevels").addEventListener("click", () => resetDisplayLevels(true));
+  $("sliceThickUnits").addEventListener("change", () => {
+    if(!state.res) return;
+    const step = fixedAxisStep(state.res, {h:0, k:1, l:2}[$("axis").value]);
+    const width = Math.max(0, Number($("sliceThickUnits").value) || 0);
+    $("sliceThick").value = String(Number.isFinite(step) ? clamp(Math.round(width / step), 0, 100) : 0);
+    $("sliceThick").dispatchEvent(new Event("change"));
+  });
   $("sliceThick").addEventListener("change", () => {
     state.sliceHalf = clamp(Math.floor(Number($("sliceThick").value) || 0), 0, 100);
     $("sliceThick").value = String(state.sliceHalf);

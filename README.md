@@ -93,7 +93,8 @@ and slab-average slicing with linked 2-D and 3-D views.
   sample.
 - **Three slice modes**:
   - *Axis*: fix H, K or L and step through the volume with an index slider. A map can
-    average ±N neighbouring slices (the Slice page); empty voxels stay out, and the
+    average ±N neighbouring slices, set in slices or as a half-width in axis units (the
+    Slice page); empty voxels stay out, and the
     readout, the line-cut thickness and the comparison's slice agreement follow the slab.
   - *Normal plane*: define an arbitrary plane by its normal and origin in HKL/Q space,
     move it along the normal, and control the interpolation resolution and plane extent.
