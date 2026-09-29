@@ -313,7 +313,9 @@ HDF5 signature), read with h5wasm:
   names such as `[H,H,0]` are taken from the axis `long_name` and keep their Q geometry.
   When the workspace carries a `W_MATRIX` log, the projection is taken from it exactly,
   since the names keep only three digits. A `mask` dataset next to the signal hides
-  masked voxels. Laue symbols in file names, including the `4_mmm` and `-3m_r` forms
+  masked voxels. Workspaces with more than three dimensions are read as 3-D when the
+  extra ones hold a single bin, such as an integrated energy transfer; the load message
+  names what was dropped. Laue symbols in file names, including the `4_mmm` and `-3m_r` forms
   that reduction programs write, suggest the class for symmetrization.
 
 ## Getting started

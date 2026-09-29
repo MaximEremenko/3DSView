@@ -463,3 +463,39 @@ test("processing recorded in /entry/process is read with the data", async () => 
   const plain = await app.parseFile(await unifiedExportFile(app, "plain_unified.h5", spec));
   assert.equal(plain.process, undefined, "files without /entry/process have none");
 });
+
+// A 4-D Mantid workspace, dimensions D0..D3 stored [D3][D2][D1][D0]; the
+// voxel value is code() of the indices along the dimensions longer than one.
+async function mantid4d(app, name, lengths, longNames=["[H,0,0]", "DeltaE", "[0,K,0]", "[0,0,L]"]){
+  return h5File(app, name, f => {
+    const data = f.create_group("MDHistoWorkspace").create_group("data");
+    const [L0, L1, L2, L3] = lengths, disk = new Float64Array(L0 * L1 * L2 * L3);
+    const kept = [0, 1, 2, 3].filter(d => lengths[d] > 1);
+    for(let i3=0;i3<L3;i3++) for(let i2=0;i2<L2;i2++) for(let i1=0;i1<L1;i1++) for(let i0=0;i0<L0;i0++){
+      const at = [i0, i1, i2, i3], idx = kept.map(d => at[d]);
+      disk[((i3 * L2 + i2) * L1 + i1) * L0 + i0] = code(idx[0] || 0, idx[1] || 0, idx[2] || 0);
+    }
+    const signal = data.create_dataset({name:"signal", data:disk, shape:[L3, L2, L1, L0], dtype:"<d"});
+    signal.create_attribute("axes", "D3:D2:D1:D0");
+    lengths.forEach((n, d) => {
+      const ds = data.create_dataset({name:`D${d}`, data:Array.from({length:n + 1}, (_, i) => -1 + 0.5 * i - 0.25), shape:[n + 1], dtype:"<d"});
+      ds.create_attribute("long_name", longNames[d]);
+      ds.create_attribute("units", longNames[d] === "DeltaE" ? "meV" : "r.l.u.");
+      ds.create_attribute("frame", longNames[d] === "DeltaE" ? "General Frame" : "HKL");
+    });
+    const lattice = f.get("MDHistoWorkspace").create_group("experiment0").create_group("sample").create_group("oriented_lattice");
+    ["a", "b", "c", "alpha", "beta", "gamma"].forEach((key, i) => lattice.create_dataset({name:`unit_cell_${key}`, data:[[4, 4, 6, 90, 90, 90][i]], shape:[1], dtype:"<d"}));
+  });
+}
+
+test("a 4-D Mantid workspace with one integrated dimension reads as 3-D", async () => {
+  const app = loadApp();
+  const last = await app.parseFile(await mantid4d(app, "integrated_last.nxs", [5, 3, 4, 1], ["[H,0,0]", "[0,K,0]", "[0,0,L]", "DeltaE"]));
+  assertValues(last, [5, 3, 4]);
+  assert.match(last.readerNote, /single-bin D3 was dropped/);
+  const middle = await app.parseFile(await mantid4d(app, "integrated_middle.nxs", [5, 1, 3, 4]));
+  assertValues(middle, [5, 3, 4]);
+  assert.deepEqual(Array.from(app.nativeAxisLabels(middle)), ["H", "K", "L"], "D0, D2 and D3 are H, K and L");
+  assert.deepEqual(Array.from(middle.l), [-1, -0.5, 0, 0.5], "L comes from the D3 edges");
+  await assert.rejects(async () => app.parseFile(await mantid4d(app, "two_extra.nxs", [5, 2, 3, 4])), /4 dimensions, 4 of them/);
+});

@@ -1028,7 +1028,7 @@ const ORDERED_INDEXED_TAIL_BYTES = 1024 * 1024;
 const CACHE_DB_NAME = "three_ds_plotter_cache_v1";
 const CACHE_STORE_NAME = "parsed_volumes";
 // Bump whenever parser semantics change so stale axis/data-kind metadata is not restored.
-const CACHE_VERSION = 9;
+const CACHE_VERSION = 10;
 const $ = (id) => document.getElementById(id);
 
 const THEME_KEY = "view3ds-theme";
@@ -1230,7 +1230,7 @@ function cacheBaseFromResult(res){
     "file","header","skipped","rows","filled","format","coordKind","shape",
     "h","k","l","I","rawMin","rawMax","dataKind","Bq","Bp","cellDeg","basisSource",
     "gridOrigin","gridVectors","gridVectorSource","axisLabels","h5","axisOrderAmbiguous",
-    "projectionW","hklAxisLabels","maskedVoxels","gapPadding","sigma","geometryNote","process"
+    "projectionW","hklAxisLabels","maskedVoxels","gapPadding","sigma","geometryNote","process","readerNote"
   ];
   const base = {};
   for(const key of keys){
@@ -4005,8 +4005,9 @@ function nexusDimensionOrder(names){
   if(rank < 2 || rank > 3) return null;
   const lower = names.map(s => String(s).toLowerCase());
   let idx;
-  if(lower.every(s => /^d\d$/.test(s))){
-    idx = lower.map(s => Number(s.slice(1)));
+  if(lower.every(s => /^d\d+$/.test(s))){
+    const nums = lower.map(s => Number(s.slice(1))), sorted = [...nums].sort((a, b) => a - b);
+    idx = nums.map(n => sorted.indexOf(n));
   }else{
     const family = [["h","k","l"], ["qx","qy","qz"], ["x","y","z"], ["u","v","w"]].find(set => lower.every(s => set.includes(s)));
     if(!family) return null;
@@ -4173,10 +4174,24 @@ async function parseNexusFile(file){
     if(shapeMeta.length) assertVolumeFits(normalizeShape3(shapeMeta), "NeXus signal grid");
     const signalValue = h5Value(signalObj);
     let values = flatNumericArray(signalValue);
-    const diskShape = normalizeShape3(h5Shape(signalObj, signalValue), values.length);
-    const meta0 = {};
     const axesAttr = h5Text(h5AttrValue(signalObj, "axes"));
-    const diskAxes = axesAttr.split(/[:\s,]+/).map(s => s.trim()).filter(Boolean);
+    let diskAxes = axesAttr.split(/[:\s,]+/).map(s => s.trim()).filter(Boolean);
+    // A workspace with more than three dimensions is read as 3-D when the
+    // extra ones are integrated to a single bin (energy transfer, say).
+    let rawDims = Array.from(h5Shape(signalObj, signalValue) || []).map(v => Math.floor(Number(v))).filter(v => v > 0), readerNote = "";
+    if(rawDims.length > 3){
+      const drop = [];
+      for(let d=0;d<rawDims.length && rawDims.length - drop.length > 3;d++) if(rawDims[d] === 1) drop.push(d);
+      if(rawDims.length - drop.length > 3){
+        throw new Error(`The signal has ${rawDims.length} dimensions, ${rawDims.filter(n => n > 1).length} of them with more than one bin; integrate all but three first (Mantid IntegrateMDHistoWorkspace, for example).`);
+      }
+      const names = diskAxes.length === rawDims.length ? drop.map(d => diskAxes[d]) : drop.map(d => `dimension ${d}`);
+      readerNote = `The ${rawDims.length}-D signal is read as 3-D; its single-bin ${names.join(", ")} ${drop.length > 1 ? "were" : "was"} dropped.`;
+      if(diskAxes.length === rawDims.length) diskAxes = diskAxes.filter((_, d) => !drop.includes(d));
+      rawDims = rawDims.filter((_, d) => !drop.includes(d));
+    }
+    const diskShape = normalizeShape3(rawDims.length ? rawDims : h5Shape(signalObj, signalValue), values.length);
+    const meta0 = {};
     const maskedVoxels = applySiblingMask(h5file, signalPath, values);
     let sigma = siblingSigma(h5file, signalPath, values.length);
     let shape = diskShape, axesNames = diskAxes;
@@ -4216,6 +4231,7 @@ async function parseNexusFile(file){
     const result = makeVolumeResult(file.name, shape, hAxis, kAxis, lAxis, values, `NeXus signal (${signalPath})`, coordKind, null, 0, meta);
     result.header = {points:values.length, sections:1, scale:null, offset:null};
     if(maskedVoxels) result.maskedVoxels = maskedVoxels;
+    if(readerNote) result.readerNote = readerNote;
     return result;
   }catch(err){
     if(isLikelyMemoryError(err)){
@@ -10957,7 +10973,7 @@ async function onFile(file){
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
   const geometryNote = parsed.geometryNote ? ` ${parsed.geometryNote}` : "";
   const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${processNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${parsed.readerNote ? ` ${parsed.readerNote}` : ""}${processNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
