@@ -221,3 +221,24 @@ test("the outlier cut flags a spike among its symmetry equivalents", async () =>
   skip[spike] = 1;
   assert.equal(Array.from(await app.context.outlierMask(res, "m-3m", 5, skip)).filter(Boolean).length, 0, "voxels left out are not judged");
 });
+
+test("symmetrization can grow a half grid to the whole", async () => {
+  const app = loadApp();
+  const hk = [-2, -1, 0, 1, 2], l = [0, 1, 2];
+  const values = new Float64Array(5 * 5 * 3);
+  let p = 0;
+  for(const h of hk) for(const k of hk) for(const q of l) values[p++] = 1 + Math.abs(h) + 10 * Math.abs(k) + 100 * q;
+  const res = app.context.makeVolumeResult("half.h5", [5, 5, 3], hk, hk, l, values, "test", "hkl");
+  app.state.res = res;
+  const out = await app.context.symmetrizeExtended(res, "-1");
+  assert.deepEqual(Array.from(out.shape), [5, 5, 5], "L from 0..2 grows to -2..2");
+  const grown = out.result;
+  assert.deepEqual(Array.from(grown.l), [-2, -1, 0, 1, 2]);
+  const at = (h, k, q) => grown.I[((h + 2) * 5 + (k + 2)) * 5 + (q + 2)];
+  assert.equal(at(1, -2, -2), 1 + 1 + 20 + 200, "(1, -2, -2) takes the value of its Friedel mate (-1, 2, 2)");
+  assert.equal(at(0, 0, 0), 1);
+  assert.equal(out.covered, 125, "every voxel of the grown grid holds data");
+  assert.equal(out.measured, 75);
+  const fill = await app.context.symmetrizeExtended(res, "-1", "fill");
+  assert.equal(fill.result.I[((2 + 2) * 5 + 0) * 5 + (1 + 2)], values[(4 * 5 + 0) * 3 + 1], "fill keeps the measured values");
+});

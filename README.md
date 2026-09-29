@@ -221,6 +221,16 @@ and slab-average slicing with linked 2-D and 3-D views.
     hint's tooltip lists the operations.
   - **Metric check:** for every class the hint says how much the operations change the
     reciprocal metric, and warns above 2 %, when they probably belong to another setting.
+  - **Extend the grid:** by default symmetrization works inside the file's grid, so the
+    images of a half or a quadrant that fall outside it are not created. With *Extend the
+    grid to its symmetric images*, the grid grows to hold every image of the shown volume
+    under the operators that land on grid points. Each voxel of the grown grid is the mean
+    of its equivalents with data (or, with *Fill empty voxels only*, keeps its measured
+    value).
+    - The result opens as a volume of its own, since its grid differs, and can be
+      exported like any data. *Back to the measured data* returns to the file.
+    - The grown grid is limited to 48 million voxels; crop the shown volume first for
+      larger ones.
 - **Mask preview** (Process page): shows what a mask would remove, as two Show views,
   *Masked data* and *Removed by the mask*. Masking as a recorded processing step is done
   in 3DSConvert.

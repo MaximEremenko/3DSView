@@ -705,10 +705,12 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <option value="fill">Fill empty voxels only</option>
           </select>
         </label>
+        <label class="check"><input id="symExtend" type="checkbox" disabled>Extend the grid to its symmetric images (opens as a new volume)</label>
         <div class="btns">
           <button id="symApply" disabled>Symmetrize</button>
           <button id="symClear" class="alt" disabled>Clear</button>
         </div>
+        <div class="btns hidden" id="symBackRow"><button id="symBack" class="alt" type="button">Back to the measured data</button></div>
         <div id="symInfo" class="mono fine"></div>
         <p class="fine">Each voxel is averaged with its symmetry equivalents that hold data; empty voxels stay out of the average. <b>Fill empty voxels only</b> keeps the measured values and fills the gaps; with &minus;1 it completes Friedel pairs. Then pick <b>Data &minus; symmetrized</b> above the map to see where the data break the symmetry, or <b>Equivalents found</b> for the coverage. Exports save the values on show.</p>
       </div>
@@ -11152,6 +11154,13 @@ async function onFile(file){
   const parsed = await parseFile(file, progress);
   status(`Finalizing ${file.name} ...`);
   await nextFrame();
+  state.symSource = null;
+  showDataset(parsed, {name:file.name});
+}
+
+// Makes a parsed or computed volume the data on show; note goes into the
+// load message.
+function showDataset(parsed, {name=parsed.file, note=""}={}){
   state.res = parsed;
   state.sourceBasis = snapshotCellBasis(parsed);
   state.sourceGeometry = snapshotGeometry(parsed);
@@ -11202,7 +11211,7 @@ async function onFile(file){
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
   const geometryNote = parsed.geometryNote ? ` ${parsed.geometryNote}` : "";
   const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${parsed.readerNote ? ` ${parsed.readerNote}` : ""}${processNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  status(`Loaded${cacheText} ${name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${geometryNote}${parsed.readerNote ? ` ${parsed.readerNote}` : ""}${processNote}${orderNote}${note}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
@@ -11723,9 +11732,115 @@ function updateSymInfo(note=null){
 function syncSymControls(){
   syncMaskControls();
   const has = !!state.res, busy = !!state.symBusy;
-  for(const id of ["laueClass", "symMode", "symOps"]) $(id).disabled = !has || busy;
+  for(const id of ["laueClass", "symMode", "symOps", "symExtend"]) $(id).disabled = !has || busy;
+  $("symBackRow").classList.toggle("hidden", !state.symSource);
   $("symApply").disabled = !has || busy;
   $("symClear").disabled = !has || busy || !state.sym;
+}
+
+// Symmetrization onto a grown grid: the index box of all images of the shown
+// volume under the operators that carry the grid lattice onto itself (a half
+// or a quadrant grows to the whole), each voxel the mean of its equivalents
+// with data. "fill" keeps the measured values. The result is a volume of its
+// own, since its grid differs.
+const SYM_EXTEND_LIMIT = 48e6;
+
+async function symmetrizeExtended(res, cls, mode="average", onStep=null){
+  const {maps, total, skipped} = gridSymmetryMaps(res, cls);
+  const ranges = displayIndexRanges(res), [, n1, n2] = res.shape, I = res.I, sig = res.sigma || null;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for(const {A, t} of maps) for(const i of ranges[0]) for(const j of ranges[1]) for(const k of ranges[2]){
+    for(let c=0;c<3;c++){
+      const v = t[c] + i * A[0][c] + j * A[1][c] + k * A[2][c];
+      if(v < lo[c]) lo[c] = v;
+      if(v > hi[c]) hi[c] = v;
+    }
+  }
+  const shape = [0, 1, 2].map(c => hi[c] - lo[c] + 1), N = shape[0] * shape[1] * shape[2];
+  if(N > SYM_EXTEND_LIMIT) throw new Error(`the extended grid would hold ${N.toLocaleString()} voxels (${shape.join(" x ")}); crop the shown volume on the Slice page first.`);
+  const [, m1, m2] = shape;
+  const sum = new Float64Array(N), count = new Uint8Array(N), sig2 = sig ? new Float64Array(N) : null;
+  for(let m=0;m<maps.length;m++){
+    const {A, t} = maps[m];
+    // Along a row of k the image moves by a fixed step in the new grid.
+    const step = (A[2][0] * m1 + A[2][1]) * m2 + A[2][2], k0 = ranges[2][0];
+    for(let i=ranges[0][0];i<=ranges[0][1];i++) for(let j=ranges[1][0];j<=ranges[1][1];j++){
+      const a = t[0] + i * A[0][0] + j * A[1][0] + k0 * A[2][0] - lo[0];
+      const b = t[1] + i * A[0][1] + j * A[1][1] + k0 * A[2][1] - lo[1];
+      const c = t[2] + i * A[0][2] + j * A[1][2] + k0 * A[2][2] - lo[2];
+      let dst = (a * m1 + b) * m2 + c, src = (i * n1 + j) * n2 + k0;
+      for(let k=k0;k<=ranges[2][1];k++, src++, dst += step){
+        const x = I[src];
+        if(x !== x) continue;
+        sum[dst] += x;
+        count[dst]++;
+        if(sig2){ const e = sig[src]; sig2[dst] += e * e; }
+      }
+    }
+    if(onStep) await onStep(m + 1, maps.length);
+  }
+  // The means go in place, so the grown grid needs no second copy.
+  const out = sum, outSigma = sig2;
+  let covered = 0;
+  for(let v=0;v<N;v++){
+    const c = count[v];
+    out[v] = c ? sum[v] / c : NaN;
+    if(outSigma) outSigma[v] = c ? Math.sqrt(sig2[v]) / c : NaN;
+    if(c) covered++;
+  }
+  let measured = 0;
+  for(let i=ranges[0][0];i<=ranges[0][1];i++) for(let j=ranges[1][0];j<=ranges[1][1];j++) for(let k=ranges[2][0];k<=ranges[2][1];k++){
+    const src = (i * n1 + j) * n2 + k, x = I[src];
+    if(x !== x) continue;
+    measured++;
+    if(mode === "fill"){
+      const dst = ((i - lo[0]) * m1 + (j - lo[1])) * m2 + (k - lo[2]);
+      out[dst] = x;
+      if(outSigma) outSigma[dst] = sig[src];
+    }
+  }
+  // The new grid in native coordinates: the same steps from a shifted origin.
+  const frame = gridFrame(res);
+  const origin = [0, 1, 2].map(c => frame.o[c] + lo[0] * frame.G[0][c] + lo[1] * frame.G[1][c] + lo[2] * frame.G[2][c]);
+  const meta = {dataKind:res.dataKind};
+  for(const key of ["Bq", "Bp", "cellDeg", "basisSource", "projectionW", "hklAxisLabels", "axisLabels", "h5"]) if(res[key] !== undefined) meta[key] = res[key];
+  if(outSigma) meta.sigma = outSigma;
+  if(isSkewedGrid(res)) Object.assign(meta, {gridOrigin:origin, gridVectors:[0, 1, 2].map(c => [frame.G[0][c], frame.G[1][c], frame.G[2][c]]), gridVectorSource:"symmetric extension"});
+  const tag = String(LAUE_CLASSES[cls] ? cls : "sym").replace(/[^A-Za-z0-9-]+/g, "");
+  const name = `${res.file.replace(/\.[^.]+$/, "")}_sym_${tag}`;
+  const result = makeVolumeResult(name, shape, regularAxis(shape[0], origin[0], frame.G[0][0]), regularAxis(shape[1], origin[1], frame.G[1][1]), regularAxis(shape[2], origin[2], frame.G[2][2]),
+    out, `${res.format || "data"}, symmetrized with ${LAUE_CLASSES[cls].label} onto an extended grid`, res.coordKind, null, 0, meta);
+  result.header = {points:N, sections:1, scale:null, offset:null};
+  return {result, shape, fromShape:ranges.map(r => r[1] - r[0] + 1), used:maps.length, total, skipped, covered, measured};
+}
+
+async function runSymmetryExtended(res, cls, mode, label){
+  const t0 = performance.now();
+  let lastYield = t0;
+  status(`Symmetrizing with ${label} onto an extended grid ...`);
+  await nextFrame();
+  const out = await symmetrizeExtended(res, cls, mode, async (done, total) => {
+    if(performance.now() - lastYield < 120) return;
+    status(`Symmetrizing with ${label} onto an extended grid: operator ${done} of ${total} ...`);
+    await nextFrame();
+    lastYield = performance.now();
+  });
+  if(state.res !== res) return;
+  const source = state.symSource || res;
+  const skippedText = out.skipped ? ` ${out.skipped} operators were skipped because their images fall between grid points.` : "";
+  const note = ` Symmetrized with ${label} in ${fmt((performance.now() - t0) / 1000, 2)} s: the grid grew from ${out.fromShape.join(" x ")} to ${out.shape.join(" x ")}, ` +
+    `${out.covered.toLocaleString()} voxels hold data (${out.measured.toLocaleString()} measured), ${out.used} of ${out.total} operators.${skippedText} "Back to the measured data" returns to the file.`;
+  showDataset(out.result, {note});
+  state.symSource = source;
+  syncSymControls();
+}
+
+function symmetryBack(){
+  const source = state.symSource;
+  if(!source) return;
+  state.symSource = null;
+  showDataset(source, {note:" Back to the measured data."});
+  syncSymControls();
 }
 
 async function runSymmetry(){
@@ -11742,6 +11857,10 @@ async function runSymmetry(){
   const t0 = performance.now();
   let lastYield = t0;
   try{
+    if($("symExtend").checked){
+      await runSymmetryExtended(res, cls, mode, label);
+      return;
+    }
     status(`Symmetrizing with ${label} ...`);
     await nextFrame();
     const out = await symmetrizeVolume(res, cls, mode, async (done, total) => {
@@ -12456,6 +12575,7 @@ function bind(){
   $("symApply").addEventListener("click", runSymmetry);
   $("symClear").addEventListener("click", clearSymmetry);
   $("maskRun").addEventListener("click", runMaskPreview);
+  $("symBack").addEventListener("click", symmetryBack);
   $("maskClear").addEventListener("click", clearMaskPreview);
   $("heatmap").addEventListener("click", onHeatmapClick);
   $("heatmap").addEventListener("pointerdown", onHeatmapPointerDown);
