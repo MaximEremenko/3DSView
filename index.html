@@ -219,7 +219,7 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .sliceBar{display:flex;align-items:center;min-height:38px;padding:5px 10px;background:var(--toolbar);border-top:1px solid var(--line);color:var(--panelText)}
 .navGroup{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
 .navGroup input[type=range]{flex:1 1 auto;min-width:80px}
-.navGroup .val{flex:0 1 auto;min-width:150px}
+.navGroup .val{flex:0 0 auto;min-width:150px;max-width:62%}
 .navLabel{color:var(--statsText);font-size:.78rem;white-space:nowrap}
 .val{min-width:0;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--panelText);font:12px Consolas,"Courier New",monospace}
 .val .of{margin-left:8px;color:var(--statsText)}
@@ -601,6 +601,10 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <canvas id="levelHist" class="levelHist" title="Distribution of the shown slice values; the bright band is the display window. Drag a limit or the band, or click to move the nearer limit; double-click for auto levels."></canvas>
         <div id="levelInfo" class="mono fine">Display levels: -</div>
         <label class="check"><input id="levelSymmetric" type="checkbox" disabled>Symmetric about 0</label>
+        <div id="asinhRow" class="row2 hidden">
+          <label>asinh softening s<input id="asinhSoft" type="number" min="0" step="any" placeholder="auto" title="asinh(value / s) is linear well below s and logarithmic well above it; leave empty for the median of the positive values" disabled></label>
+          <div id="asinhInfo" class="fine"></div>
+        </div>
       </div>
       <div class="group">
         <h3>Colours</h3>
@@ -772,6 +776,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <option value="log">log10(value)</option>
             <option value="linear">Linear</option>
             <option value="sqrt">signed sqrt(value)</option>
+            <option value="asinh">asinh(value / s)</option>
           </select>
           <select id="colorMap" disabled title="Colour map">
             <optgroup label="Sequential">
@@ -799,7 +804,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
         <div id="mapReadout" class="mapReadout hidden" aria-live="off"></div>
         <div id="vectorLegend" class="vectorLegend hidden"></div>
         <div class="plotOverlay mapOverlay">
-          <button class="iconBtn" id="mapZoomIn" title="Zoom in (+, or scroll on the map)">+</button>
+          <button class="iconBtn" id="mapZoomIn" title="Zoom in (+, scroll on the map, or drag a box)">+</button>
           <button class="iconBtn" id="mapZoomOut" title="Zoom out (-)">&minus;</button>
           <button class="iconBtn" id="mapZoomReset" title="Show the whole slice (0, or double-click the map)">&#8634;</button>
         </div>
@@ -973,6 +978,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="keyRow"><span>First / last slice</span><span><kbd>Home</kbd><kbd>End</kbd></span></div>
       <div class="keyRow"><span>Fixed axis</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></div>
       <div class="keyRow"><span>Zoom the map</span><span><kbd>+</kbd><kbd>&minus;</kbd></span></div>
+      <div class="keyRow"><span>Zoom into a box: drag on the map</span><span><kbd>Shift</kbd>+drag when zoomed</span></div>
       <div class="keyRow"><span>Data / comparison</span><span><kbd>C</kbd></span></div>
       <div class="keyRow"><span>Line cut tool</span><span><kbd>L</kbd></span></div>
       <div class="keyRow"><span>Profiles under the map</span><span><kbd>P</kbd></span></div>
@@ -5951,9 +5957,14 @@ function buildTriplet2dResult(name, header, skipped, xs, ys, vals, rawMin, rawMa
   return finalizeResult({file:name, header, skipped, rows:vals.length, filled, format:"3-column text", coordKind, shape:[nX,nY,nZ], h:Float64Array.from(xAxis), k:Float64Array.from(yAxis), l:Float64Array.from(zAxis), I, rawMin, rawMax, ...meta});
 }
 
+// The asinh scale shows asinh(v / s): linear well below the softening s and
+// logarithmic well above it, for either sign.
+const ASINH = {s:1};
+
 function transformedValue(v, mode){
   if(!Number.isFinite(v)) return NaN;
   if(mode === "linear") return v;
+  if(mode === "asinh") return Math.asinh(v / ASINH.s);
   if(mode === "sqrt") return v >= 0 ? Math.sqrt(v) : -Math.sqrt(-v);
   if(mode === "log") return v > 0 ? Math.log10(v) : NaN;
   return Math.log10(Math.max(0, v) + 1);
@@ -6355,6 +6366,17 @@ function sampledAxisIndex(pos, count, fullCount){
   return Math.min(fullCount - 1, Math.round(pos * (fullCount - 1) / (count - 1)));
 }
 
+// Voxels with data over the fixed axis within ±half slices of fixed, inside lo..hi.
+function thickCount(res, fixedAxis, fixed, a, b, lo, hi, half){
+  const [, n1, n2] = res.shape, I = res.I;
+  let n = 0;
+  for(let f=Math.max(lo, fixed - half), end=Math.min(hi, fixed + half); f<=end; f++){
+    const v = fixedAxis === 0 ? I[(f * n1 + a) * n2 + b] : fixedAxis === 1 ? I[(a * n1 + f) * n2 + b] : I[(a * n1 + b) * n2 + f];
+    if(v === v) n++;
+  }
+  return n;
+}
+
 // Mean over the fixed axis within ±half slices of fixed, inside lo..hi;
 // empty voxels stay out. a and b index the other two axes in order.
 function thickMean(res, fixedAxis, fixed, a, b, lo, hi, half){
@@ -6632,11 +6654,45 @@ function histogramQuantile(hist, q){
   return hist.max;
 }
 
+// The median of the positive values, from up to 200,000 samples: the default
+// asinh softening.
+function asinhAutoSoftening(res){
+  if(res.asinhAuto !== undefined) return res.asinhAuto;
+  const I = res.I, stride = Math.max(1, Math.floor(I.length / 200000)), pos = [];
+  for(let i=0;i<I.length;i+=stride){
+    const v = I[i];
+    if(v > 0 && v < Infinity) pos.push(v);
+  }
+  pos.sort((a, b) => a - b);
+  res.asinhAuto = pos.length ? pos[pos.length >> 1] : 1;
+  return res.asinhAuto;
+}
+
+// Sets the asinh softening for the data on show (typed, or automatic) and
+// the whole-volume bounds on that scale.
+function syncAsinh(){
+  const shown = viewRes(), res = shown && (shown.levelsFrom || shown);
+  if(!res) return;
+  const typed = $("asinhSoft") ? Number($("asinhSoft").value) : NaN;
+  const s = typed > 0 ? typed : asinhAutoSoftening(res);
+  ASINH.s = s;
+  for(const r of new Set([res, shown])){
+    if(!r.global || !r.global.linear) continue;
+    const lo = Math.asinh(r.global.linear.min / s), hi = Math.asinh(r.global.linear.max / s);
+    r.global.asinh = {min:lo, max:hi > lo ? hi : lo + 1};
+  }
+  if(state.globalHist && state.globalHist.asinhS !== s){
+    delete state.globalHist.byMode.asinh;
+    state.globalHist.asinhS = s;
+  }
+  if($("asinhInfo")) $("asinhInfo").textContent = `s = ${fmt(s, 4)}${typed > 0 ? "" : ", the median of the positive values"}`;
+}
+
 // Histogram of the whole volume in the given display scale, built on first use.
 function globalHistogram(mode){
   const shown = viewRes(), res = shown && shown.levelsFrom || shown;
   if(!res || !res.global || !res.global[mode]) return null;
-  if(!state.globalHist || state.globalHist.res !== res) state.globalHist = {res, byMode:{}};
+  if(!state.globalHist || state.globalHist.res !== res) state.globalHist = {res, byMode:{}, asinhS:ASINH.s};
   const cache = state.globalHist.byMode;
   if(!cache[mode]) cache[mode] = valueHistogram(res.I, res.global[mode].min, res.global[mode].max, 2048, v => transformedValue(v, mode));
   return cache[mode];
@@ -6853,9 +6909,14 @@ function onHeatmapPointerDown(ev){
   const handle = pickColorBarHandle(pt.x, pt.y, b);
   if(!handle){
     const layout = view2dArea();
-    if(layout && layout.view.zoom > 1 && pointInMapArea(pt)){
-      state.pan2d = {pointerId:ev.pointerId, x:pt.x, y:pt.y, panX:layout.view.panX, panY:layout.view.panY};
-      $("heatmap").style.cursor = "grabbing";
+    if(layout && pointInMapArea(pt)){
+      // A drag pans a zoomed map; otherwise, or with Shift, it draws a box to zoom into.
+      if(layout.view.zoom > 1 && !ev.shiftKey){
+        state.pan2d = {pointerId:ev.pointerId, x:pt.x, y:pt.y, panX:layout.view.panX, panY:layout.view.panY};
+        $("heatmap").style.cursor = "grabbing";
+      }else{
+        state.box2d = {pointerId:ev.pointerId, x0:pt.x, y0:pt.y, x1:pt.x, y1:pt.y};
+      }
       try{ $("heatmap").setPointerCapture(ev.pointerId); }catch(_){}
       ev.preventDefault();
     }
@@ -6880,6 +6941,14 @@ function onHeatmapPointerMove(ev){
   }
   if(state.cutDrag){
     moveCutDrag(pt);
+    return;
+  }
+  if(state.box2d){
+    state.box2d.x1 = pt.x;
+    state.box2d.y1 = pt.y;
+    hideReadout();
+    paint2d();
+    drawZoomBox(state.box2d);
     return;
   }
   const pan = state.pan2d, layout = view2dArea();
@@ -6919,6 +6988,13 @@ function onHeatmapPointerUp(ev){
     try{ cv.releasePointerCapture(state.pan2d.pointerId); }catch(_){}
     state.pan2d = null;
     cv.style.cursor = "grab";
+    return;
+  }
+  if(state.box2d){
+    const box = state.box2d;
+    state.box2d = null;
+    try{ cv.releasePointerCapture(box.pointerId); }catch(_){}
+    if(!zoom2dToBox(box)) paint2d();
     return;
   }
   if(!drag || !drag.active){
@@ -7018,6 +7094,7 @@ function draw2d(options={}){
     return;
   }
 
+  syncAsinh();
   const fast = !!(options && options.fast);
   const resOverride = fast ? fastMoveSliceResolution() : null;
   const axisCap = fast ? MAX_LIVE_AXIS_SLICE_CELLS : MAX_AXIS_SLICE_CELLS;
@@ -7146,6 +7223,34 @@ function zoom2dAt(factor, X, Y){
   paint2d();
 }
 
+// Zooms so that a box drawn on the map (canvas pixels) fills the map area.
+// Returns false for a box too small to be meant, e.g. a click.
+function zoom2dToBox(box){
+  const layout = view2dArea();
+  const w = Math.abs(box.x1 - box.x0), h = Math.abs(box.y1 - box.y0);
+  if(!layout || w < 8 || h < 8) return false;
+  const v = layout.view, area = layout.area;
+  const z = clamp(v.zoom * Math.min(area.w / w, area.h / h), 1, 64);
+  const cx = area.x + area.w / 2, cy = area.y + area.h / 2;
+  const bx = ((box.x0 + box.x1) / 2 - cx - v.panX * area.w) / v.zoom, by = ((box.y0 + box.y1) / 2 - cy - v.panY * area.h) / v.zoom;
+  state.view2d = clampView2d({key:v.key, zoom:z, panX:-z * bx / area.w, panY:-z * by / area.h});
+  paint2d();
+  return true;
+}
+
+function drawZoomBox(box){
+  const ctx = $("heatmap").getContext("2d");
+  const x = Math.min(box.x0, box.x1), y = Math.min(box.y0, box.y1), w = Math.abs(box.x1 - box.x0), h = Math.abs(box.y1 - box.y0);
+  ctx.save();
+  ctx.fillStyle = "rgba(125,211,252,.12)";
+  ctx.fillRect(x, y, w, h);
+  ctx.setLineDash([5, 4]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = themePlot().handleActive;
+  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+  ctx.restore();
+}
+
 function zoom2dCenter(factor){
   const layout = view2dArea();
   if(!layout) return;
@@ -7179,6 +7284,8 @@ function sliceReadout(pt){
     out.value = sl.thickness
       ? thickMean(res, sl.fixedAxis, sl.fixedIndex, idx[others[0]], idx[others[1]], range[0], range[1], sl.thickness)
       : res.I[idx3(res.shape, idx[0], idx[1], idx[2])];
+    if(sl.thickness) out.pooled = [thickCount(res, sl.fixedAxis, sl.fixedIndex, idx[others[0]], idx[others[1]], range[0], range[1], sl.thickness),
+      Math.min(range[1], sl.fixedIndex + sl.thickness) - Math.max(range[0], sl.fixedIndex - sl.thickness) + 1];
   }else{
     const p = sl.type === "plane" ? state.plane : state.avgvol;
     if(!p) return null;
@@ -7209,6 +7316,7 @@ function readoutText(o){
     lines.push(`${vec}|Q| ${readoutNumber(qn)} \u00c5\u207b\u00b9   d ${qn > 0 ? readoutNumber(2 * Math.PI / qn) : "-"} \u00c5`);
   }
   lines.push(`${valueLabel(res)} ${Number.isFinite(o.value) ? readoutNumber(o.value) : "no data"}`);
+  if(o.pooled) lines.push(`mean of ${o.pooled[0]} of ${o.pooled[1]} voxels`);
   return lines.join("\n");
 }
 
@@ -7943,6 +8051,8 @@ function syncControls(){
   }
   $("levelMin").disabled = !has;
   $("levelMax").disabled = !has;
+  $("asinhSoft").disabled = !has;
+  $("asinhRow").classList.toggle("hidden", $("scale").value !== "asinh");
   $("axisControls").classList.toggle("hidden", !axisMode);
   $("planeControls").classList.toggle("hidden", !planeMode);
   $("avgControls").classList.toggle("hidden", !avgMode);
@@ -9609,6 +9719,7 @@ async function renderIso3d(Plotly){
 // they are shown.
 async function render3d(which=null){
   if(!state.res) return;
+  syncAsinh();
   if(state.moveActive) return;
   const views = which || ["plane", "iso"].filter(view3dShown);
   if(!which) for(const v of ["plane", "iso"]) if(!views.includes(v)) state.stale3d[v] = true;
@@ -11453,7 +11564,13 @@ function bind(){
     scheduleDraw2d({fast:true, sync3d:true});
   });
   $("idx").addEventListener("change", () => { finalizeSliceMoveCameraLock(); });
-  $("scale").addEventListener("change", () => { resetDisplayLevels(false); draw2d(); scheduleRender3d(); });
+  $("scale").addEventListener("change", () => {
+    $("asinhRow").classList.toggle("hidden", $("scale").value !== "asinh");
+    resetDisplayLevels(false);
+    draw2d();
+    scheduleRender3d();
+  });
+  $("asinhSoft").addEventListener("change", () => { syncAsinh(); resetDisplayLevels(false); draw2d(); scheduleRender3d(); });
   $("colorMap").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("colorReverse").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("nanColor").addEventListener("change", () => draw2d());

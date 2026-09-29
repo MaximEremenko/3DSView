@@ -76,9 +76,11 @@ and slab-average slicing with linked 2-D and 3-D views.
 - **Cursor readout**: hovering over the 2-D map shows the coordinates under the cursor
   (H K L, Q or X Y Z), plus Q, |Q| and the d-spacing when a reciprocal basis is known,
   and the value. On axis slices the value is the voxel itself, at full resolution; on
-  plane and slab slices it is the value drawn there.
+  plane and slab slices it is the value drawn there. On a thick slice it is the mean, and
+  the readout says how many voxels went into it.
 - **2-D zoom and pan**: zoom the map with the mouse wheel (about the cursor) or the +/−
-  buttons, and drag to pan; double-click or ↺ shows the whole slice again. Ticks follow
+  buttons, or drag a box to zoom into it. A zoomed map pans when dragged (Shift+drag
+  still draws a box); double-click or ↺ shows the whole slice again. Ticks follow
   the visible region, skewed grids keep their shape, and each cell is centred on its
   sample.
 - **Three slice modes**:
@@ -151,7 +153,10 @@ and slab-average slicing with linked 2-D and 3-D views.
   - The 3-D views' headers and the status line under the map also give each figure's
     points and spacing.
 - **Display controls**:
-  - **Scales:** log10(value+1), log10, linear and signed-sqrt.
+  - **Scales:** log10(value+1), log10, linear, signed-sqrt and asinh(value / s). asinh is
+    linear well below the softening s and logarithmic well above it, for either sign,
+    which suits wide ranges and difference maps. s defaults to the median of the positive
+    values and can be typed on the Levels page.
   - **Colour maps:** sequential Viridis, Plasma, Inferno, Magma, Cividis, Turbo and Gray,
     plus diverging RdBu and Coolwarm for signed data. Any map can be reversed, and empty
     voxels can be drawn transparent, gray, white or black.

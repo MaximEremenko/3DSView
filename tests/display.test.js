@@ -216,3 +216,30 @@ test("the plotted resolution gives the points and spacing a slice is drawn with"
   assert.match(app.context.samplingText(thin, ""), /sampled from 321 x 321; Δ[HK] 0\.1/);
   assert.equal(app.context.samplingText(null, ""), "not drawn yet");
 });
+
+test("the asinh scale softens by the median of the positive values", () => {
+  const app = loadApp();
+  const ax = [0, 1, 2, 3];
+  const values = Float64Array.from({length:64}, (_, i) => (i % 4 === 0 ? -5 : i));   // positives 1..63 without the multiples of 4
+  const res = app.context.makeVolumeResult("wide.h5", [4, 4, 4], ax, ax, ax, values, "test", "hkl");
+  app.state.res = res;
+  const positives = Array.from(values).filter(v => v > 0).sort((a, b) => a - b);
+  const median = positives[positives.length >> 1];
+  assert.equal(app.context.asinhAutoSoftening(res), median);
+  app.context.syncAsinh();
+  assertClose(app.context.transformedValue(10, "asinh"), Math.asinh(10 / median), 1e-12);
+  assertClose(app.context.transformedValue(-5, "asinh"), -Math.asinh(5 / median), 1e-12, "negative values keep their sign");
+  assertClose(res.global.asinh.min, Math.asinh(-5 / median), 1e-12, "whole-volume bounds on the asinh scale");
+  assertClose(res.global.asinh.max, Math.asinh(63 / median), 1e-12);
+});
+
+test("thick slices count the voxels they average", () => {
+  const app = loadApp();
+  const ax = [0, 1, 2, 3, 4];
+  const values = new Float64Array(125).fill(1);
+  values[(2 * 5 + 2) * 5 + 1] = NaN;   // one empty voxel in the column at H = 2, K = 2
+  const res = app.context.makeVolumeResult("thick.h5", [5, 5, 5], ax, ax, ax, values, "test", "hkl");
+  assert.equal(app.context.thickCount(res, 2, 2, 2, 2, 0, 4, 1), 2, "L = 1..3 around L = 2, one of them empty");
+  assert.equal(app.context.thickCount(res, 2, 0, 2, 2, 0, 4, 1), 1, "clipped at the lower end: L = 0..1");
+  assert.equal(app.context.thickCount(res, 2, 2, 0, 0, 0, 4, 2), 5);
+});
