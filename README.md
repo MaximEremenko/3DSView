@@ -202,7 +202,15 @@ and slab-average slicing with linked 2-D and 3-D views.
   points are skipped and reported. For example, when L has a different step from H and
   K, m−3m keeps only its 4/mmm part. The class is suggested from the file name (e.g.
   `_m-3m`) or from the cell metric. *Data − symmetrized* shows where the data break the
-  symmetry, and *Equivalents found* shows the coverage. The symmetrized view can be
+  symmetry, and *Equivalents found* shows the coverage.
+  - **Custom operations:** the Laue class list ends with *Custom operations…*. Type
+    generators separated by `;`, either as reciprocal triplets (`h+k,-h,l` is the six-fold
+    about c* in hexagonal axes) or as real-space ones (`x-y,x,z`). Translations are
+    dropped. The generators are closed into a group with the inversion; anything that
+    does not close within 48 operations, or is not an integer rotation, is refused. The
+    hint's tooltip lists the operations.
+  - **Metric check:** for every class the hint says how much the operations change the
+    reciprocal metric, and warns above 2 %, when they probably belong to another setting. The symmetrized view can be
   exported like the data; symmetrization as a recorded processing step is done in
   3DSConvert.
 - **No-data masks**: voxels without data are shown empty and left out of levels and

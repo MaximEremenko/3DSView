@@ -158,3 +158,33 @@ test("Laue symbols as reduction programs write them in file names", () => {
   assert.equal(s("calcite_-3m_r_cc.nxs"), "-3mR");
   assert.equal(s("PMN_x0p0_300K_cc_m-3m.nxs"), "m-3m");
 });
+
+test("typed generators close into the same group as the named class", () => {
+  const app = loadApp();
+  const key = m => Array.from(m, r => Array.from(r).join(",")).join(";");
+  const ops = list => Array.from(list, key).sort();
+  const named = ops(app.context.laueGroup("6/mmm"));
+  const reciprocal = app.context.setCustomSymmetry("h+k,-h,l; k,h,l");
+  assert.equal(reciprocal.length, 24);
+  assert.deepEqual(ops(reciprocal), named, "the six-fold and a swap give 6/mmm");
+  assert.deepEqual(ops(app.context.setCustomSymmetry("x-y,x,z; y,x,z")), named, "the same from real-space triplets");
+  assert.equal(app.context.opTriplet([[0, -1, 0], [1, -1, 0], [0, 0, 1]]), "k,-h-k,l");
+  assert.throws(() => app.context.setCustomSymmetry("h+k,k,l"), /more than 48/, "a shear never closes");
+  assert.throws(() => app.context.setCustomSymmetry("0.5h,k,l"), /fractional/);
+  assert.throws(() => app.context.setCustomSymmetry("2h,k,l"), /determinant 2/);
+  assert.throws(() => app.context.setCustomSymmetry("h,y,z"), /either/);
+});
+
+test("the metric check flags operations that do not fit the cell", () => {
+  const app = loadApp();
+  const ax = [-1, 0, 1];
+  const res = app.context.makeVolumeResult("tet.h5", [3, 3, 3], ax, ax, ax, new Float64Array(27).fill(1), "test", "hkl");
+  res.Bq = app.basisFromCell([4, 4, 6, 90, 90, 90], true).Bq;
+  assert.ok(app.context.symmetryMetricChange(res, "4/mmm") < 1e-9, "tetragonal operations keep a tetragonal metric");
+  assert.ok(app.context.symmetryMetricChange(res, "m-3m") > 0.02, "cubic ones do not");
+  const hex = app.context.makeVolumeResult("hex.h5", [3, 3, 3], ax, ax, ax, new Float64Array(27).fill(1), "test", "hkl");
+  hex.Bq = app.basisFromCell([3, 3, 5, 90, 90, 120], true).Bq;
+  assert.ok(app.context.symmetryMetricChange(hex, "6/mmm") < 1e-9);
+  const direct = app.context.makeVolumeResult("map.h5", [3, 3, 3], ax, ax, ax, new Float64Array(27), "test", "uvw");
+  assert.ok(Number.isNaN(app.context.symmetryMetricChange(direct, "6/mmm")), "no check without a reciprocal basis");
+});

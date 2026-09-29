@@ -689,7 +689,11 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <optgroup label="Trigonal, rhombohedral axes"><option value="-3R">&minus;3 (R)</option><option value="-3mR">&minus;3m (R)</option></optgroup>
             <optgroup label="Hexagonal"><option value="6/m">6/m</option><option value="6/mmm">6/mmm</option></optgroup>
             <optgroup label="Cubic"><option value="m-3">m&minus;3</option><option value="m-3m">m&minus;3m</option></optgroup>
+            <optgroup label="Other"><option value="custom">Custom operations&hellip;</option></optgroup>
           </select>
+        </label>
+        <label id="symOpsRow" class="hidden">Generators
+          <input id="symOps" type="text" spellcheck="false" autocomplete="off" placeholder="e.g. h+k,-h,l; k,h,-l   or   x-y,x,z" title="Operations separated by ;, as reciprocal (h, k, l) or real-space (x, y, z) triplets; they are closed into a group with the inversion" disabled>
         </label>
         <div id="laueHint" class="fine">Load data to symmetrize it.</div>
         <label>Result
@@ -4700,7 +4704,7 @@ const LAUE_CLASSES = (() => {
 // All operators of a Laue class, as integer 3x3 matrices acting on Miller indices.
 function laueGroup(cls){
   const def = LAUE_CLASSES[cls];
-  if(!def) throw new Error(`Unknown Laue class "${cls}".`);
+  if(!def) throw new Error(cls === "custom" ? "Type the generators of the custom group first." : `Unknown Laue class "${cls}".`);
   const key = m => m.map(row => row.join(",")).join(";");
   const group = [[[1,0,0],[0,1,0],[0,0,1]]], seen = new Set([key(group[0])]);
   const gens = [...def.gens, [[-1,0,0],[0,-1,0],[0,0,-1]]];
@@ -4709,9 +4713,66 @@ function laueGroup(cls){
       const p = group[n].map(row => mul(row, g));
       const k = key(p);
       if(!seen.has(k)){ seen.add(k); group.push(p); }
+      if(group.length > 48) throw new Error("The operations do not close into a crystallographic point group (more than 48 operations).");
     }
   }
   return group;
+}
+
+// Generators typed as triplets, separated by ";": reciprocal ones act on
+// h, k, l ("h+k,-h,l"), real-space ones on x, y, z ("x-y,x,z"); both become
+// matrices on Miller indices as row vectors. Translations do not matter
+// for intensities and are dropped.
+function parseSymmetryGenerators(text){
+  const parts = String(text || "").split(/[;\n]+/).map(s => s.trim()).filter(Boolean);
+  if(!parts.length) throw new Error("Type at least one operation, e.g. -k,h,l.");
+  return parts.map(part => {
+    const reciprocal = /[hkl]/i.test(part), direct = /[xyz]/i.test(part);
+    if(reciprocal === direct) throw new Error(`"${part}" should use either h, k, l or x, y, z.`);
+    const op = parseSymop(reciprocal ? part.toLowerCase().replace(/h/g, "x").replace(/k/g, "y").replace(/l/g, "z") : part);
+    if(!op) throw new Error(`"${part}" is not an operation such as -k,h,l.`);
+    // Rows of op.R give the new coordinates; on row vectors a reciprocal
+    // triplet is its transpose, and a real-space one acts as written.
+    const M = reciprocal ? transpose3(op.R) : op.R.map(row => row.slice());
+    if(!M.flat().every(v => Math.abs(v - Math.round(v)) < 1e-9)) throw new Error(`"${part}" has fractional coefficients; operations must map the lattice onto itself.`);
+    const R = M.map(row => row.map(Math.round)), det = R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1]) - R[0][1] * (R[1][0] * R[2][2] - R[1][2] * R[2][0]) + R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0]);
+    if(Math.abs(det) !== 1) throw new Error(`"${part}" is not a rotation or rotoinversion (determinant ${det}).`);
+    return R;
+  });
+}
+
+const isSignedPermutation = m => m.every(row => row.filter(v => v !== 0).length === 1 && row.every(v => v === 0 || Math.abs(v) === 1)) &&
+  [0, 1, 2].every(c => m.filter(row => row[c] !== 0).length === 1);
+
+// Registers typed generators as the "custom" class; returns its group.
+function setCustomSymmetry(text){
+  const gens = parseSymmetryGenerators(text);
+  LAUE_CLASSES.custom = {label:"custom", gens, oblique:!gens.every(isSignedPermutation)};
+  const group = laueGroup("custom");
+  LAUE_CLASSES.custom.label = `custom (${group.length} operations)`;
+  return group;
+}
+
+// An operation as a reciprocal triplet, h' in terms of h, k, l.
+function opTriplet(M){
+  return [0, 1, 2].map(c => {
+    const terms = [0, 1, 2].map(r => [M[r][c], "hkl"[r]]).filter(([v]) => v !== 0);
+    return terms.map(([v, s], i) => `${v < 0 ? "-" : i ? "+" : ""}${Math.abs(v) === 1 ? "" : Math.abs(v)}${s}`).join("") || "0";
+  }).join(",");
+}
+
+// How much a group's operations change the reciprocal metric G* = Bq·Bqᵀ in
+// HKL: max |M·G*·Mᵀ − G*| / max |G*|. NaN without a reciprocal basis.
+function symmetryMetricChange(res, cls){
+  const Bq = res && !isRealSpaceData(res) ? unprojectedBq(res) : null;
+  if(!validMatrix3(Bq)) return NaN;
+  const G = Bq.map(a => Bq.map(b => dot(a, b))), scale = Math.max(...G.flat().map(Math.abs)) || 1;
+  let worst = 0;
+  for(const M of laueGroup(cls)){
+    const MG = M.map(row => mul(row, G)), T = MG.map(row => M.map(m => dot(row, m)));
+    for(let i=0;i<3;i++) for(let j=0;j<3;j++) worst = Math.max(worst, Math.abs(T[i][j] - G[i][j]));
+  }
+  return worst / scale;
 }
 
 // Reciprocal basis in plain HKL: a projected file (axes such as [H,H,0])
@@ -11385,12 +11446,21 @@ function updateSymInfo(note=null){
     return;
   }
   const cls = $("laueClass").value, guess = state.laueGuess;
+  $("symOpsRow").classList.toggle("hidden", cls !== "custom");
   const from = guess && guess.source && guess.cls === cls ? `Suggested by ${guess.source}. ` : "";
   try{
+    if(cls === "custom"){
+      const group = setCustomSymmetry($("symOps").value);
+      hint.title = group.map(opTriplet).join("\n");
+    }else hint.title = "";
     const {total, skipped} = gridSymmetryMaps(res, cls);
+    const change = symmetryMetricChange(res, cls);
+    const metric = !Number.isFinite(change) ? "" : change > 0.02
+      ? ` Warning: the operations change the cell metric by up to ${fmt(100 * change, 2)} %, so they may belong to another setting.`
+      : ` They keep the cell metric to ${change < 1e-6 ? "rounding" : `${fmt(100 * change, 3)} %`}.`;
     hint.textContent = from + (skipped
       ? `${total} operators; ${total - skipped} land on grid points and ${skipped} are skipped (the axes they swap differ in step, or a flipped axis is not centred on 0).`
-      : `${total} operators, all landing on grid points.`);
+      : `${total} operators, all landing on grid points.`) + metric + (cls === "custom" ? " Hover here for the list." : "");
   }catch(err){
     hint.textContent = from + err.message;
   }
@@ -11402,7 +11472,7 @@ function updateSymInfo(note=null){
 
 function syncSymControls(){
   const has = !!state.res, busy = !!state.symBusy;
-  for(const id of ["laueClass", "symMode"]) $(id).disabled = !has || busy;
+  for(const id of ["laueClass", "symMode", "symOps"]) $(id).disabled = !has || busy;
   $("symApply").disabled = !has || busy;
   $("symClear").disabled = !has || busy || !state.sym;
 }
@@ -11410,7 +11480,12 @@ function syncSymControls(){
 async function runSymmetry(){
   const res = state.res;
   if(!res || state.symBusy) return;
-  const cls = $("laueClass").value, mode = $("symMode").value, label = LAUE_CLASSES[cls].label;
+  const cls = $("laueClass").value, mode = $("symMode").value;
+  if(cls === "custom"){
+    try{ setCustomSymmetry($("symOps").value); }
+    catch(err){ status(`Symmetrization: ${err.message}`, "err"); return; }
+  }
+  const label = LAUE_CLASSES[cls].label;
   state.symBusy = true;
   syncSymControls();
   const t0 = performance.now();
@@ -12117,6 +12192,8 @@ function bind(){
     status(`Saved the ${d.kind === "line" ? "line cut" : "|Q| profile"} as CSV.`, "ok");
   });
   $("laueClass").addEventListener("change", () => updateSymInfo());
+  $("symOps").addEventListener("change", () => updateSymInfo());
+  $("symOps").addEventListener("keydown", ev => { if(ev.key === "Enter") runSymmetry(); });
   $("symApply").addEventListener("click", runSymmetry);
   $("symClear").addEventListener("click", clearSymmetry);
   $("heatmap").addEventListener("click", onHeatmapClick);
