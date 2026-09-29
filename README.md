@@ -13,14 +13,15 @@ and slab-average slicing with linked 2-D and 3-D views.
 ## Features
 
 - **Three linked views**: a 2-D slice heatmap drawn on a canvas, a 3-D rendering of the
-  current slice plane and a 3-D isosurface of the whole volume (both Plotly).
+  current slice plane and a 3-D isosurface of the whole volume (both Plotly), plus a
+  Structure view of the crystal structure.
 - **Window layout**: the 2-D map is the main view. The slice mode, the plane shown, the
   value scale and the colour map sit above it, and the slice slider (with ‹ › step
   buttons) sits below it. The 3-D views share a dock beside the map. Show the slice
-  plane, the isosurface or both, drag the splitters to resize, enlarge the map or the
-  dock, or hide the dock (**Map** / **Map + 3-D**). Only the 3-D views on screen are
-  drawn; a hidden view is drawn when it is shown again, and Plotly is not loaded until
-  a 3-D view is needed.
+  plane, the isosurface, both, or the structure, drag the splitters to resize, enlarge
+  the map or the dock, or hide the dock (**Map** / **Map + 3-D**). Only the 3-D views on
+  screen are drawn; a hidden view is drawn when it is shown again, and Plotly is not
+  loaded until a 3-D view is needed.
 - **Side panel**: the Data, Slice, Levels, 3-D and Export pages open from the rail on the
   left; click the open page again to hide the panel. The layout, the open page and the
   splitter positions are remembered between visits.
@@ -61,13 +62,14 @@ and slab-average slicing with linked 2-D and 3-D views.
   - **Run folders:** an experimental file `X.dat` is paired with `X_calc.dat`, and
     RMCProfile's amplitude files are listed alongside. An input grid that holds one value
     everywhere (a calculation-only run) gives way to the calculation, and an `.rmc6f`
-    supplies the parent cell.
+    supplies the parent cell and the structure.
 - **Keyboard shortcuts** (press <kbd>?</kbd> for the list): <kbd>←</kbd>/<kbd>→</kbd> step
   through the slices (<kbd>Shift</kbd> for ten, <kbd>Home</kbd>/<kbd>End</kbd> for the
   ends), <kbd>1</kbd>–<kbd>3</kbd> pick the plane shown, <kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd>
   zoom the map, <kbd>F</kbd> enlarges the map, <kbd>D</kbd> shows or hides the 3-D dock,
-  <kbd>B</kbd> the side panel, <kbd>O</kbd> opens a file and <kbd>T</kbd> switches the
-  theme. Each axis keeps its own slice position.
+  <kbd>B</kbd> the side panel, <kbd>O</kbd> opens a file, <kbd>T</kbd> switches the
+  theme and <kbd>V</kbd> marks interatomic vectors on a real-space map. Each axis keeps
+  its own slice position.
 - **Cursor readout**: hovering over the 2-D map shows the coordinates under the cursor
   (H K L, Q or X Y Z), plus Q, |Q| and the d-spacing when a reciprocal basis is known,
   and the value. On axis slices the value is the voxel itself, at full resolution; on
@@ -110,8 +112,28 @@ and slab-average slicing with linked 2-D and 3-D views.
   grid to HKL, using the RMCProfile/Scatty frame (a along x, b in the xy-plane); Q stays
   available through the reciprocal basis, and **Restore File Cell** undoes the conversion.
   **Cell from structure file** takes the parent cell from an `.rmc6f` configuration (the
-  supercell cell divided by the supercell dimensions) or from a unified structure `.h5`,
-  and applies it.
+  supercell cell divided by the supercell dimensions), a unified structure `.h5` or a
+  CIF, and applies it; the structure opens in the Structure view as well.
+- **Structure view** (the Structure tab of the dock): the unit cell, or a block of 2 × 2 × 2
+  or 3 × 3 × 3 cells, with its atoms in Cartesian Å (a along x). Load a structure with
+  **Load…**, or open or drop one; without data the dock switches to it.
+  - An `.rmc6f` configuration or a unified structure `.h5` is averaged into its parent
+    cell: atoms are grouped by the site number of each atom line (or by element and
+    position when there is none), positions are circular means, so sites on a cell face
+    average correctly, and occupancies count atoms per parent cell. Sites that average to
+    the same position show as one, with each element's share (for PMN, Nb 0.667 and Mg
+    0.333 on the B site).
+  - A CIF gives its cell and sites, expanded by the listed symmetry operations; a CIF
+    without them shows the listed sites only.
+  - The camera tools work as in the other views: view along a*, b*, c*, a, b, c or a
+    typed direction, roll, tilt, turn and orthographic projection.
+- **Interatomic vectors** (<kbd>V</kbd>, or the button above the map): on a real-space map
+  (3D-ΔPDF, Patterson) with a structure loaded, every interatomic vector plus lattice
+  translations that falls in the shown axis slice (or thick slice) is marked with a
+  ring, one colour per element pair and nested rings where pairs share a vector. u, v, w
+  maps are in lattice units; for x, y, z maps in Å the structure is taken with a along x.
+  The readout names the vector under the cursor, [u v w] and |r|, and its pairs. When
+  the marks would crowd the map, zoom in.
 - **Shown-volume limits**: crop the displayed volume per axis with dual-range sliders.
 - **Display controls**:
   - **Scales:** log10(value+1), log10, linear and signed-sqrt.

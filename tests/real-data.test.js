@@ -105,3 +105,28 @@ realTest("PMN .rmc6f gives the parent cell (supercell / 40)", PMN_RMC6F, async f
   assert.deepEqual(Array.from(supercell), [40, 40, 40]);
   [4.052137, 4.052137, 4.052137, 90, 90, 90].forEach((v, i) => assertClose(cell[i], v, 1e-6, `cell ${i}`));
 });
+
+realTest("PMN .rmc6f averages to the perovskite sites, Nb and Mg sharing the B position", PMN_RMC6F, async file => {
+  const app = loadApp();
+  const t = Date.now();
+  const st = app.context.parseRmc6fStructure(await file.text());
+  assert.ok(Date.now() - t < 5000, "320,000 atoms read in a few seconds");
+  assert.equal(st.atomCount, 320000);
+  const near = (f, g) => Math.min(Math.abs(f - g), 1 - Math.abs(f - g));
+  const total = el => st.atoms.filter(a => a.element === el).reduce((s, a) => s + a.occupancy, 0);
+  assertClose(total("Pb"), 1, 1e-12);
+  assertClose(total("O"), 3, 1e-12);
+  assertClose(total("Nb"), 42669 / 64000, 1e-12);
+  assertClose(total("Mg"), 21331 / 64000, 1e-12);
+  // The file numbers two B sublattices (sites 2 and 6); both average to the
+  // cell centre and show as one position.
+  const positions = app.context.structurePositions(st.atoms);
+  assert.equal(positions.length, 5);
+  const b = positions.find(p => p.members.some(m => m.element === "Nb"));
+  for(let c=0;c<3;c++) assert.ok(near(b.frac[c], 0.5) < 0.02, "B position in the centre");
+  assert.deepEqual(Array.from(b.members, m => m.element).sort(), ["Mg", "Nb"]);
+  assertClose(b.members.find(m => m.element === "Nb").occupancy, 42669 / 64000, 1e-12);
+  assert.deepEqual(Array.from(b.labels).sort(), ["site 2", "site 6"]);
+  const pb = positions.find(p => p.main.element === "Pb");
+  for(let c=0;c<3;c++) assert.ok(near(pb.frac[c], 0) < 0.02, "Pb on the corner");
+});

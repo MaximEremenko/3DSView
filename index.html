@@ -259,14 +259,22 @@ kbd{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--l
 .dockBody[data-show="both"] #viewPlane{flex:0 0 var(--stack)}
 .dockBody[data-show="plane"] #viewIso,.dockBody[data-show="plane"] .splitH,
 .dockBody[data-show="iso"] #viewPlane,.dockBody[data-show="iso"] .splitH{display:none}
+#viewStruct{display:none}
+.dockBody[data-show="struct"] #viewStruct{display:flex}
+.dockBody[data-show="struct"] #viewPlane,.dockBody[data-show="struct"] #viewIso,.dockBody[data-show="struct"] .splitH{display:none}
+.viewHead .viewBtn{flex:0 0 auto;padding:1px 8px;border:1px solid var(--line);border-radius:5px;background:var(--side2);color:var(--sideText);font-size:.72rem;font-weight:600}
+.viewHead .viewBtn:hover{border-color:var(--brand);background:var(--soft)}
 .viewHead{height:26px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 8px;background:var(--panelBg);color:var(--panelText)}
 .viewHead h3{margin:0;font-size:.78rem;font-weight:600;white-space:nowrap}
 .viewHead .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:var(--statsText);font:11px Consolas,"Courier New",monospace}
 .plotWrap,.canvasWrap{position:relative;flex:1;min-height:0;overflow:hidden;background:var(--plot)}
-#plot3dPlane,#plot3dIso{width:100%;height:100%}
+#plot3dPlane,#plot3dIso,#plot3dStruct{width:100%;height:100%}
 #heatmap{width:100%;height:100%;display:block;touch-action:none}
 .plotOverlay{position:absolute;inset:auto 10px 10px auto;display:flex;gap:6px;z-index:5}
 .mapOverlay{inset:auto auto 10px 10px}
+.vectorLegend{position:absolute;left:66px;top:26px;z-index:5;max-width:46%;display:flex;flex-direction:column;gap:2px;padding:5px 8px;border:1px solid var(--iconBorder);border-radius:6px;background:var(--iconBg);color:var(--panelText);font:11px Consolas,"Courier New",monospace;line-height:1.35;pointer-events:none}
+.vectorLegend .dot{display:inline-block;width:8px;height:8px;margin-right:6px;border:2px solid;border-radius:50%;vertical-align:-1px}
+.vectorLegend .hint{color:var(--statsText)}
 .mapReadout{position:absolute;left:0;top:0;z-index:6;pointer-events:none;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText);border-radius:6px;padding:5px 8px;font:12px Consolas,"Courier New",monospace;white-space:pre;line-height:1.4}
 .iconBtn{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--iconBg);border:1px solid var(--iconBorder);color:var(--panelText)}
 .iconBtn:hover{background:rgba(26,122,173,.65)}
@@ -435,7 +443,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <button id="cellRestore" class="alt" disabled>Restore file cell</button>
           </div>
           <div class="btns">
-            <button id="cellFromStructure" class="alt" disabled title="Parent cell from an .rmc6f configuration (supercell / dimensions) or a unified structure .h5">Cell from structure file</button>
+            <button id="cellFromStructure" class="alt" disabled title="Cell from a structure file: the parent cell of an .rmc6f configuration (supercell / dimensions) or a unified structure .h5, or the cell of a CIF; the structure opens in the Structure view too">Cell from structure file</button>
           </div>
           <div class="fine" id="cellInfo">Load reciprocal-space data to inspect or enter its unit cell.</div>
         </div>
@@ -752,6 +760,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
               <option value="coolwarm">Coolwarm</option>
             </optgroup>
           </select>
+          <button type="button" id="vectorToggle" class="iconBtn ghost hidden" title="Interatomic vectors of the loaded structure (V)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8 16l7.5-7.5"/><path d="M11 8.5h4.5V13"/></svg></button>
           <button type="button" id="cutTool" class="iconBtn ghost" title="Line cut: drag across the map (L)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2.2" fill="currentColor"/><circle cx="19" cy="5" r="2.2"/></svg></button>
           <button type="button" id="profileToggle" class="iconBtn ghost" title="Profiles under the map: line cut and |Q| (P)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M4 16l4-6 4 3 4-8 4 5"/></svg></button>
           <button type="button" id="mapMax" class="iconBtn ghost" title="Enlarge the map (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
@@ -760,6 +769,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="canvasWrap" id="mapWrap">
         <canvas id="heatmap"></canvas>
         <div id="mapReadout" class="mapReadout hidden" aria-live="off"></div>
+        <div id="vectorLegend" class="vectorLegend hidden"></div>
         <div class="plotOverlay mapOverlay">
           <button class="iconBtn" id="mapZoomIn" title="Zoom in (+, or scroll on the map)">+</button>
           <button class="iconBtn" id="mapZoomOut" title="Zoom out (-)">&minus;</button>
@@ -771,7 +781,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             <h2>Open a 3-D volume</h2>
             <p>Drop a file anywhere in the window, or</p>
             <button id="welcomeOpen" type="button">Open file&hellip;</button>
-            <p class="formats">3DS / RMCProfile .dat and h k l lists &middot; calculator text &middot; Scatty VTK &middot; JSON &middot; NeXus / Mantid .nxs &middot; unified and Yell HDF5</p>
+            <p class="formats">3DS / RMCProfile .dat and h k l lists &middot; calculator text &middot; Scatty VTK &middot; JSON &middot; NeXus / Mantid .nxs &middot; unified and Yell HDF5 &middot; structures: .rmc6f, CIF</p>
             <p class="formats">Press <kbd>?</kbd> for keyboard shortcuts.</p>
           </div>
         </div>
@@ -829,6 +839,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
           <button type="button" data-dock="plane">Slice plane</button>
           <button type="button" data-dock="iso">Isosurface</button>
           <button type="button" data-dock="both">Both</button>
+          <button type="button" data-dock="struct">Structure</button>
         </div>
         <span class="grow"></span>
         <button type="button" id="dockMax" class="iconBtn ghost" title="Enlarge the 3-D views"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
@@ -868,6 +879,26 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
             </div>
           </div>
         </section>
+        <section class="view3d" id="viewStruct">
+          <div class="viewHead"><h3>Structure</h3>
+            <button type="button" id="structLoad" class="viewBtn" title="Load a structure: an .rmc6f configuration (averaged into its parent cell), a CIF, or a unified structure .h5">Load&hellip;</button>
+            <select id="structRep" class="mini" title="Unit cells shown along each axis">
+              <option value="1">1 cell</option>
+              <option value="2">2 x 2 x 2</option>
+              <option value="3">3 x 3 x 3</option>
+            </select>
+            <span id="structStatus" class="st">No structure</span></div>
+          <div class="plotWrap" id="structWrap">
+            <div id="plot3dStruct"></div>
+            <div id="emptyStruct" class="empty3d">Load a structure: .rmc6f, CIF or unified structure .h5.</div>
+            <div class="plotOverlay">
+              <button class="iconBtn" id="structZoomIn" title="Zoom in">+</button>
+              <button class="iconBtn" id="structZoomOut" title="Zoom out">&minus;</button>
+              <button class="iconBtn" id="structZoomReset" title="Reset camera">&#8634;</button>
+              <button class="iconBtn" data-camera-for="struct" title="Camera: view along a*, b*, c*, a, b, c or [hkl]; roll, tilt, turn; orthographic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   </main>
@@ -878,10 +909,11 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
   </footer>
 </div>
 
-<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5,.rmc6f" multiple hidden>
+<input id="file" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5,.rmc6f,.cif" multiple hidden>
 <input id="cmpFile" type="file" accept=".dat,.txt,.csv,.json,.vtk,.nx,.nx5,.nxs,.h5,.hdf5" hidden>
 <input id="folderFile" type="file" webkitdirectory hidden>
-<input id="structureFile" type="file" accept=".rmc6f,.h5,.hdf5" hidden>
+<input id="structureFile" type="file" accept=".rmc6f,.cif,.h5,.hdf5" hidden>
+<input id="structFile" type="file" accept=".rmc6f,.cif,.h5,.hdf5" hidden>
 <div id="statusLog" class="popover hidden" role="log" aria-label="Recent messages"></div>
 <div id="cameraMenu" class="popover camMenu hidden" role="dialog" aria-label="Camera">
   <h3>View along</h3>
@@ -916,6 +948,7 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
       <div class="keyRow"><span>Data / comparison</span><span><kbd>C</kbd></span></div>
       <div class="keyRow"><span>Line cut tool</span><span><kbd>L</kbd></span></div>
       <div class="keyRow"><span>Profiles under the map</span><span><kbd>P</kbd></span></div>
+      <div class="keyRow"><span>Interatomic vectors on a real-space map</span><span><kbd>V</kbd></span></div>
       <div class="keyRow"><span>Whole slice</span><span><kbd>0</kbd></span></div>
     </div>
     <div>
@@ -976,6 +1009,8 @@ function setTheme(t){
   try{
     draw2d();
     if(state.res) render3d();
+    state.structureStale = true;
+    refreshStructureView();
   }catch(_){}
 }
 const state = {
@@ -1003,7 +1038,7 @@ const state = {
   h5wasmPromise:null,
   cacheDbPromise:null,
   indexedWorkerUrl:null,
-  cameras:{plane:null, iso:null},
+  cameras:{plane:null, iso:null, struct:null},
   view:null,
   cmp:null,
   cmpAligned:null,
@@ -1037,7 +1072,12 @@ const state = {
   profileData:null,
   profileRaf:0,
   profileCache:null,
-  sliceHalf:0
+  sliceHalf:0,
+  structure:null,
+  structureVectors:null,
+  structurePairs:[],
+  structureStale:true,
+  vectorMarks:[]
 };
 
 const COLOR_MAPS = {
@@ -5003,7 +5043,7 @@ const AMPLITUDE_CALC = /_(?:aver_amp|aver_interf|total_amp|amp|interf)_calc$/i;
 function planFileSet(files){
   const stem = f => f.name.replace(/\.[^.]+$/, "");
   const volumes = files.filter(f => /\.(dat|txt|csv|json|vtk|nx|nx5|nxs|h5|hdf5)$/i.test(f.name));
-  const structure = files.find(f => /\.rmc6f$/i.test(f.name)) || null;
+  const structure = files.find(f => /\.(rmc6f|cif)$/i.test(f.name)) || null;
   let best = null;
   for(const f of volumes){
     const s = stem(f);
@@ -5290,7 +5330,7 @@ function rotateAbout(v, k, t){
   return [0, 1, 2].map(i => v[i] * c + kxv[i] * s + k[i] * kv * (1 - c));
 }
 
-function plotIdFor(key){ return key === "plane" ? "plot3dPlane" : "plot3dIso"; }
+function plotIdFor(key){ return key === "plane" ? "plot3dPlane" : key === "struct" ? "plot3dStruct" : "plot3dIso"; }
 
 function currentCamera(key){
   const plotId = plotIdFor(key);
@@ -5334,7 +5374,7 @@ function viewAlong(key, dir, upHint){
 
 // Named views: a*, b*, c*, a, b, c; up is c* (or b* when looking along c*).
 function viewAlongLattice(key, name){
-  const {recip, direct} = latticeDirections();
+  const {recip, direct} = key === "struct" ? structureDirections() : latticeDirections();
   const star = name.endsWith("*"), i = "abc".indexOf(name[0]);
   const dir = (star ? recip : direct)[i];
   const upHint = i === 2 ? (star ? recip : direct)[1] : (star ? recip : direct)[2];
@@ -5345,7 +5385,7 @@ function viewAlongLattice(key, name){
 function viewAlongIndices(key, text, kind){
   const nums = String(text || "").replace(/[\[\]\(\),]/g, " ").trim().split(/\s+/).map(Number);
   if(nums.length !== 3 || !nums.every(Number.isFinite) || nums.every(v => v === 0)) throw new Error("Enter three numbers, e.g. 1 1 0.");
-  const {recip, direct} = latticeDirections();
+  const {recip, direct} = key === "struct" ? structureDirections() : latticeDirections();
   const basis = kind === "uvw" ? direct : recip;
   const dir = [0, 1, 2].map(c => nums[0] * basis[0][c] + nums[1] * basis[1][c] + nums[2] * basis[2][c]);
   viewAlong(key, dir, recip[2]);
@@ -6963,6 +7003,7 @@ function paint2d(){
   ctx.restore();
 
   drawAxes(ctx, sl, layout, cssH);
+  drawVectorOverlay(ctx, layout, sl);
   drawCutOverlay(ctx, layout, sl);
   drawColorbar(ctx, stops, levels, stats, cssW - 28, 20, 18, cssH - 40);
 }
@@ -7066,7 +7107,7 @@ function showReadout(pt){
   state.readoutPt = pt;
   const o = pt ? sliceReadout(pt) : null;
   if(!o){ box.classList.add("hidden"); return; }
-  box.textContent = readoutText(o);
+  box.textContent = readoutText(o) + vectorReadout(pt);
   box.classList.remove("hidden");
   const wrap = box.parentElement.getBoundingClientRect();
   const w = box.offsetWidth, h = box.offsetHeight;
@@ -7675,6 +7716,7 @@ function syncControls(){
   $("avgMoveGroup").classList.toggle("hidden", !avgMode);
   for(const b of document.querySelectorAll(".stepBtn")) b.disabled = !has;
   $("welcome").classList.toggle("hidden", has);
+  syncStructureControls();
   updateAxisOptionText();
   if(has && axisMode) updateAxisIndexBounds();
   if(has && planeMode) setPlaneInputs();
@@ -7837,6 +7879,575 @@ async function structureFileCell(file){
   const h5 = await ensureH5wasm();
   const structure = window.UnifiedH5.readStructure(h5, new Uint8Array(await file.arrayBuffer()), file.name);
   return {cell:[...structure.cellLengths.slice(0, 3), ...structure.cellAngles.slice(0, 3)].map(Number), supercell:Array.from(structure.unitCells)};
+}
+
+// ---- Crystal structures: average sites of a configuration, CIF sites
+
+// Fraction in [0, 1); values within rounding of 1 count as 0.
+const wrap01 = x => { const f = x - Math.floor(x); return f > 1 - 1e-6 ? 0 : f; };
+
+function elementSymbol(text){
+  const m = /^([A-Za-z])([a-z]?)/.exec(String(text || "").trim());
+  return m ? m[1].toUpperCase() + m[2] : "X";
+}
+
+// Average parent-cell sites of a configuration. Atoms ({element, frac in
+// parent-cell fractions, site}) are grouped by site number, or without one by
+// element and position within 0.1 of a cell. Positions are circular means, so
+// a site on the cell edge averages correctly; occupancies count atoms per
+// parent cell, per element on a shared site.
+function averageSites(atoms, cells){
+  const groups = [], bySite = new Map(), near = Math.cos(2 * Math.PI * 0.1);
+  for(const atom of atoms){
+    const cs = atom.frac.map(f => [Math.cos(2 * Math.PI * f), Math.sin(2 * Math.PI * f)]);
+    let g = atom.site ? bySite.get(atom.site) : null;
+    if(!g && !atom.site){
+      g = groups.find(h => !h.site && h.elements.has(atom.element) && cs.every(([c, s], a) => {
+        const r = Math.hypot(h.c[a], h.s[a]);
+        return r > 0 && (h.c[a] * c + h.s[a] * s) / r > near;
+      })) || null;
+    }
+    if(!g){
+      g = {site:atom.site || "", elements:new Map(), c:[0, 0, 0], s:[0, 0, 0]};
+      groups.push(g);
+      if(atom.site) bySite.set(atom.site, g);
+    }
+    g.elements.set(atom.element, (g.elements.get(atom.element) || 0) + 1);
+    for(let a=0;a<3;a++){ g.c[a] += cs[a][0]; g.s[a] += cs[a][1]; }
+  }
+  const sites = [];
+  for(const g of groups){
+    const frac = [0, 1, 2].map(a => wrap01(Math.atan2(g.s[a], g.c[a]) / (2 * Math.PI)));
+    const label = g.site ? `site ${g.site}` : "";
+    for(const [element, count] of g.elements) sites.push({label:label || element, element, frac, occupancy:count / cells});
+  }
+  return sites;
+}
+
+// Parent-cell sites of an RMCProfile configuration. Atom lines are
+// "n element [label] x y z site cx cy cz" in supercell fractions; the label
+// and the site/cell columns may be missing.
+function parseRmc6fStructure(text){
+  const {cell, supercell} = parseRmc6fCell(text);
+  const lines = String(text || "").split(/\r?\n/);
+  const start = lines.findIndex(l => /^\s*Atoms/i.test(l));
+  if(start < 0) throw new Error('the .rmc6f file has no "Atoms:" section.');
+  const atomLine = /^\s*\d+\s+([A-Za-z][A-Za-z]?)\S*\s+(?:\[\d+\]\s+)?(\S+)\s+(\S+)\s+(\S+)(?:\s+(\d+)\s+-?\d+\s+-?\d+\s+-?\d+)?/;
+  const num = v => Number(v.replace(/[dD]/, "e"));
+  const atoms = [];
+  for(let n=start+1;n<lines.length;n++){
+    const m = atomLine.exec(lines[n]);
+    if(!m) continue;
+    const frac = [m[2], m[3], m[4]].map((v, a) => wrap01(num(v) * supercell[a]));
+    if(frac.every(Number.isFinite)) atoms.push({element:elementSymbol(m[1]), frac, site:m[5] || ""});
+  }
+  if(!atoms.length) throw new Error("no atom lines were found in the .rmc6f file.");
+  const sites = averageSites(atoms, supercell[0] * supercell[1] * supercell[2]);
+  return {cell, supercell, source:"rmc6f", atoms:sites, atomCount:atoms.length};
+}
+
+// Parent-cell sites of a unified structure HDF5 (as read by UnifiedH5).
+function unifiedStructureSites(st){
+  const cells = st.unitCells[0] * st.unitCells[1] * st.unitCells[2];
+  const atoms = st.atomPosition.map((p, n) => ({
+    element:elementSymbol(st.elements[n]),
+    frac:p.map((v, a) => wrap01(st.coordinatesAreSupercellFractional ? v * st.unitCells[a] : v)),
+    site:""
+  }));
+  return averageSites(atoms, cells);
+}
+
+// A CIF data block as items and loops. Quoted values, semicolon text fields
+// and comments are handled. Of several blocks, the first with atom sites is used.
+function parseCifBlock(text){
+  const blocks = String(text || "").split(/^(?=data_)/im);
+  const block = blocks.find(b => /_atom_site_fract_x/i.test(b)) || blocks[0] || "";
+  const tokens = [];
+  const lines = block.split(/\r?\n/);
+  for(let n=0;n<lines.length;n++){
+    const line = lines[n];
+    if(line.startsWith(";")){
+      const buf = [line.slice(1)];
+      while(++n < lines.length && !lines[n].startsWith(";")) buf.push(lines[n]);
+      tokens.push({text:buf.join("\n"), quoted:true});
+      continue;
+    }
+    const re = /'([^']*)'(?=\s|$)|"([^"]*)"(?=\s|$)|(#.*)|(\S+)/g;
+    let m;
+    while((m = re.exec(line))){
+      if(m[3] !== undefined) break;
+      tokens.push(m[4] !== undefined ? {text:m[4], quoted:false} : {text:m[1] !== undefined ? m[1] : m[2], quoted:true});
+    }
+  }
+  const items = new Map(), loops = [];
+  const isKeyword = t => !t.quoted && (/^(loop_|data_|save_|global_|stop_)/i.test(t.text) || t.text.startsWith("_"));
+  for(let i=0;i<tokens.length;){
+    const t = tokens[i];
+    if(!t.quoted && /^loop_$/i.test(t.text)){
+      const tags = [];
+      i++;
+      while(i < tokens.length && !tokens[i].quoted && tokens[i].text.startsWith("_")) tags.push(tokens[i++].text.toLowerCase());
+      const rows = [];
+      while(i < tokens.length && !isKeyword(tokens[i])){
+        const row = [];
+        for(let c=0;c<tags.length && i < tokens.length && !isKeyword(tokens[i]);c++) row.push(tokens[i++].text);
+        if(row.length === tags.length) rows.push(row);
+      }
+      loops.push({tags, rows});
+    }else if(!t.quoted && t.text.startsWith("_")){
+      const next = tokens[i + 1];
+      items.set(t.text.toLowerCase(), next && !isKeyword(next) ? next.text : "");
+      i += next && !isKeyword(next) ? 2 : 1;
+    }else{
+      i++;
+    }
+  }
+  return {items, loops};
+}
+
+// A CIF number; the uncertainty in 4.0484(2) is dropped, "." and "?" are NaN.
+const cifNumber = v => Number(String(v === undefined ? "" : v).trim().replace(/\(\d+\)$/, "") || NaN);
+
+// A symmetry operation such as "-x+1/2, y, z+1/2" as R (row r gives new
+// coordinate r from x, y, z) and t.
+function parseSymop(text){
+  const parts = String(text || "").replace(/\s+/g, "").toLowerCase().split(",");
+  if(parts.length !== 3) return null;
+  const R = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], t = [0, 0, 0];
+  for(let r=0;r<3;r++){
+    const terms = parts[r].match(/[+-]?[^+-]+/g);
+    if(!terms) return null;
+    for(const term of terms){
+      const m = /^([+-]?)(\d*\.?\d*(?:\/\d+)?)\*?([xyz])?$/.exec(term);
+      if(!m || (!m[2] && !m[3])) return null;
+      const sign = m[1] === "-" ? -1 : 1;
+      let value = 1;
+      if(m[2]){
+        const [p, q] = m[2].split("/");
+        value = q ? Number(p) / Number(q) : Number(p);
+      }
+      if(!Number.isFinite(value)) return null;
+      if(m[3]) R[r]["xyz".indexOf(m[3])] += sign * value;
+      else t[r] += sign * value;
+    }
+  }
+  return {R, t};
+}
+
+// Cell, symmetry operations and atom sites of a CIF, with the sites expanded
+// by the operations into the whole cell.
+function parseCifStructure(text){
+  const {items, loops} = parseCifBlock(text);
+  const cell = ["_cell_length_a", "_cell_length_b", "_cell_length_c", "_cell_angle_alpha", "_cell_angle_beta", "_cell_angle_gamma"].map(k => cifNumber(items.get(k)));
+  if(!cell.every(Number.isFinite)) throw new Error("the CIF has no complete _cell_length / _cell_angle entries.");
+  const opTag = /^_(symmetry_equiv_pos_as_xyz|space_group_symop_operation_xyz)$/;
+  const opLoop = loops.find(l => l.tags.some(t => opTag.test(t)));
+  let ops = [];
+  if(opLoop){
+    const col = opLoop.tags.findIndex(t => opTag.test(t));
+    ops = opLoop.rows.map(r => parseSymop(r[col])).filter(Boolean);
+  }else{
+    const single = Array.from(items.entries()).find(([k]) => opTag.test(k));
+    const op = single && parseSymop(single[1]);
+    if(op) ops = [op];
+  }
+  const listed = ops.length;
+  if(!listed) ops = [{R:[[1, 0, 0], [0, 1, 0], [0, 0, 1]], t:[0, 0, 0]}];
+  const siteLoop = loops.find(l => l.tags.includes("_atom_site_fract_x"));
+  if(!siteLoop) throw new Error("the CIF has no _atom_site loop with fractional coordinates.");
+  const col = tag => siteLoop.tags.indexOf(tag);
+  const [cl, ct, cx, cy, cz, co] = ["_atom_site_label", "_atom_site_type_symbol", "_atom_site_fract_x", "_atom_site_fract_y", "_atom_site_fract_z", "_atom_site_occupancy"].map(col);
+  const sites = siteLoop.rows.map(r => ({
+    label:cl >= 0 ? r[cl] : "",
+    element:elementSymbol(ct >= 0 ? r[ct] : r[cl]),
+    frac:[cx, cy, cz].map(c => (c >= 0 ? cifNumber(r[c]) : NaN)),
+    occupancy:co >= 0 && Number.isFinite(cifNumber(r[co])) ? cifNumber(r[co]) : 1
+  })).filter(s => s.frac.every(Number.isFinite));
+  if(!sites.length) throw new Error("the CIF lists no atom sites with numeric coordinates.");
+  const atoms = [];
+  for(const site of sites){
+    const images = [];
+    for(const {R, t} of ops){
+      const g = [0, 1, 2].map(r => wrap01(R[r][0] * site.frac[0] + R[r][1] * site.frac[1] + R[r][2] * site.frac[2] + t[r]));
+      if(!images.some(p => [0, 1, 2].every(c => { const d = Math.abs(p[c] - g[c]); return Math.min(d, 1 - d) < 1e-3; }))) images.push(g);
+    }
+    for(const frac of images) atoms.push({...site, frac});
+  }
+  const spaceGroup = ["_symmetry_space_group_name_h-m", "_space_group_name_h-m_alt"].map(k => items.get(k)).find(Boolean) || "";
+  return {cell, source:"cif", sites, atoms, operations:listed, spaceGroup};
+}
+
+// Interatomic vectors in fractional parent-cell units: every difference
+// between two atom positions, wrapped into the cell, with its element pair
+// and the summed occupancy products. Lattice translations are added where
+// the vectors are drawn.
+function interatomicVectors(structure){
+  const atoms = structure.atoms, seen = new Map();
+  for(const a of atoms) for(const b of atoms){
+    const d = [0, 1, 2].map(c => wrap01(b.frac[c] - a.frac[c]));
+    const pair = [a.element, b.element].sort().join("–");
+    const key = `${pair} ${d.map(v => Math.round(v * 1000) % 1000).join(",")}`;
+    const hit = seen.get(key);
+    if(hit) hit.weight += a.occupancy * b.occupancy;
+    else seen.set(key, {d, pair, weight:a.occupancy * b.occupancy});
+  }
+  return Array.from(seen.values());
+}
+
+// ---- The structure view, and interatomic vectors on real-space maps
+
+// Display colours and sizes (Å) for common elements; others get a colour
+// from their symbol.
+const ELEMENT_STYLE = {
+  H:["#eeeeee", 0.35], Li:["#b3a1e0", 1.1], B:["#f2b5a0", 0.85], C:["#8d8d8d", 0.75], N:["#3f6fe8", 0.72], O:["#e5302a", 0.7],
+  F:["#8ee06b", 0.65], Na:["#a45fd6", 1.4], Mg:["#2f9d4a", 1.3], Al:["#c9a5a5", 1.25], Si:["#e0c080", 1.15], P:["#f28c28", 1.05],
+  S:["#e8d23a", 1.0], Cl:["#27c257", 1.0], K:["#8a3fd0", 1.7], Ca:["#6cc08a", 1.5], Ti:["#a8b0b8", 1.4], V:["#9b9ea8", 1.35],
+  Cr:["#8a9bc9", 1.3], Mn:["#a26ac8", 1.3], Fe:["#e07b39", 1.25], Co:["#e98ba9", 1.25], Ni:["#5fb85f", 1.2], Cu:["#c8804a", 1.2],
+  Zn:["#8488b8", 1.2], Ga:["#c28f8f", 1.25], Ge:["#6b9090", 1.2], As:["#bd80e3", 1.15], Se:["#ffa100", 1.15], Br:["#a62929", 1.15],
+  Sr:["#3fc28a", 1.65], Y:["#6fd0d0", 1.6], Zr:["#6fc0c0", 1.5], Nb:["#4fb2b8", 1.45], Mo:["#54b5b5", 1.4], Ag:["#c0c0c0", 1.45],
+  Cd:["#ffd98f", 1.5], In:["#a67573", 1.55], Sn:["#668080", 1.45], Sb:["#9e63b5", 1.4], Te:["#d47a00", 1.4], I:["#940094", 1.4],
+  Cs:["#57178f", 2.0], Ba:["#00c900", 1.8], La:["#70d4ff", 1.7], Ce:["#ffffc7", 1.7], Nd:["#c7ffc7", 1.65], Gd:["#45ffc7", 1.6],
+  W:["#2194d6", 1.4], Pt:["#d0d0e0", 1.4], Au:["#ffd123", 1.4], Hg:["#b8b8d0", 1.5], Tl:["#a6544d", 1.55], Pb:["#575961", 1.55],
+  Bi:["#9e4fb5", 1.55], U:["#008fff", 1.6]
+};
+function elementStyle(el){
+  if(ELEMENT_STYLE[el]) return {color:ELEMENT_STYLE[el][0], radius:ELEMENT_STYLE[el][1]};
+  let h = 0;
+  for(const ch of el) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return {color:`hsl(${h}, 60%, 55%)`, radius:1.2};
+}
+
+// Qualitative colours for interatomic-vector pairs.
+const PAIR_COLORS = ["#ffd166", "#06d6a0", "#ef476f", "#4cc9f0", "#f78c6b", "#b388eb", "#83c5be", "#ffafcc", "#caffbf", "#9bf6ff"];
+const STRUCTURE_TEXT_LIMIT = 400 * 1024 * 1024;
+const VECTOR_ATOM_LIMIT = 600;
+
+// A structure file: a CIF, an .rmc6f configuration or a unified structure
+// HDF5. Configurations are averaged into their parent cell.
+async function readStructureFile(file){
+  if(/\.cif$/i.test(file.name)) return {...parseCifStructure(await file.text()), name:file.name};
+  if(/\.rmc6f$/i.test(file.name) || !(await hasHdf5Signature(file))){
+    if(file.size > STRUCTURE_TEXT_LIMIT){
+      const {cell, supercell} = await structureFileCell(file);
+      return {cell, supercell, source:"rmc6f", atoms:[], atomCount:0, name:file.name, note:"the file is too large to read its atoms"};
+    }
+    return {...parseRmc6fStructure(await file.text()), name:file.name};
+  }
+  if(!window.UnifiedH5 || typeof window.UnifiedH5.readStructure !== "function") throw new Error("the unified HDF5 helper is unavailable.");
+  const h5 = await ensureH5wasm();
+  const st = window.UnifiedH5.readStructure(h5, new Uint8Array(await file.arrayBuffer()), file.name);
+  const cell = [...st.cellLengths.slice(0, 3), ...st.cellAngles.slice(0, 3)].map(Number);
+  return {cell, supercell:Array.from(st.unitCells), source:"h5", atoms:unifiedStructureSites(st), atomCount:st.atomCount, name:file.name};
+}
+
+function structureText(st){
+  const n = structurePositions(st.atoms).length;
+  const from = st.source === "cif"
+    ? (st.operations ? `${st.operations} symmetry operations${st.spaceGroup ? `, ${st.spaceGroup}` : ""}` : "no symmetry operations listed, so only the given sites")
+    : st.atomCount ? `average of ${st.atomCount.toLocaleString()} atoms` : st.note || "";
+  return `${st.name}: ${n} atom position${n === 1 ? "" : "s"} in the cell${from ? ` (${from})` : ""}`;
+}
+
+function setStructure(st){
+  state.structure = st;
+  const vectors = st && st.atoms.length && st.atoms.length <= VECTOR_ATOM_LIMIT ? interatomicVectors(st) : null;
+  state.structureVectors = vectors;
+  state.structurePairs = vectors ? Array.from(new Set(vectors.map(v => v.pair))).sort() : [];
+  state.structureStale = true;
+  syncStructureControls();
+  refreshStructureView();
+  if(state.res && state.lastSlice) paint2d();
+}
+
+function vectorsAvailable(){
+  return !!(state.structureVectors && state.res && isRealSpaceData(state.res));
+}
+
+function vectorOverlayOn(){
+  return vectorsAvailable() && !!(state.ui && state.ui.vectors);
+}
+
+function syncStructureControls(){
+  const st = state.structure;
+  $("structStatus").textContent = st ? structureText(st) : "No structure";
+  $("structStatus").title = $("structStatus").textContent;
+  const available = vectorsAvailable(), on = vectorOverlayOn();
+  $("vectorToggle").classList.toggle("hidden", !available);
+  $("vectorToggle").classList.toggle("on", on);
+  $("vectorToggle").setAttribute("aria-pressed", String(on));
+  if(!on) $("vectorLegend").classList.add("hidden");
+}
+
+function toggleVectors(){
+  if(!vectorsAvailable()) return;
+  setUi({vectors:!state.ui.vectors});
+  syncStructureControls();
+  paint2d();
+}
+
+// Structure file for the view; the cell goes to reciprocal data too unless
+// applyCell is false (null: whenever the data are reciprocal).
+async function applyStructureFile(file, {applyCell=null}={}){
+  if(!file) return;
+  try{
+    const st = await readStructureFile(file);
+    setStructure(st);
+    const reciprocal = !!(state.res && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind));
+    const loaded = `Structure ${structureText(st)}.`;
+    if(reciprocal && applyCell !== false){
+      populateCellInputs(st.cell);
+      const cells = st.supercell ? `, supercell ${st.supercell.join(" x ")}` : "";
+      applyManualCell(`${st.source === "cif" ? "cell" : "parent cell"} of ${file.name}${cells}`);
+      status(`${$("status").textContent} ${loaded}`, "ok");
+    }else{
+      status(`${loaded}${vectorsAvailable() ? " Interatomic vectors are marked on the map (V)." : ""}`, "ok");
+      if(!state.res) setUi({dock:"struct", layout:"split", max:null});
+    }
+  }catch(err){
+    status(`Structure file ${file.name}: ${err.message}`, "err");
+  }
+}
+
+// Atoms on the same position as one entry: elements with their summed
+// occupancies (a shared site, or sites a file numbers apart that average to
+// the same place), and the site labels.
+function structurePositions(atoms){
+  const out = [];
+  for(const a of atoms){
+    let hit = out.find(p => [0, 1, 2].every(c => { const d = Math.abs(p.frac[c] - a.frac[c]); return Math.min(d, 1 - d) < 1e-3; }));
+    if(!hit){ hit = {frac:a.frac, members:[], labels:[]}; out.push(hit); }
+    const same = hit.members.find(m => m.element === a.element);
+    if(same) same.occupancy += a.occupancy; else hit.members.push({element:a.element, occupancy:a.occupancy});
+    if(a.label && a.label !== a.element && !hit.labels.includes(a.label)) hit.labels.push(a.label);
+  }
+  for(const p of out) p.main = p.members.reduce((best, m) => (m.occupancy > best.occupancy ? m : best), p.members[0]);
+  return out;
+}
+
+// The cell (or a block of cells) and its atoms in Cartesian Å, a along x.
+function structureTraces(st, repeat){
+  const frame = rmcCartesianFrame(st.cell);
+  if(!frame) throw new Error("the structure's cell is not valid.");
+  const A = frame.A, cart = f => [0, 1, 2].map(r => A[r][0] * f[0] + A[r][1] * f[1] + A[r][2] * f[2]);
+  const edges = {x:[], y:[], z:[]};
+  const EDGES = [[[0,0,0],[1,0,0]], [[0,0,0],[0,1,0]], [[0,0,0],[0,0,1]], [[1,0,0],[1,1,0]], [[1,0,0],[1,0,1]], [[0,1,0],[1,1,0]],
+    [[0,1,0],[0,1,1]], [[0,0,1],[1,0,1]], [[0,0,1],[0,1,1]], [[1,1,0],[1,1,1]], [[1,0,1],[1,1,1]], [[0,1,1],[1,1,1]]];
+  for(let i=0;i<repeat[0];i++) for(let j=0;j<repeat[1];j++) for(let k=0;k<repeat[2];k++){
+    for(const [p, q] of EDGES){
+      const a = cart([i + p[0], j + p[1], k + p[2]]), b = cart([i + q[0], j + q[1], k + q[2]]);
+      edges.x.push(a[0], b[0], null); edges.y.push(a[1], b[1], null); edges.z.push(a[2], b[2], null);
+    }
+  }
+  const tc = themePlot();
+  const traces = [{type:"scatter3d", mode:"lines", x:edges.x, y:edges.y, z:edges.z, line:{color:tc.frame, width:2}, hoverinfo:"skip", showlegend:false}];
+  const byElement = new Map();
+  for(const pos of structurePositions(st.atoms)){
+    const who = pos.members.map(m => `${m.element}${m.occupancy < 0.999 ? ` ${fmt(m.occupancy, 3)}` : ""}`).join(", ");
+    const label = pos.labels.length ? `${pos.labels.join(", ")}: ` : "";
+    const text = `${label}${who}<br>(${pos.frac.map(v => fmt(v, 4)).join(", ")})`;
+    // Copies on the faces, edges and corners of the block are drawn too; an
+    // averaged site just off a face (0.9999) counts as on it.
+    const shifts = [0, 1, 2].map(a => {
+      const out = [];
+      for(let i=-1;i<=repeat[a];i++){ const v = pos.frac[a] + i; if(v >= -0.02 && v <= repeat[a] + 0.02) out.push(i); }
+      return out;
+    });
+    for(const i of shifts[0]) for(const j of shifts[1]) for(const k of shifts[2]){
+      const f = [pos.frac[0] + i, pos.frac[1] + j, pos.frac[2] + k];
+      let g = byElement.get(pos.main.element);
+      if(!g){ g = {x:[], y:[], z:[], text:[]}; byElement.set(pos.main.element, g); }
+      const p = cart(f);
+      g.x.push(p[0]); g.y.push(p[1]); g.z.push(p[2]); g.text.push(text);
+    }
+  }
+  for(const [element, g] of byElement){
+    const style = elementStyle(element);
+    traces.push({type:"scatter3d", mode:"markers", name:element, x:g.x, y:g.y, z:g.z, text:g.text, hovertemplate:"%{text}<extra></extra>",
+      marker:{size:5 + 8 * style.radius, color:style.color, opacity:0.95, line:{color:"rgba(2,6,23,.6)", width:1}}});
+  }
+  return traces;
+}
+
+function refreshStructureView(){
+  const view = $("viewStruct");
+  if(!view || !view.getClientRects().length){ state.structureStale = true; return; }
+  if(!state.structureStale) return;
+  renderStructureView().catch(err => status(`Structure view failed: ${err.message}`, "err"));
+}
+
+async function renderStructureView(){
+  state.structureStale = false;
+  const st = state.structure, empty = $("emptyStruct");
+  if(!st || !st.atoms.length){
+    empty.textContent = st ? `${st.name}: ${st.note || "no atoms"}; the cell is used.` : "Load a structure: .rmc6f, CIF or unified structure .h5.";
+    empty.style.display = "flex";
+    if(window.Plotly && $("plot3dStruct")._fullLayout) Plotly.purge("plot3dStruct");
+    return;
+  }
+  const Plotly = await ensurePlotly();
+  const n = clamp(Math.floor(Number($("structRep").value) || 1), 1, 3), tc = themePlot();
+  const traces = structureTraces(st, [n, n, n]);
+  const axis = title => ({title:{text:title}, gridcolor:tc.grid, zerolinecolor:tc.zero, color:tc.text, backgroundcolor:tc.bg, showbackground:true});
+  const camera = readSceneCamera("plot3dStruct") || state.cameras.struct || defaultSceneCamera("plot3dStruct");
+  const c = st.cell;
+  await Plotly.react("plot3dStruct", traces, {
+    margin:{l:0, r:0, t:26, b:0}, paper_bgcolor:tc.bg, plot_bgcolor:tc.bg, font:{color:tc.text},
+    title:{text:`a ${fmt(c[0], 4)}, b ${fmt(c[1], 4)}, c ${fmt(c[2], 4)} Å; ${fmt(c[3], 3)}°, ${fmt(c[4], 3)}°, ${fmt(c[5], 3)}°`, font:{size:12, color:tc.text}},
+    legend:{font:{size:11}, bgcolor:"rgba(0,0,0,0)", itemsizing:"constant"},
+    scene:{bgcolor:tc.bg, aspectmode:"data", xaxis:axis("x (Å)"), yaxis:axis("y (Å)"), zaxis:axis("z (Å)"),
+      camera:{...(camera || {}), projection:{type:state.ui && state.ui.ortho ? "orthographic" : "perspective"}}}
+  }, plotlyConfig());
+  wireCamera("plot3dStruct", "struct");
+  empty.style.display = "none";
+}
+
+// Lattice directions of the structure view (Cartesian, a along x).
+function structureDirections(){
+  const frame = state.structure ? rmcCartesianFrame(state.structure.cell) : null;
+  return frame ? {recip:frame.Bq, direct:transpose3(frame.A)} : latticeDirections(null);
+}
+
+// Direct lattice vectors a, b, c (rows) in the coordinates of a real-space
+// grid: u, v, w are lattice units; Cartesian x, y, z (Å) are taken with a
+// along x, as RMCProfile and 3DSConvert write them.
+function vectorLattice(res, st){
+  if(!res || !st || !isRealSpaceData(res)) return null;
+  if(String(res.coordKind || "").toLowerCase() !== "xyz") return {rows:[[1, 0, 0], [0, 1, 0], [0, 0, 1]], assumed:false};
+  const frame = rmcCartesianFrame(st.cell);
+  return frame ? {rows:transpose3(frame.A), assumed:true} : null;
+}
+
+// Coordinate of an axis at a fractional index, extended past the ends.
+function axisValueAt(axis, t){
+  const n = axis.length;
+  if(n < 2) return axis[0];
+  const i = clamp(Math.floor(t), 0, n - 2);
+  return axis[i] + (axis[i + 1] - axis[i]) * (t - i);
+}
+
+// Interatomic vectors plus lattice translations that fall in an axis slice
+// of a real-space grid (within half a step, or the slab of a thick slice)
+// and inside box, the part of the map in view in slice coordinates. Spots on
+// the same position are merged. {tooMany:true} when the search is too big.
+function vectorSpotsInSlice(res, vectors, lattice, sl, box, maxWork=3e6){
+  const frame = gridFrame(res);
+  const axes = [res.h, res.k, res.l], metas = [res.axes.h, res.axes.k, res.axes.l];
+  const a = sl.fixedAxis, c = sl.colAxis, r = sl.rowAxis, half = 0.5 + (sl.thickness || 0);
+  const lo = [0, 0, 0], hi = [0, 0, 0];
+  lo[a] = sl.fixedIndex - half; hi[a] = sl.fixedIndex + half;
+  const fc = [box.x0, box.x1].map(x => axisToFraction(axes[c], metas[c], x));
+  const fr = [box.y0, box.y1].map(y => axisToFraction(axes[r], metas[r], y));
+  if(![...fc, ...fr].every(Number.isFinite)) return {spots:[]};
+  lo[c] = Math.min(...fc); hi[c] = Math.max(...fc); lo[r] = Math.min(...fr); hi[r] = Math.max(...fr);
+  const Linv = inv3(lattice);
+  const ulo = [Infinity, Infinity, Infinity], uhi = [-Infinity, -Infinity, -Infinity];
+  for(const i of [lo[0], hi[0]]) for(const j of [lo[1], hi[1]]) for(const k of [lo[2], hi[2]]){
+    const p = [0, 1, 2].map(q => frame.o[q] + i * frame.G[0][q] + j * frame.G[1][q] + k * frame.G[2][q]);
+    const u = mul(p, Linv);
+    for(let q=0;q<3;q++){ ulo[q] = Math.min(ulo[q], u[q]); uhi[q] = Math.max(uhi[q], u[q]); }
+  }
+  const span = [0, 1, 2].map(q => Math.floor(uhi[q] - ulo[q]) + 2);
+  if(vectors.length * span[0] * span[1] * span[2] > maxWork) return {spots:[], tooMany:true};
+  const eps = 1e-9, spots = new Map();
+  for(const v of vectors){
+    const n0 = [0, 1, 2].map(q => Math.ceil(ulo[q] - v.d[q] - eps)), n1 = [0, 1, 2].map(q => Math.floor(uhi[q] - v.d[q] + eps));
+    for(let x=n0[0];x<=n1[0];x++) for(let y=n0[1];y<=n1[1];y++) for(let z=n0[2];z<=n1[2];z++){
+      const u = [v.d[0] + x, v.d[1] + y, v.d[2] + z];
+      const p = mul(u, lattice);
+      const f = mul([0, 1, 2].map(q => p[q] - frame.o[q]), frame.Gi);
+      if(f.some((w, q) => w < lo[q] - eps || w > hi[q] + eps)) continue;
+      // Averaged sites put equal vectors 1e-4 apart; they share a spot.
+      const key = u.map(w => Math.round(w * 200)).join(",");
+      let spot = spots.get(key);
+      if(!spot){ spot = {uvw:u, f, pairs:new Set()}; spots.set(key, spot); }
+      spot.pairs.add(v.pair);
+    }
+  }
+  return {spots:Array.from(spots.values(), s => ({xv:axisValueAt(axes[c], s.f[c]), yv:axisValueAt(axes[r], s.f[r]), uvw:s.uvw, pairs:Array.from(s.pairs).sort()}))};
+}
+
+function setVectorLegend(rows, hint=""){
+  const legend = $("vectorLegend");
+  legend.textContent = "";
+  for(const [pair, color] of rows){
+    const row = document.createElement("div");
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.borderColor = color;
+    row.append(dot, document.createTextNode(pair));
+    legend.append(row);
+  }
+  if(hint){
+    const row = document.createElement("div");
+    row.className = "hint";
+    row.textContent = hint;
+    legend.append(row);
+  }
+  legend.classList.toggle("hidden", !rows.length && !hint);
+}
+
+// Rings where interatomic vectors of the loaded structure lie in the shown
+// axis slice of a real-space map; one ring per element pair, nested where
+// pairs share a vector.
+function drawVectorOverlay(ctx, layout, sl){
+  state.vectorMarks = [];
+  if(!vectorOverlayOn()){ $("vectorLegend").classList.add("hidden"); return; }
+  if(!sl || sl.type !== "axis"){ setVectorLegend([], "Interatomic vectors are marked on axis slices."); return; }
+  const lattice = vectorLattice(state.res, state.structure);
+  if(!lattice){ setVectorLegend([], "The structure's cell is not valid."); return; }
+  const area = layout.area, ext = layout.ext;
+  const corners = [[area.x, area.y], [area.x + area.w, area.y], [area.x, area.y + area.h], [area.x + area.w, area.y + area.h]].map(([X, Y]) => layout.toSlice(X, Y));
+  const box = {
+    x0:Math.max(ext.x0, Math.min(...corners.map(p => p[0]))), x1:Math.min(ext.x1, Math.max(...corners.map(p => p[0]))),
+    y0:Math.max(ext.y0, Math.min(...corners.map(p => p[1]))), y1:Math.min(ext.y1, Math.max(...corners.map(p => p[1])))
+  };
+  let found = {spots:[]};
+  if(box.x1 > box.x0 && box.y1 > box.y0){
+    try{ found = vectorSpotsInSlice(state.res, state.structureVectors, lattice.rows, sl, box); }
+    catch(err){ setVectorLegend([], `Vectors need a regular grid: ${err.message}`); return; }
+  }
+  const pairs = state.structurePairs, color = pair => PAIR_COLORS[pairs.indexOf(pair) % PAIR_COLORS.length];
+  const frameNote = lattice.assumed ? "x, y, z taken with a along x" : "";
+  if(found.tooMany || found.spots.length * 400 > area.w * area.h){
+    setVectorLegend([], `Zoom in to see the interatomic vectors${found.tooMany ? "" : ` (${found.spots.length.toLocaleString()} in view)`}.`);
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(area.x, area.y, area.w, area.h);
+  ctx.clip();
+  for(const s of found.spots){
+    const P = layout.toCanvas(s.xv, s.yv);
+    if(P[0] < area.x || P[0] > area.x + area.w || P[1] < area.y || P[1] > area.y + area.h) continue;
+    s.pairs.forEach((pair, i) => {
+      ctx.beginPath();
+      ctx.arc(P[0], P[1], 4 + 2.6 * i, 0, 2 * Math.PI);
+      ctx.strokeStyle = "rgba(2,6,23,.7)";
+      ctx.lineWidth = 3.2;
+      ctx.stroke();
+      ctx.strokeStyle = color(pair);
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    });
+    state.vectorMarks.push({x:P[0], y:P[1], uvw:s.uvw, pairs:s.pairs});
+  }
+  ctx.restore();
+  const shown = new Set(state.vectorMarks.flatMap(m => m.pairs));
+  setVectorLegend(pairs.filter(p => shown.has(p)).map(p => [p, color(p)]), shown.size ? frameNote : "No interatomic vectors in this slice.");
+}
+
+// The vector under the cursor, for the readout.
+function vectorReadout(pt){
+  if(!vectorOverlayOn() || !pt) return "";
+  let best = null, dist = 9;
+  for(const mk of state.vectorMarks || []){
+    const d = Math.hypot(mk.x - pt.x, mk.y - pt.y);
+    if(d < dist){ dist = d; best = mk; }
+  }
+  if(!best) return "";
+  const frame = rmcCartesianFrame(state.structure.cell);
+  const length = frame ? normVec([0, 1, 2].map(r => frame.A[r][0] * best.uvw[0] + frame.A[r][1] * best.uvw[1] + frame.A[r][2] * best.uvw[2])) : NaN;
+  return `\nvector [${best.uvw.map(v => readoutNumber(Math.abs(v) < 1e-9 ? 0 : v)).join(" ")}]  |r| ${readoutNumber(length)} Å\n${best.pairs.join(", ")}`;
 }
 
 function populateCellInputs(cell){
@@ -9398,7 +10009,7 @@ async function onFile(file){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
@@ -9407,7 +10018,7 @@ function loadUiPrefs(){
   const ui = {...UI_DEFAULTS, max:null};
   if(saved && typeof saved === "object"){
     if(["map", "split"].includes(saved.layout)) ui.layout = saved.layout;
-    if(["plane", "iso", "both"].includes(saved.dock)) ui.dock = saved.dock;
+    if(["plane", "iso", "both", "struct"].includes(saved.dock)) ui.dock = saved.dock;
     if(PAGE_TITLES[saved.tab]) ui.tab = saved.tab;
     if(typeof saved.side === "boolean") ui.side = saved.side;
     if(Number.isFinite(saved.dockW)) ui.dockW = clamp(saved.dockW, 0.2, 0.75);
@@ -9419,13 +10030,14 @@ function loadUiPrefs(){
     if(["plane", "cutaway"].includes(saved.planeStyle)) ui.planeStyle = saved.planeStyle;
     if(["below", "above"].includes(saved.cutawayKeep)) ui.cutawayKeep = saved.cutawayKeep;
     if(typeof saved.ortho === "boolean") ui.ortho = saved.ortho;
+    if(typeof saved.vectors === "boolean") ui.vectors = saved.vectors;
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors})); }catch(_){}
 }
 
 function applyUi(){
@@ -9577,7 +10189,7 @@ function bindSplitter(el, {rows=false, onDrag, onKey, onReset}){
 // Repaints the map, the level histogram and the 3-D plots when their boxes
 // change size: window resizes, splitter drags, panels opening or closing.
 function observeViewSizes(){
-  const targets = {mapWrap:"map", levelHist:"hist", planeWrap:"plot3dPlane", isoWrap:"plot3dIso", profilePlot:"profile"};
+  const targets = {mapWrap:"map", levelHist:"hist", planeWrap:"plot3dPlane", isoWrap:"plot3dIso", structWrap:"plot3dStruct", profilePlot:"profile"};
   const pending = new Set();
   let raf = 0;
   const flush = () => {
@@ -9591,15 +10203,16 @@ function observeViewSizes(){
       try{ Promise.resolve(Plotly.Plots.resize($("profileChart"))).catch(() => {}); }catch(_){}
     }
     if(window.Plotly && Plotly.Plots){
-      for(const id of ["plot3dPlane", "plot3dIso"]){
+      for(const id of ["plot3dPlane", "plot3dIso", "plot3dStruct"]){
         const gd = $(id);
         if(!pending.has(id) || !gd || !gd._fullLayout || !gd.getClientRects().length) continue;
-        const key = id === "plot3dPlane" ? "plane" : "iso";
+        const key = id === "plot3dPlane" ? "plane" : id === "plot3dStruct" ? "struct" : "iso";
         try{ Promise.resolve(Plotly.Plots.resize(gd)).then(() => refitCamera(id, key)).catch(() => {}); }catch(_){}
       }
     }
     pending.clear();
     refreshStale3d();
+    refreshStructureView();
   };
   const onResize = entries => {
     for(const entry of entries) pending.add(targets[entry.target.id]);
@@ -9646,6 +10259,10 @@ function onShortcut(ev){
     case "p": case "P": setProfileOpen(!profileOpen()); break;
     case "c": case "C":
       if(comparisonReady()) setShowMode(state.showMode === "cmp" ? "data" : "cmp");
+      else handled = false;
+      break;
+    case "v": case "V":
+      if(vectorsAvailable()) toggleVectors();
       else handled = false;
       break;
     case "?": openHelp(); break;
@@ -9713,7 +10330,7 @@ function bindLayout(){
   }
   $("sideClose").addEventListener("click", () => setUi({side:false}));
   for(const b of document.querySelectorAll("[data-layout-btn]")) b.addEventListener("click", () => setUi({layout:b.dataset.layoutBtn, max:null}));
-  for(const b of document.querySelectorAll("[data-dock]")) b.addEventListener("click", () => setUi({dock:b.dataset.dock, layout:"split"}));
+  for(const b of document.querySelectorAll("[data-dock]")) b.addEventListener("click", () => { setUi({dock:b.dataset.dock, layout:"split"}); requestAnimationFrame(refreshStructureView); });
   $("mapMax").addEventListener("click", () => setUi({max:state.ui.max === "map" ? null : "map"}));
   $("dockMax").addEventListener("click", () => setUi({max:state.ui.max === "dock" ? null : "dock"}));
   $("dockHide").addEventListener("click", () => setUi({layout:"map", max:null}));
@@ -10066,33 +10683,33 @@ function updateSliceAgreement(){
   out.textContent = a ? `This slice: ${agreementText(a)}` : comparisonReady() ? "This slice: agreement is given for axis slices." : "";
 }
 
-// Parent cell from an .rmc6f or a unified structure file, applied to the data.
-async function applyStructureFile(file){
-  if(!file || !state.res) return;
-  try{
-    const {cell, supercell} = await structureFileCell(file);
-    populateCellInputs(cell);
-    const cells = supercell ? `, supercell ${supercell.join(" x ")}` : "";
-    applyManualCell(`parent cell of ${file.name}${cells}`);
-  }catch(err){
-    status(`Structure file ${file.name}: ${err.message}`, "err");
-  }
+// Files opened or dropped together: an experimental file is paired with its
+// _calc file, a control grid gives way to the calculation, and a structure
+// file (.rmc6f or CIF) supplies the atoms, and the cell of Q data. A single
+// file opens as before; a structure file alone goes to the Structure view.
+// A structure opened with data gives its cell only to Q data, whose grid
+// needs one to become HKL.
+function cellFromRunStructure(){
+  return !!(state.res && state.res.coordKind === "q" && !isRealSpaceData(state.res));
 }
 
-// Files opened or dropped together: an experimental file is paired with its
-// _calc file, a control grid gives way to the calculation, and an .rmc6f
-// supplies the cell. A single file opens as before.
 async function openFiles(list){
   const files = Array.from(list || []).filter(Boolean);
   if(!files.length) return;
   if(files.length === 1){
-    if(/\.rmc6f$/i.test(files[0].name) && state.res) return applyStructureFile(files[0]);
+    if(/\.(rmc6f|cif)$/i.test(files[0].name)) return applyStructureFile(files[0]);
     return openDataFile(files[0]);
   }
   const plan = planFileSet(files);
   if(!plan.exp && !plan.calc){
     const first = plan.single || files.find(f => /\.(dat|txt|csv|json|vtk|nx|nx5|nxs|h5|hdf5)$/i.test(f.name));
+    if(first && plan.structure){
+      try{ await onFile(first); }catch(err){ status(`File load failed: ${err.message}`, "err"); return; }
+      await applyStructureFile(plan.structure, {applyCell:cellFromRunStructure()});
+      return;
+    }
     if(first) return openDataFile(first);
+    if(plan.structure) return applyStructureFile(plan.structure);
     status("None of the files is a volume this viewer reads.", "warn");
     return;
   }
@@ -10112,7 +10729,7 @@ async function openFiles(list){
     }else{
       await onFile(plan.calc);
     }
-    if(plan.structure && state.res && state.res.coordKind === "q" && !isRealSpaceData(state.res)) await applyStructureFile(plan.structure);
+    if(plan.structure) await applyStructureFile(plan.structure, {applyCell:cellFromRunStructure()});
     if(note) status(`${note} ${$("status").textContent}`, "warn");
   }catch(err){
     status(`File load failed: ${err.message}`, "err");
@@ -10451,6 +11068,14 @@ function bind(){
     ev.target.value = "";
     applyStructureFile(file);
   });
+  $("structLoad").addEventListener("click", () => $("structFile").click());
+  $("structFile").addEventListener("change", ev => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    applyStructureFile(file, {applyCell:false});
+  });
+  $("structRep").addEventListener("change", () => { state.structureStale = true; refreshStructureView(); });
+  $("vectorToggle").addEventListener("click", toggleVectors);
   $("cellRestore").addEventListener("click", () => {
     try{ restoreFileCell(); }catch(err){ status(`Cell restore failed: ${err.message}`, "err"); }
   });
@@ -10548,7 +11173,7 @@ function bind(){
   $("camUvw").addEventListener("keydown", ev => { if(ev.key === "Enter") typed("camUvw", "uvw"); });
   $("camOrtho").addEventListener("change", () => {
     setUi({ortho:$("camOrtho").checked});
-    for(const key of ["plane", "iso"]) if($(plotIdFor(key))._fullLayout) applyCamera(key, currentCamera(key));
+    for(const key of ["plane", "iso", "struct"]) if($(plotIdFor(key))._fullLayout) applyCamera(key, currentCamera(key));
   });
   $("profileToggle").addEventListener("click", () => setProfileOpen(!profileOpen()));
   $("profileClose").addEventListener("click", () => { setCutMode(false); setProfileOpen(false); });
@@ -10639,6 +11264,9 @@ function bind(){
   $("isoZoomIn").addEventListener("click", () => zoomPlot("plot3dIso", "iso", 0.82));
   $("isoZoomOut").addEventListener("click", () => zoomPlot("plot3dIso", "iso", 1.22));
   $("isoZoomReset").addEventListener("click", () => resetCamera("plot3dIso", "iso"));
+  $("structZoomIn").addEventListener("click", () => zoomPlot("plot3dStruct", "struct", 0.82));
+  $("structZoomOut").addEventListener("click", () => zoomPlot("plot3dStruct", "struct", 1.22));
+  $("structZoomReset").addEventListener("click", () => resetCamera("plot3dStruct", "struct"));
   bindLayout();
   bindLevelHistogram();
   syncControls();
