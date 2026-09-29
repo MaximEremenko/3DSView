@@ -33,9 +33,22 @@ and slab-average slicing with linked 2-D and 3-D views.
   grid to HKL, using the RMCProfile/Scatty frame (a along x, b in the xy-plane); Q stays
   available through the reciprocal basis, and **Restore File Cell** undoes the conversion.
 - **Shown-volume limits**: crop the displayed volume per axis with dual-range sliders.
-- **Display controls**: log10(value+1), log10, linear and signed-sqrt scales; Viridis,
-  Turbo, Inferno, Magma and Gray color maps; slice-auto, global-auto or manual color
-  levels, including dragging the color-bar handles directly on the 2-D map.
+- **Display controls**:
+  - **Scales:** log10(value+1), log10, linear and signed-sqrt.
+  - **Colour maps:** sequential Viridis, Plasma, Inferno, Magma, Cividis, Turbo and Gray,
+    plus diverging RdBu and Coolwarm for signed data. Any map can be reversed, and empty
+    voxels can be drawn transparent, gray, white or black.
+  - **Levels:** slice-auto, global-auto or manual. Auto levels take a percentile window,
+    0.5–99.5 % by default, so Bragg peaks do not wash out the diffuse signal. They can be
+    made symmetric about 0, and the colour-bar handles can be dragged on the 2-D map.
+  - **Histogram:** a histogram of the shown slice marks the display window.
+  - **Signed data:** real-space volumes (delta-PDF, Patterson, density) open on a linear
+    scale with RdBu and symmetric levels.
+- **No-data masks**: voxels without data are shown empty and left out of levels and
+  isosurfaces. That covers NaN values, a Mantid `mask`, and I = 0 in RMCProfile text,
+  which RMCProfile uses for "no data". The zero mask switches on automatically when at
+  least 1 % of values are zero and can be toggled with **Treat 0 as no data**. Exports
+  keep the original zeros.
 - **3-D render controls**: isosurface percentile and surface count, voxel cap,
   auto-refresh toggle, independent show/hide for the plane and isosurface views. The
   camera is preserved across slice updates, with zoom and reset buttons on each panel.

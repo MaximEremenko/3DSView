@@ -231,6 +231,10 @@ label.check input{width:auto;margin:0;accent-color:var(--brand)}
           <div class="k" id="mIName">Intensity</div><div id="mI">-</div>
           <div class="k">Header</div><div id="mHeader">-</div>
         </div>
+        <div class="row2">
+          <label class="check" title="RMCProfile marks voxels without data with 0; hide them and leave them out of levels and isosurfaces"><input id="zeroMask" type="checkbox" disabled>Treat 0 as no data</label>
+          <span id="zeroMaskInfo" class="fine" style="align-self:center"></span>
+        </div>
         <div class="btns hidden" id="swapAxesRow">
           <button id="swapAxes" class="alt" disabled title="The file does not record its axis order; transpose the data if the map looks mirrored">Swap H/L data order</button>
         </div>
@@ -699,6 +703,11 @@ function cacheBaseFromResult(res){
   const base = {};
   for(const key of keys){
     if(res[key] !== undefined) base[key] = res[key];
+  }
+  if(res.zeroMask){
+    base.I = sourceValues(res);
+    const b = finiteBounds(base.I);
+    Object.assign(base, {rawMin:b.rawMin, rawMax:b.rawMax, filled:b.filled});
   }
   return base;
 }
@@ -3854,16 +3863,67 @@ function embedBlockGaps(base){
   base.gapPadding = {from, to:shape.slice()};
 }
 
+// RMCProfile marks voxels without data with I = 0 and leaves them out of
+// fits. Treating them as empty (NaN) hides them and keeps them out of levels,
+// isosurfaces and interpolation; the mask remembers them so they can come
+// back, and exports and the load cache always see the original zeros.
+function setZeroMask(res, on){
+  if(!res) return 0;
+  if(on && !res.zeroMask){
+    const mask = new Uint8Array(res.I.length);
+    let n = 0;
+    for(let i=0;i<res.I.length;i++){
+      if(res.I[i] === 0){ res.I[i] = NaN; mask[i] = 1; n++; }
+    }
+    res.zeroMask = mask;
+    res.zeroMasked = n;
+  }else if(!on && res.zeroMask){
+    const mask = res.zeroMask;
+    for(let i=0;i<mask.length;i++) if(mask[i]) res.I[i] = 0;
+    res.zeroMask = null;
+    res.zeroMasked = 0;
+  }
+  const b = finiteBounds(res.I);
+  res.rawMin = b.rawMin;
+  res.rawMax = b.rawMax;
+  res.filled = b.filled;
+  res.global = computeGlobalDisplayBounds(res);
+  if(state.globalHist && state.globalHist.res === res) state.globalHist = null;
+  return res.zeroMasked || 0;
+}
+
+function zeroFraction(res){
+  let zeros = 0, finite = 0;
+  for(let i=0;i<res.I.length;i++){
+    const v = res.I[i];
+    if(v === 0) zeros++;
+    if(Number.isFinite(v)) finite++;
+  }
+  return finite ? zeros / finite : 0;
+}
+
+// Values with hidden zeros put back, for exporting or caching the data.
+function sourceValues(res){
+  if(!res.zeroMask) return res.I;
+  const out = Float64Array.from(res.I);
+  for(let i=0;i<out.length;i++) if(res.zeroMask[i]) out[i] = 0;
+  return out;
+}
+
 // Reinterprets the value order between the first and last axes, for files
 // whose disk layout could not be detected. Axis coordinates stay in place.
 function transposeFirstAndLastAxes(res){
   const [n0, n1, n2] = res.shape;
   if(n0 !== n2) throw new Error("Swapping the data order needs equal first and last axis sizes.");
   const out = new Float64Array(res.I.length);
+  const mask = res.zeroMask ? new Uint8Array(res.I.length) : null;
   for(let i=0;i<n0;i++) for(let j=0;j<n1;j++) for(let k=0;k<n2;k++){
-    out[idx3(res.shape, k, j, i)] = res.I[idx3(res.shape, i, j, k)];
+    const to = idx3(res.shape, k, j, i), from = idx3(res.shape, i, j, k);
+    out[to] = res.I[from];
+    if(mask) mask[to] = res.zeroMask[from];
   }
   res.I = out;
+  if(mask) res.zeroMask = mask;
   res.axisOrderSwapped = !res.axisOrderSwapped;
   return res;
 }
@@ -5545,10 +5605,12 @@ function syncControls(){
   const cellAllowed = has && !isRealSpaceData(state.res) && ["hkl", "q"].includes(state.res.coordKind);
   const sm = $("sliceMode").value;
   const axisMode = sm === "axis", planeMode = sm === "plane", avgMode = sm === "avgvol";
-  for(const id of ["coordMode","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","savePng","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
+  for(const id of ["coordMode","zeroMask","sliceMode","scale","colorMap","colorReverse","nanColor","levelClip","levelSymmetric","levelMode","resetLevels","render3d","savePng","saveCsv","saveUnified","savePlaneSvg","saveIsoSvg","savePlaneHtml","saveIsoHtml","isoPct","isoCount","voxelCap","auto3d","showPlane3d","showIso3d","viewMin0","viewMax0","viewMin1","viewMax1","viewMin2","viewMax2","viewMinSlider0","viewMaxSlider0","viewMinSlider1","viewMaxSlider1","viewMinSlider2","viewMaxSlider2","viewApply","viewReset"]){
     $(id).disabled = !has;
   }
   if(has && isRealSpaceData(state.res)) $("coordMode").disabled = true;
+  $("zeroMask").checked = has && !!state.res.zeroMask;
+  $("zeroMaskInfo").textContent = has && state.res.zeroMasked ? `${state.res.zeroMasked.toLocaleString()} voxels hidden` : "";
   const swappable = has && !!state.res.axisOrderAmbiguous && state.res.shape[0] === state.res.shape[2];
   $("swapAxesRow").classList.toggle("hidden", !swappable);
   $("swapAxes").disabled = !swappable;
@@ -6614,10 +6676,12 @@ function unifiedExportSpec(res, ranges=displayIndexRanges(res)){
   const grid = unifiedGridForResult(res);
   const dims = ranges.map(r => r[1] - r[0] + 1);
   const values = new Float64Array(dims[0] * dims[1] * dims[2]);
+  const mask = res.zeroMask;
   let p = 0;
   for(let i=ranges[0][0];i<=ranges[0][1];i++) for(let j=ranges[1][0];j<=ranges[1][1];j++){
     const src = idx3(res.shape, i, j, ranges[2][0]);
     values.set(res.I.subarray(src, src + dims[2]), p);
+    if(mask) for(let k=0;k<dims[2];k++) if(mask[src + k]) values[p + k] = 0;
     p += dims[2];
   }
   const start = ranges.map(r => r[0]);
@@ -6793,6 +6857,9 @@ async function onFile(file){
   $("idx").value = String(Math.floor((parsed.shape[2] - 1) / 2));
   $("levelMode").value = "slice";
   const signed = applySignedDefaults(parsed);
+  // RMCProfile text uses 0 for "no data" (the PMN coverage masks, for example).
+  const autoZero = /^indexed text/.test(parsed.format || "") && zeroFraction(parsed) >= 0.01;
+  if(autoZero) setZeroMask(parsed, true);
   populateCellInputs(parsed.cellDeg);
   updateAxisOptionText();
   updateShownVolumeInputs();
@@ -6804,10 +6871,11 @@ async function onFile(file){
   const orderNote = parsed.axisOrderAmbiguous
     ? ` The file does not record its axis order; assumed the 3DSConvert/Fortran layout [${labels[2]},${labels[1]},${labels[0]}]. Use "Swap ${labels[0]}/${labels[2]} data order" if the map looks mirrored.`
     : "";
+  const zeroNote = autoZero ? ` ${parsed.zeroMasked.toLocaleString()} zero voxels treated as no data (RMCProfile convention; untick "Treat 0 as no data" to show them).` : "";
   const signedNote = signed ? " Signed data: linear scale, RdBu colors and levels symmetric about 0." : "";
   const maskNote = parsed.maskedVoxels ? ` ${parsed.maskedVoxels.toLocaleString()} voxels hidden by the file's mask.` : "";
   const gapNote = parsed.gapPadding ? ` Axis gaps left empty on the regular lattice (${parsed.gapPadding.from.join(" x ")} points in the file).` : "";
-  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${maskNote}${gapNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
+  status(`Loaded${cacheText} ${file.name}. ${parsed.shape[0]} x ${parsed.shape[1]} x ${parsed.shape[2]} grid, ${parsed.rows.toLocaleString()} rows, ${dataKindText(parsed)}, ${parsed.format || "data"}, ${(parsed.coordKind || "q").toUpperCase()}.${signedNote}${zeroNote}${maskNote}${gapNote}${orderNote}`, parsed.skipped || parsed.axisOrderAmbiguous ? "warn" : "ok");
   scheduleRender3d(0);
 }
 
@@ -6837,6 +6905,15 @@ function bind(){
   });
   $("cellApply").addEventListener("click", () => {
     try{ applyManualCell(); }catch(err){ status(`Cell error: ${err.message}`, "err"); }
+  });
+  $("zeroMask").addEventListener("change", () => {
+    if(!state.res) return;
+    const hidden = setZeroMask(state.res, $("zeroMask").checked);
+    updateMeta();
+    syncControls();
+    draw2d();
+    scheduleRender3d(0);
+    status($("zeroMask").checked ? `Treating 0 as no data: ${hidden.toLocaleString()} voxels hidden.` : "Zeros are shown as data again.", "ok");
   });
   $("swapAxes").addEventListener("click", () => {
     if(!state.res) return;

@@ -44,3 +44,51 @@ test("auto levels use the percentile range and can be symmetric about 0", () => 
   assert.ok(Math.abs(sym.min + sym.max) < 1e-12, "symmetric window");
   assert.ok(sym.max >= Math.abs(plain.min) && sym.max >= plain.max);
 });
+
+const {textFile} = require("./harness");
+const {indexedText} = require("./fixtures");
+
+async function volumeWithZeros(app){
+  const shape = [4, 3, 2];
+  const value = (i, j, k) => (i === 0 ? 0 : 1 + i + 10 * j + 100 * k);   // first H plane = no data
+  const text = indexedText(shape, (i, j, k) => [i * 0.1, j * 0.1, k * 0.1], value);
+  return app.parseFile(textFile("coverage_d3d.dat", text));
+}
+
+test("treating 0 as no data hides zeros, keeps them out of stats and restores them", async () => {
+  const app = loadApp();
+  const res = await volumeWithZeros(app);
+  assert.equal(res.rawMin, 0);
+  const masked = app.context.setZeroMask(res, true);
+  assert.equal(masked, 6);
+  assert.ok(Number.isNaN(res.I[0]), "zero became empty");
+  assert.equal(res.rawMin, 2, "value range ignores the hidden zeros");
+  assert.equal(res.filled, 18);
+  app.context.setZeroMask(res, false);
+  assert.equal(res.I[0], 0, "zeros come back");
+  assert.equal(res.rawMin, 0);
+});
+
+test("hidden zeros are exported and cached as zeros", async () => {
+  const app = loadApp();
+  const res = await volumeWithZeros(app);
+  app.context.setZeroMask(res, true);
+  const spec = app.unifiedExportSpec(res, [[0, 3], [0, 2], [0, 1]]);
+  assert.equal(spec.values[0], 0);
+  const base = app.context.cacheBaseFromResult(res);
+  assert.equal(base.I[0], 0);
+  assert.ok(Number.isNaN(res.I[0]), "the shown volume keeps its mask");
+});
+
+test("swapping H/L keeps the zero mask aligned with the data", async () => {
+  const app = loadApp();
+  const res = await volumeWithZeros(app);
+  // Make H and L sizes equal so the swap is allowed: use a 2x3x2 crop of the data.
+  res.shape = [2, 3, 2];
+  res.I = res.I.slice(0, 12);
+  res.h = res.h.slice(0, 2);
+  app.context.setZeroMask(res, true);
+  app.transposeFirstAndLastAxes(res);
+  app.context.setZeroMask(res, false);
+  for(let n=0;n<res.I.length;n++) assert.ok(Number.isFinite(res.I[n]), `voxel ${n} restored after the swap`);
+});
