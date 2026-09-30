@@ -138,3 +138,59 @@ test("lattice directions and rotations for the camera", () => {
   const r = app.context.rotateAbout([1, 0, 0], [0, 0, 1], Math.PI / 2);
   [0, 1, 0].forEach((v, i) => assertClose(r[i], v, 1e-12, `rotated ${i}`));
 });
+
+test("|Q| shells follow Mantid's Rebin rules", () => {
+  const app = loadApp();
+  const edges = (text, opts) => Array.from(app.context.rebinEdges(text, opts)).map(v => Number(v.toFixed(10)));
+  assert.deepEqual(edges("", {qmin:0, qmax:0.3, step:0.1}), [0, 0.1, 0.2, 0.3]);
+  // The last shell of a range is 0.25 to 1.25 steps wide.
+  assert.deepEqual(edges("0.3", {qmin:0, qmax:1, step:0.1}), [0, 0.3, 0.6, 0.9, 1]);
+  assert.deepEqual(edges("0.45", {qmin:0, qmax:1, step:0.1}), [0, 0.45, 1]);
+  // Ranges with their own steps.
+  assert.deepEqual(edges("0.5, 0.25, 1, 0.5, 2", {qmin:0, qmax:9, step:0.1}), [0.5, 0.75, 1, 1.5, 2]);
+  // A negative step: each edge 10 % above the one before.
+  const log = app.context.rebinEdges("-0.1", {qmin:1, qmax:2, step:0.1});
+  for(let b=1;b<log.length - 1;b++) assertClose(log[b] / log[b - 1], 1.1, 1e-12, `ratio ${b}`);
+  assert.equal(log[log.length - 1], 2);
+  assert.throws(() => app.context.rebinEdges("-0.1", {qmin:0, qmax:2, step:0}), /Q min above 0/);
+  assert.throws(() => app.context.rebinEdges("0.5, 0.1", {qmin:0, qmax:2, step:0.1}), /Rebin parameters/);
+});
+
+test("I(Q) keeps its level where voxels are missing, and reports the coverage", () => {
+  const app = loadApp();
+  const ax = axis(41, -2, 0.1);
+  const f = q => 1 + q * q;
+  const res = volume(app, {h:ax, k:ax, l:ax, value:(h, k, l) => f(Math.hypot(h, k, l))});
+  const full = app.context.radialProfile(res, {rebin:"0.1", qmax:1.8});
+  assert.equal(full.sub, 2, "voxels are split in 2 x 2 x 2");
+  for(let b=2;b<full.bins;b++){
+    const exact = (full.edges[b] + full.edges[b + 1]) / 2;
+    assert.ok(Math.abs(full.y[b] / f(exact) - 1) < 0.02, `shell ${b}: ${full.y[b]} against ${f(exact)}`);
+    assert.ok(Math.abs(full.cov[b] - 1) < 0.05, `coverage of shell ${b}: ${full.cov[b]}`);
+  }
+  // Take away 40 % of the voxels: the level stays, the coverage drops.
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for(let v=0;v<res.I.length;v++) if(rand() < 0.4) res.I[v] = NaN;
+  const holes = app.context.radialProfile(res, {rebin:"0.1", qmax:1.8});
+  for(let b=4;b<holes.bins;b++){
+    assert.ok(Math.abs(holes.y[b] / full.y[b] - 1) < 0.03, `level of shell ${b}`);
+    assert.ok(Math.abs(holes.cov[b] - 0.6) < 0.08, `coverage of shell ${b}: ${holes.cov[b]}`);
+  }
+});
+
+test("I(Q) carries σ, the cells of a voxel counting as one measurement", () => {
+  const app = loadApp();
+  const ax = axis(9, -2, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax, value:() => 5});
+  res.sigma = new Float64Array(res.I.length).fill(0.2);
+  const prof = app.context.radialProfile(res, {bins:4});
+  for(let b=0;b<prof.bins;b++) assertClose(prof.ys[b], 0.2 / Math.sqrt(prof.n[b]), 1e-12, `σ of shell ${b}`);
+  const split = app.context.radialProfile(res, {rebin:"0.5"});
+  // A voxel shared by shells adds its share to each: σ = √(Σf²σ²)/Σf, at most
+  // σ/√(Σf) as shares are at most 1.
+  for(let b=0;b<split.bins;b++){
+    assert.ok(Number.isFinite(split.ys[b]) && split.ys[b] > 0, `σ of shell ${b}`);
+    assert.ok(split.ys[b] <= 0.2 / Math.sqrt(split.n[b]) + 1e-12, `σ of shell ${b} within its bound`);
+  }
+});

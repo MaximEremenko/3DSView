@@ -297,6 +297,8 @@ html[data-theme="light"] .mapPanel,html[data-theme="light"] .dock{border-color:v
 .profileHead label.check{min-height:0;align-self:center}
 .profileHead input[type=number]{width:66px}
 .profileFields{display:inline-flex;align-items:center;gap:12px}
+.profileHead input.qStep{width:120px;height:20px}
+.profileHead #qRebin{width:130px;height:var(--control-sm);font-size:12px}
 .profileInfo{padding:3px 12px;min-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--view-muted);font:11px var(--mono)}
 .profilePlot{position:relative;flex:1;min-height:0}
 #profileChart{width:100%;height:100%}
@@ -946,7 +948,13 @@ window.addEventListener("resize", applyPageZoom);
             <label title="Across the cut, in the plot frame (empty: two grid steps)">Width <input id="cutWidth" type="number" step="any" min="0"></label>
             <label title="Along the slice normal (empty: one slice)">Thickness <input id="cutThick" type="number" step="any" min="0"></label>
           </span>
-          <label title="Empty: about one bin per grid step">Bins <input id="profileBins" type="number" min="2" max="20000" step="1" placeholder="auto"></label>
+          <label id="binsField" title="Empty: about one bin per grid step">Bins <input id="profileBins" type="number" min="2" max="20000" step="1" placeholder="auto"></label>
+          <span id="qFields" class="profileFields hidden">
+            <label title="Mantid Rebin parameters: a step such as 0.05; a negative step for logarithmic shells (-0.01 is ΔQ/Q = 1%); or ranges with their own steps, such as 0.5, 0.02, 3, 0.05, 10. Empty is the shortest bin step in |Q|.">ΔQ <input id="qRebin" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" placeholder="auto"></label>
+            <input id="qStep" class="qStep" type="range" min="0" max="1000" value="435" aria-label="Shell step" title="Shell step on a log scale, from a tenth of the shortest bin step to 20 times it (ΔQ/Q from 0.1% to 20% for logarithmic shells)">
+            <label title="Empty: 0 (the shortest bin step for logarithmic shells)">Q min <input id="qMin" type="number" min="0" step="any" placeholder="0"></label>
+            <label title="Empty: all the data">Q max <input id="qMax" type="number" min="0" step="any" placeholder="all"></label>
+          </span>
           <label class="check"><input id="profileLog" type="checkbox">Log</label>
           </div>
           <div class="profileEnd">
@@ -5595,21 +5603,111 @@ function lineCutProfile(res, p0, p1, {width, thickness=null, normal=null, bins=n
   return {kind:"line", length, bins:nb, x, y, n:count, ym, ys, native, p0:p0.slice(), p1:p1.slice(), width:2 * halfW, thickness:box === "box" ? 2 * halfT : null, voxels, step:pf.step};
 }
 
-// Mean of res in shells of |q| (the plot-frame distance from the origin) over
-// the shown volume, with the model's mean and the agreement R = Σ|y - m| /
-// Σ|y| per shell when a model is given.
-function radialProfile(res, {bins=null, model=null, ranges=displayIndexRanges(res)}={}){
+// Edges of |Q| shells from Mantid Rebin parameters: "Δ" is one step from
+// qmin to qmax, "Q1, Δ1, Q2, Δ2, Q3 ..." gives ranges with their own steps,
+// and a negative step -r makes logarithmic shells, each edge (1 + r) times
+// the one before. A range steps while the next edge plus a quarter step
+// stays within it, then ends at its boundary, so its last shell is 0.25 to
+// 1.25 steps wide. Uniform edges are Q1 + kΔ, without adding up rounding.
+function rebinEdges(text, {qmin=0, qmax, step}){
+  const nums = parseNumberList(text);
+  let ranges;
+  if(!nums.length) ranges = [[qmin, step, qmax]];
+  else if(nums.length === 1) ranges = [[nums[0] < 0 && !(qmin > 0) ? Math.abs(step) : qmin, nums[0], qmax]];
+  else{
+    if(nums.length % 2 === 0) throw new Error("Rebin parameters are a step, or Q1, Δ1, Q2 (, Δ2, Q3 ...).");
+    ranges = [];
+    for(let i=0;i + 2<nums.length;i+=2) ranges.push([nums[i], nums[i + 1], nums[i + 2]]);
+  }
+  const edges = [];
+  for(const [a, d, b] of ranges){
+    if(!(b > a)) throw new Error(`a range must run upwards (${fmt(a, 4)} to ${fmt(b, 4)}).`);
+    if(!d) throw new Error("a step of 0 gives no shells.");
+    if(!edges.length || Math.abs(edges[edges.length - 1] - a) > 1e-12 * Math.max(1, Math.abs(a))) edges.push(a);
+    if(d > 0){
+      for(let k=1;;k++){
+        const e = a + k * d;
+        if(e + 0.25 * d > b * (1 + 1e-12)) break;
+        edges.push(e);
+        if(edges.length > 200000) throw new Error("the step makes more than 200,000 shells.");
+      }
+    }else{
+      const r = -d;
+      if(!(a > 0)) throw new Error("logarithmic shells need a Q min above 0.");
+      for(let e=a;;){
+        const next = e * (1 + r);
+        if(next + 0.25 * (next - e) > b * (1 + 1e-12)) break;
+        edges.push(next);
+        e = next;
+        if(edges.length > 200000) throw new Error("the step makes more than 200,000 shells.");
+      }
+    }
+    edges.push(b);
+  }
+  return Float64Array.from(edges);
+}
+
+// Shell of q among the edges, -1 outside them.
+function shellIndex(edges, q){
+  const n = edges.length - 1;
+  if(!(q >= edges[0]) || q > edges[n]) return -1;
+  let lo = 0, hi = n - 1;
+  while(lo < hi){
+    const mid = (lo + hi + 1) >> 1;
+    if(edges[mid] <= q) lo = mid; else hi = mid - 1;
+  }
+  return lo;
+}
+
+// The volume reduced to |q| shells (|r| for real-space data), over the shown
+// volume: in each shell, the volume-weighted mean of the voxels with data.
+// Each voxel is split into sub³ cells binned by their own |q|, so a voxel is
+// shared between the shells it spans. Empty voxels count in neither sum, so
+// a partly measured shell keeps its level; its coverage, the part of the
+// shell's volume with data, is reported. σ comes from the voxels' σ (the
+// cells of a voxel are one measurement), the model's mean and R = Σ|y - m|
+// / Σ|y| come along when a model is given. Shells are Mantid Rebin
+// parameters (rebinEdges); a bin count instead gives equal shells from 0,
+// binned by voxel centres. Trailing shells without data are dropped.
+function radialProfile(res, {rebin="", qmin=null, qmax=null, bins=null, sub=null, model=null, ranges=displayIndexRanges(res)}={}){
   const pf = plotGridFrame(res), G = pf.Gq;
-  let qmax = 0;
+  let far = 0;
   for(const i of ranges[0]) for(const j of ranges[1]) for(const k of ranges[2]){
     const q = [0, 1, 2].map(c => pf.oq[c] + i * G[0][c] + j * G[1][c] + k * G[2][c]);
-    qmax = Math.max(qmax, normVec(q));
+    far = Math.max(far, normVec(q));
   }
-  const nb = Math.max(2, Math.min(20000, Math.floor(bins) || Math.max(8, Math.ceil(qmax / pf.step))));
-  const width = (qmax || 1) / nb;
-  const sum = new Float64Array(nb), count = new Float64Array(nb), msum = new Float64Array(nb), mcount = new Float64Array(nb);
-  const dAbs = new Float64Array(nb), yAbs = new Float64Array(nb);
-  const I = res.I, [, n1, n2] = res.shape;
+  const defaultStep = Number(pf.step.toPrecision(1));
+  let edges;
+  if(bins){
+    const nb = Math.max(2, Math.min(20000, Math.floor(bins)));
+    edges = Float64Array.from({length:nb + 1}, (_, b) => b * (far || 1) / nb);
+  }else{
+    edges = rebinEdges(rebin, {qmin:qmin > 0 ? qmin : 0, qmax:qmax > 0 ? qmax : far, step:defaultStep});
+  }
+  const nb = edges.length - 1, split = Math.max(1, Math.min(4, Math.floor(sub || (bins ? 1 : 2))));
+  // A single uniform range bins directly; others search the edges.
+  const uniform = (() => {
+    const d = edges[1] - edges[0];
+    for(let b=1;b<nb - 1;b++) if(Math.abs(edges[b + 1] - edges[b] - d) > 1e-9 * d) return null;
+    return d > 0 ? d : null;
+  })();
+  const shell = uniform
+    ? q => (q < edges[0] || q > edges[nb] ? -1 : Math.min(nb - 1, Math.floor((q - edges[0]) / uniform)))
+    : q => shellIndex(edges, q);
+  // Cells per axis in step with the voxel's length along it, so a voxel
+  // longer along one axis is not coarser there than along the others.
+  const lengths = G.map((g, a) => (res.shape[a] > 1 ? normVec(g) : 0)), shortest = Math.min(...lengths.filter(v => v > 0)) || 1;
+  const per = lengths.map(v => (v > 0 && split > 1 ? clamp(Math.round(split * v / shortest), 1, 3 * split) : 1));
+  const offsets = [];
+  for(let a=0;a<per[0];a++) for(let b=0;b<per[1];b++) for(let c=0;c<per[2];c++){
+    const t = [a / per[0], b / per[1], c / per[2]].map((u, x) => u + 0.5 / per[x] - 0.5);
+    offsets.push([0, 1, 2].map(x => t[0] * G[0][x] + t[1] * G[1][x] + t[2] * G[2][x]));
+  }
+  const cellW = 1 / offsets.length;
+  const wsum = new Float64Array(nb), sum = new Float64Array(nb), s2 = new Float64Array(nb);
+  const mw = new Float64Array(nb), msum = new Float64Array(nb), dAbs = new Float64Array(nb), yAbs = new Float64Array(nb);
+  const I = res.I, sig = res.sigma || null, [, n1, n2] = res.shape;
+  const lb = new Int32Array(offsets.length), lf = new Float64Array(offsets.length);
   let voxels = 0;
   for(let i=ranges[0][0];i<=ranges[0][1];i++) for(let j=ranges[1][0];j<=ranges[1][1];j++){
     let x = pf.oq[0] + i * G[0][0] + j * G[1][0] + ranges[2][0] * G[2][0];
@@ -5618,30 +5716,48 @@ function radialProfile(res, {bins=null, model=null, ranges=displayIndexRanges(re
     for(let k=ranges[2][0];k<=ranges[2][1];k++, x += G[2][0], y += G[2][1], z += G[2][2]){
       const v = (i * n1 + j) * n2 + k, value = I[v];
       if(value !== value) continue;
-      const bin = Math.min(nb - 1, Math.floor(Math.sqrt(x * x + y * y + z * z) / width));
-      sum[bin] += value;
-      count[bin]++;
+      // The voxel's share of each shell it spans.
+      let m = 0;
+      for(const o of offsets){
+        const qx = x + o[0], qy = y + o[1], qz = z + o[2];
+        const b = shell(Math.sqrt(qx * qx + qy * qy + qz * qz));
+        if(b < 0) continue;
+        let p = 0;
+        while(p < m && lb[p] !== b) p++;
+        if(p === m){ lb[m] = b; lf[m] = 0; m++; }
+        lf[p] += cellW;
+      }
+      if(!m) continue;
       voxels++;
-      if(model){
-        const c = model.values[v];
-        if(c === c){
-          const m = model.scale * c + model.offset;
-          msum[bin] += m; mcount[bin]++; dAbs[bin] += Math.abs(value - m); yAbs[bin] += Math.abs(value);
-        }
+      const e2 = sig ? sig[v] * sig[v] : 0, mv = model ? model.values[v] : NaN, mm = mv === mv ? model.scale * mv + model.offset : NaN;
+      for(let p=0;p<m;p++){
+        const b = lb[p], f = lf[p];
+        wsum[b] += f;
+        sum[b] += f * value;
+        if(sig) s2[b] += f * f * e2;
+        if(mm === mm){ mw[b] += f; msum[b] += f * mm; dAbs[b] += f * Math.abs(value - mm); yAbs[b] += f * Math.abs(value); }
       }
     }
   }
-  const xs = new Float64Array(nb), y = new Float64Array(nb), ym = model ? new Float64Array(nb) : null, R = model ? new Float64Array(nb) : null;
+  let last = nb - 1;
+  while(last > 0 && !(wsum[last] > 0)) last--;
+  const kept = last + 1, cellVolume = Math.abs(dot(G[0], cross(G[1], G[2])));
+  const xs = new Float64Array(kept), y = new Float64Array(kept), cov = new Float64Array(kept);
+  const ys = sig ? new Float64Array(kept) : null, ym = model ? new Float64Array(kept) : null, R = model ? new Float64Array(kept) : null;
   // R is left out for shells holding only a few voxels, at the edges of the
   // coverage, where it says little and would swamp the plot.
-  const filled = Array.from(mcount).filter(c => c > 0).sort((a, b) => a - b);
+  const filled = Array.from(mw.subarray(0, kept)).filter(c => c > 0).sort((a, b) => a - b);
   const minCount = filled.length ? Math.max(10, 0.05 * filled[filled.length >> 1]) : 0;
-  for(let b=0;b<nb;b++){
-    xs[b] = (b + 0.5) * width;
-    y[b] = count[b] ? sum[b] / count[b] : NaN;
-    if(ym){ ym[b] = mcount[b] ? msum[b] / mcount[b] : NaN; R[b] = yAbs[b] > 0 && mcount[b] >= minCount ? dAbs[b] / yAbs[b] : NaN; }
+  for(let b=0;b<kept;b++){
+    const lo = edges[b], hi = edges[b + 1];
+    xs[b] = 0.5 * (lo + hi);
+    y[b] = wsum[b] > 0 ? sum[b] / wsum[b] : NaN;
+    cov[b] = wsum[b] * cellVolume / (4 / 3 * Math.PI * (hi * hi * hi - lo * lo * lo));
+    if(ys) ys[b] = wsum[b] > 0 ? Math.sqrt(s2[b]) / wsum[b] : NaN;
+    if(ym){ ym[b] = mw[b] > 0 ? msum[b] / mw[b] : NaN; R[b] = yAbs[b] > 0 && mw[b] >= minCount ? dAbs[b] / yAbs[b] : NaN; }
   }
-  return {kind:"q", bins:nb, width, x:xs, y, n:count, ym, R, voxels, qmax};
+  const log = parseNumberList(rebin).some(v => v < 0);
+  return {kind:"q", bins:kept, edges:edges.subarray(0, kept + 1), width:uniform, log, sub:split, cells:per, x:xs, y, ys, n:wsum.subarray(0, kept), cov, ym, R, voxels, qmax:far, defaultStep};
 }
 
 
@@ -11779,6 +11895,8 @@ function applyUi(){
   $("mapPanel").style.setProperty("--profile-h", `${(ui.profileH * 100).toFixed(1)}%`);
   for(const b of document.querySelectorAll("[data-profile]")) b.classList.toggle("on", b.dataset.profile === ui.profileKind);
   $("cutFields").classList.toggle("hidden", ui.profileKind !== "line");
+  $("binsField").classList.toggle("hidden", ui.profileKind !== "line");
+  $("qFields").classList.toggle("hidden", ui.profileKind !== "q");
   $("profileToggle").classList.toggle("on", !!ui.profile);
   $("profileToggle").setAttribute("aria-pressed", String(!!ui.profile));
   $("planeStyle").value = ui.planeStyle;
@@ -12663,9 +12781,17 @@ function computeProfile(){
   const model = state.showMode === "data" || state.showMode === "split" ? comparisonModel(base) : null;
   if(state.ui.profileKind === "q"){
     const ranges = displayIndexRanges(base), fit = state.cmpFit;
-    const key = [res.viewMode || "data", JSON.stringify(ranges), bins, model ? `${fit.scale},${fit.offset}` : "", activeCoordKind()].join("|");
+    const rebin = String($("qRebin").value).trim(), qmin = Number($("qMin").value) || null, qmax = Number($("qMax").value) || null;
+    const piecewise = parseNumberList(rebin).length > 1;
+    $("qMin").disabled = piecewise;
+    $("qMax").disabled = piecewise;
+    const key = [res.viewMode || "data", JSON.stringify(ranges), rebin, piecewise ? "" : `${qmin},${qmax}`, model ? `${fit.scale},${fit.offset}` : "", activeCoordKind()].join("|");
     if(state.profileCache && state.profileCache.res === res && state.profileCache.key === key) return state.profileCache.data;
-    const data = radialProfile(res, {bins, model, ranges});
+    const t0 = performance.now();
+    const data = radialProfile(res, {rebin, qmin:piecewise ? null : qmin, qmax:piecewise ? null : qmax, model, ranges});
+    state.qProfileMs = performance.now() - t0;
+    $("qRebin").placeholder = `${fmt(data.defaultStep, 4)} (auto)`;
+    syncQStepSlider(data.defaultStep);
     state.profileCache = {res, key, data};
     return data;
   }
@@ -12684,6 +12810,34 @@ function computeProfile(){
   const width = Number($("cutWidth").value) > 0 ? Number($("cutWidth").value) : autoWidth;
   const thickness = Number($("cutThick").value) > 0 ? Number($("cutThick").value) : autoThick;
   return lineCutProfile(res, p0, p1, {width, thickness, normal, bins, model});
+}
+
+// The ΔQ slider: a log scale from a tenth of the shortest bin step to 20
+// times it, or ΔQ/Q from 0.1% to 20% for logarithmic shells.
+const Q_STEP_RANGE = {lin:[0.1, 20], log:[0.001, 0.2]};
+function qStepFromSlider(s, base, log){
+  const [a, b] = log ? Q_STEP_RANGE.log : Q_STEP_RANGE.lin.map(v => v * base);
+  return a * Math.pow(b / a, s / 1000);
+}
+
+function syncQStepSlider(base){
+  const el = $("qStep");
+  if(!el || document.activeElement === el) return;
+  const nums = parseNumberList($("qRebin").value);
+  el.disabled = nums.length > 1;
+  const log = nums.length === 1 && nums[0] < 0, v = nums.length === 1 ? Math.abs(nums[0]) : base;
+  const [a, b] = log ? Q_STEP_RANGE.log : Q_STEP_RANGE.lin.map(x => x * base);
+  if(v > 0 && b > a) el.value = String(clamp(Math.round(1000 * Math.log(v / a) / Math.log(b / a)), 0, 1000));
+  state.qStepBase = base;
+}
+
+function onQStepSlider(final){
+  const base = state.qStepBase || (state.profileData && state.profileData.defaultStep) || 0.01;
+  const nums = parseNumberList($("qRebin").value), log = nums.length === 1 && nums[0] < 0;
+  const step = qStepFromSlider(Number($("qStep").value), base, log);
+  $("qRebin").value = String(Number((log ? -step : step).toPrecision(3)));
+  // Moving recomputes while a profile takes little time; slow ones wait for the release.
+  if(final || !(state.qProfileMs > 150)) scheduleProfile(true);
 }
 
 function scheduleProfile(force=false){
@@ -12736,6 +12890,11 @@ async function renderProfile(){
     type:"scatter", mode:"lines", name:"R per shell", x:Array.from(data.x), y:Array.from(data.R, v => (Number.isFinite(v) ? v : null)),
     yaxis:"y2", line:{color:"#b8c0cc", width:1.5, dash:"dot"}, hovertemplate:"|Q| %{x:.4f}<br>R %{y:.4f}<extra></extra>"
   });
+  const coverage = !line && data.cov && !data.R;
+  if(coverage) traces.push({
+    type:"scatter", mode:"lines", name:"Coverage", x:Array.from(data.x), y:Array.from(data.cov, v => (Number.isFinite(v) ? v : null)),
+    yaxis:"y2", line:{color:"#94a3b8", width:1, dash:"dot"}, hovertemplate:"|Q| %{x:.4f}<br>coverage %{y:.3f}<extra></extra>"
+  });
   const axis = title => ({title:{text:title, font:{size:11}}, gridcolor:tc.grid, zerolinecolor:tc.zero, color:tc.text, tickfont:{size:10}});
   const layout = {
     margin:{l:62, r:data.R ? 52 : 16, t:8, b:38},
@@ -12746,10 +12905,14 @@ async function renderProfile(){
     hovermode:"x unified"
   };
   if(data.R) layout.yaxis2 = {...axis("R"), overlaying:"y", side:"right", rangemode:"tozero", showgrid:false};
+  if(coverage){
+    layout.yaxis2 = {...axis("Coverage"), overlaying:"y", side:"right", range:[0, 1.25], showgrid:false};
+    layout.margin.r = 52;
+  }
   await Plotly.react(chart, traces, layout, {responsive:true, displaylogo:false, modeBarButtonsToRemove:["select2d", "lasso2d"]});
   $("profileInfo").textContent = line
     ? `${fmt(data.length, 4)}${unit ? ` ${unit}` : ""} from (${fmtVec(data.p0)}) to (${fmtVec(data.p1)}); width ${fmt(data.width, 4)}${data.thickness !== null ? `, thickness ${fmt(data.thickness, 4)}` : ""}; ${data.voxels.toLocaleString()} voxels in ${data.bins} bins`
-    : `${data.voxels.toLocaleString()} voxels in ${data.bins} shells of ${fmt(data.width, 4)}${unit ? ` ${unit}` : ""}`;
+    : `${data.voxels.toLocaleString()} voxels in ${data.bins} shells${data.width ? ` of ${fmt(data.width, 4)}${unit ? ` ${unit}` : ""}` : data.log ? ", logarithmic" : ", ranges"}${data.sub > 1 ? `, voxels split ${data.cells ? data.cells.join(" x ") : `${data.sub}³`}` : ""}${data.cov ? `; coverage ${fmt(Math.min(...Array.from(data.cov).filter(Number.isFinite)), 3)} to ${fmt(Math.max(...Array.from(data.cov).filter(Number.isFinite)), 3)}` : ""}`;
   $("profileInfo").title = $("profileInfo").textContent;
 }
 
@@ -12760,12 +12923,12 @@ function profileCsvText(){
   const value = valueColumnName(viewRes());
   const head = d.kind === "line"
     ? [`distance${unit ? `_${unit}` : ""}`, ...cols, value, "voxels", ...(d.ys ? ["sigma"] : []), ...(d.ym ? ["comparison"] : [])]
-    : [`q${unit ? `_${unit}` : ""}`, value, "voxels", ...(d.ym ? ["comparison", "r_shell"] : [])];
+    : [`q${unit ? `_${unit}` : ""}`, "q_low", "q_high", value, ...(d.ys ? ["sigma"] : []), "coverage", "voxels", ...(d.ym ? ["comparison", "r_shell"] : [])];
   const rows = [head.join(",")];
   for(let b=0;b<d.bins;b++){
     const row = d.kind === "line"
       ? [d.x[b], ...d.native[b], d.y[b], d.n[b], ...(d.ys ? [d.ys[b]] : []), ...(d.ym ? [d.ym[b]] : [])]
-      : [d.x[b], d.y[b], d.n[b], ...(d.ym ? [d.ym[b], d.R[b]] : [])];
+      : [d.x[b], d.edges ? d.edges[b] : NaN, d.edges ? d.edges[b + 1] : NaN, d.y[b], ...(d.ys ? [d.ys[b]] : []), d.cov ? d.cov[b] : NaN, d.n[b], ...(d.ym ? [d.ym[b], d.R[b]] : [])];
     rows.push(row.map(v => (Number.isFinite(v) ? v : "")).join(","));
   }
   return rows.join("\n");
@@ -13094,7 +13257,9 @@ function bind(){
   $("profileToggle").addEventListener("click", () => setProfileOpen(!profileOpen()));
   $("profileClose").addEventListener("click", () => { setCutMode(false); setProfileOpen(false); });
   for(const b of document.querySelectorAll("[data-profile]")) b.addEventListener("click", () => setProfileOpen(true, b.dataset.profile));
-  for(const id of ["cutWidth", "cutThick", "profileBins", "profileLog"]) $(id).addEventListener("change", () => { scheduleProfile(true); paint2d(); });
+  for(const id of ["cutWidth", "cutThick", "profileBins", "profileLog", "qRebin", "qMin", "qMax"]) $(id).addEventListener("change", () => { scheduleProfile(true); paint2d(); });
+  $("qStep").addEventListener("input", () => onQStepSlider(false));
+  $("qStep").addEventListener("change", () => onQStepSlider(true));
   $("profileCsv").addEventListener("click", () => {
     const d = state.profileData;
     if(!d) return;
