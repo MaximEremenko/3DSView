@@ -376,6 +376,7 @@ html[data-theme="light"] .mapPanel,html[data-theme="light"] .dock{border-color:v
 .profileFields{display:inline-flex;align-items:center;gap:12px}
 .profileHead input.qStep{width:120px;height:20px}
 .profileHead #qRebin{width:130px;height:var(--control-sm);font-size:12px}
+.profileHead input.cutEnd{width:124px;height:var(--control-sm);padding:0 7px;font:12px var(--mono)}
 .profileInfo{padding:3px 12px;min-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--view-muted);font:11px var(--mono)}
 .profilePlot{position:relative;flex:1;min-height:0}
 #profileChart{width:100%;height:100%}
@@ -746,8 +747,10 @@ window.addEventListener("resize", applyPageZoom);
             <button type="button" data-profile="q">|Q| profile</button>
           </div>
           <span id="cutFields" class="profileFields">
-            <button type="button" id="cutTool" class="iconBtn ghost wide withText" title="Draw a line cut: drag across the map (L)" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2.2" fill="currentColor"/><circle cx="19" cy="5" r="2.2"/></svg>Draw</button>
-            <label title="Across the cut, in the plot frame (empty: two grid steps)">Width <input id="cutWidth" type="number" step="any" min="0"></label>
+            <button type="button" id="cutTool" class="iconBtn ghost wide withText" title="Draw a line cut: drag across the map (L); hold Shift to put the ends on grid points" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2.2" fill="currentColor"/><circle cx="19" cy="5" r="2.2"/></svg>Draw</button>
+            <label title="Start of the cut in the data's coordinates, such as 0.5, 0, -4; Enter applies. Ends in one slice give a cut in that slice; others a cut through the volume">From <input id="cutFrom" class="cutEnd" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" placeholder="H, K, L"></label>
+            <label title="End of the cut in the data's coordinates; Enter applies">To <input id="cutTo" class="cutEnd" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" placeholder="H, K, L"></label>
+            <label title="Across the cut, in the plot frame; for a cut through the volume, the diameter of the rod it averages (empty: two grid steps)">Width <input id="cutWidth" type="number" step="any" min="0"></label>
             <label title="Along the slice normal (empty: one slice)">Thickness <input id="cutThick" type="number" step="any" min="0"></label>
           </span>
           <label id="binsField" title="Empty: about one bin per grid step">Bins <input id="profileBins" type="number" min="2" max="20000" step="1" placeholder="auto"></label>
@@ -7540,7 +7543,7 @@ function onHeatmapPointerMove(ev){
     return;
   }
   if(state.cutDrag){
-    moveCutDrag(pt);
+    moveCutDrag(pt, ev);
     return;
   }
   if(state.box2d){
@@ -13059,6 +13062,13 @@ function computeProfile(){
     return data;
   }
   const sl = last.slice, cut = state.cut;
+  syncCutFields();
+  if(cut && cut.free){
+    const pf = plotGridFrame(res), autoWidth = 2 * pf.step;
+    $("cutWidth").placeholder = fmt(autoWidth, 4);
+    const width = Number($("cutWidth").value) > 0 ? Number($("cutWidth").value) : autoWidth;
+    return lineCutProfile(res, cut.p0, cut.p1, {width, bins, model});
+  }
   if(!cut || cut.key !== sliceKeyForCut(sl)) return null;
   const p0 = sliceToNative(sl, cut.a[0], cut.a[1]), p1 = sliceToNative(sl, cut.b[0], cut.b[1]);
   const pf = plotGridFrame(res);
@@ -13138,11 +13148,32 @@ async function renderProfile(){
   const unitText = unit ? ` (${unit})` : "";
   const traces = [], line = data.kind === "line";
   const hover = line ? data.native.map(p => `${labels.join(" ")} = ${fmtVec(p)}`) : null;
+  // σ as a half-transparent band behind the line, one polygon per run of
+  // bins with values; on a log axis it stops at the smallest value shown.
+  if(data.ys){
+    const log = $("profileLog").checked, bx = [], by = [];
+    const floor = log ? Math.min(...Array.from(data.y).filter(v => v > 0)) / 2 : -Infinity;
+    let run = [];
+    const flush = () => {
+      if(run.length){
+        for(const b of run){ bx.push(data.x[b]); by.push(data.y[b] + data.ys[b]); }
+        for(let i=run.length-1;i>=0;i--){ const b = run[i]; bx.push(data.x[b]); by.push(Math.max(floor, data.y[b] - data.ys[b])); }
+        bx.push(null); by.push(null);
+      }
+      run = [];
+    };
+    for(let b=0;b<data.bins;b++){
+      if(Number.isFinite(data.y[b]) && Number.isFinite(data.ys[b])) run.push(b);
+      else flush();
+    }
+    flush();
+    if(bx.length) traces.push({type:"scatter", mode:"lines", name:"±σ", x:bx, y:by, fill:"toself", fillcolor:"rgba(76,201,240,.25)", line:{width:0, color:"rgba(76,201,240,0)"}, hoverinfo:"skip", showlegend:false});
+  }
   traces.push({
     type:"scatter", mode:"lines", name, x:Array.from(data.x), y:Array.from(data.y, v => (Number.isFinite(v) ? v : null)),
     line:{color:"#4cc9f0", width:2}, text:hover, connectgaps:false,
-    hovertemplate:line ? `%{text}<br>${name} %{y:.5g}<extra></extra>` : `|Q| %{x:.4f}<br>${name} %{y:.5g}<extra></extra>`,
-    error_y:data.ys ? {type:"data", array:Array.from(data.ys, v => (Number.isFinite(v) ? v : 0)), visible:true, thickness:1, width:0, color:"rgba(76,201,240,.45)"} : undefined
+    customdata:data.ys ? Array.from(data.ys, v => (Number.isFinite(v) ? v : null)) : undefined,
+    hovertemplate:(line ? `%{text}<br>${name} %{y:.5g}` : `|Q| %{x:.4f}<br>${name} %{y:.5g}`) + (data.ys ? " ± %{customdata:.3g}" : "") + "<extra></extra>"
   });
   if(data.ym) traces.push({
     type:"scatter", mode:"lines", name:"Comparison (scaled)", x:Array.from(data.x), y:Array.from(data.ym, v => (Number.isFinite(v) ? v : null)),
@@ -13162,7 +13193,7 @@ async function renderProfile(){
   const layout = {
     margin:{l:62, r:data.R ? 52 : 16, t:8, b:38},
     paper_bgcolor:tc.bg, plot_bgcolor:tc.bg, font:{color:tc.text, size:11},
-    showlegend:traces.length > 1, legend:{orientation:"h", x:1, xanchor:"right", y:1.02, yanchor:"bottom", bgcolor:"rgba(0,0,0,0)", font:{size:10}},
+    showlegend:traces.filter(t => t.showlegend !== false).length > 1, legend:{orientation:"h", x:1, xanchor:"right", y:1.02, yanchor:"bottom", bgcolor:"rgba(0,0,0,0)", font:{size:10}},
     xaxis:axis(line ? `Distance along the cut${unitText}` : `|${isRealSpaceData(state.res) ? "r" : "Q"}|${unitText}`),
     yaxis:{...axis(name), type:$("profileLog").checked ? "log" : "linear"},
     hovermode:"x unified"
@@ -13174,7 +13205,7 @@ async function renderProfile(){
   }
   await Plotly.react(chart, traces, layout, {responsive:true, displaylogo:false, modeBarButtonsToRemove:["select2d", "lasso2d"]});
   $("profileInfo").textContent = line
-    ? `${fmt(data.length, 4)}${unit ? ` ${unit}` : ""} from (${fmtVec(data.p0)}) to (${fmtVec(data.p1)}); width ${fmt(data.width, 4)}${data.thickness !== null ? `, thickness ${fmt(data.thickness, 4)}` : ""}; ${data.voxels.toLocaleString()} voxels in ${data.bins} bins`
+    ? `${fmt(data.length, 4)}${unit ? ` ${unit}` : ""} from (${fmtVec(data.p0)}) to (${fmtVec(data.p1)}); ${data.thickness !== null ? `width ${fmt(data.width, 4)}, thickness ${fmt(data.thickness, 4)}` : `through the volume, rod diameter ${fmt(data.width, 4)}`}; ${data.voxels.toLocaleString()} voxels in ${data.bins} bins`
     : `${data.voxels.toLocaleString()} voxels in ${data.bins} shells${data.width ? ` of ${fmt(data.width, 4)}${unit ? ` ${unit}` : ""}` : data.log ? ", logarithmic" : ", ranges"}${data.sub > 1 ? `, voxels split ${data.cells ? data.cells.join(" x ") : `${data.sub}³`}` : ""}${data.cov ? `; coverage ${fmt(Math.min(...Array.from(data.cov).filter(Number.isFinite)), 3)} to ${fmt(Math.max(...Array.from(data.cov).filter(Number.isFinite)), 3)}` : ""}`;
   $("profileInfo").title = $("profileInfo").textContent;
 }
@@ -13197,9 +13228,215 @@ function profileCsvText(){
   return rows.join("\n");
 }
 
+// ---- Typed cuts. From and To are in the data's coordinates. Ends that
+// share a slice of one axis give a cut in that slice, drawn on the map and
+// following it; any others give a cut through the volume, averaged over a
+// rod as wide as the width, whose shadow is drawn on the map.
+
+// The plane of an axis slice: its columns and rows, by the fixed axis.
+const AXIS_PLANE = [{col:2, row:1}, {col:2, row:0}, {col:1, row:0}];
+
+// Fractional grid indices of a point in the data's coordinates.
+function nativeToFraction(res, p){
+  const fr = gridFrame(res);
+  return mul(p.map((v, c) => v - fr.o[c]), fr.Gi);
+}
+
+// Where a point falls on a slice: its map coordinates, and how far it lies
+// off the slice (in slices for an axis slice, plot units for a plane).
+function slicePointOf(sl, p){
+  const res = state.res;
+  if(sl.type === "axis"){
+    const f = nativeToFraction(res, p), axes = [res.h, res.k, res.l];
+    return {x:axisValueAt(axes[sl.colAxis], f[sl.colAxis]), y:axisValueAt(axes[sl.rowAxis], f[sl.rowAxis]), off:f[sl.fixedAxis] - sl.fixedIndex};
+  }
+  const c = state.plane.center, X = sl.xVec, Y = sl.yVec, d = p.map((v, i) => v - c[i]);
+  const xx = dot(X, X), xy = dot(X, Y), yy = dot(Y, Y), bx = dot(X, d), by = dot(Y, d), det = xx * yy - xy * xy || 1;
+  const x = (bx * yy - by * xy) / det, y = (by * xx - bx * xy) / det;
+  const r = d.map((v, i) => v - x * X[i] - y * Y[i]);
+  return {x, y, off:Math.sign(dot(cross(X, Y), r)) * normVec(plotVector(res, r))};
+}
+
+// The ends of the cut in the data's coordinates, or null when there is none
+// on this slice.
+function cutEnds(sl){
+  const cut = state.cut;
+  if(!cut || !state.res) return null;
+  if(cut.free) return [cut.p0, cut.p1];
+  if(!sl || cut.key !== sliceKeyForCut(sl)) return null;
+  return [sliceToNative(sl, cut.a[0], cut.a[1]), sliceToNative(sl, cut.b[0], cut.b[1])];
+}
+
+function fmtPoint(p){
+  const res = state.res, axes = [res.h, res.k, res.l];
+  return p.map((v, a) => fmtAxis(v, axes[a])).join(", ");
+}
+
+// From and To follow the cut as it is drawn, dragged or carried by the slice.
+function syncCutFields(){
+  const from = $("cutFrom"), to = $("cutTo");
+  if(!from || !to) return;
+  const res = state.res, ends = res ? cutEnds(state.lastSlice && state.lastSlice.slice) : null;
+  const names = res ? nativeAxisLabels(res).join(", ") : "H, K, L";
+  for(const [el, i] of [[from, 0], [to, 1]]){
+    el.placeholder = names;
+    if(document.activeElement !== el) el.value = ends ? fmtPoint(ends[i]) : "";
+  }
+  const free = !!(state.cut && state.cut.free);
+  $("cutThick").disabled = free;
+  $("cutThick").title = free ? "A cut through the volume is averaged over a rod; the width is its diameter" : "";
+}
+
+function parsePoint(text, name){
+  const v = parseNumberList(text);
+  if(v.length !== 3) throw new Error(`${name}: type three coordinates, such as 0.5, 0, -4.`);
+  return v;
+}
+
+// Puts the cut on the typed ends: in the slice both lie in (the plane shown
+// moves there), or through the volume.
+function applyCutEnds(){
+  const res = state.res;
+  if(!res) throw new Error("Load data first.");
+  const fromText = $("cutFrom").value.trim(), toText = $("cutTo").value.trim();
+  if(!fromText && !toText){
+    state.cut = null;
+    paint2d();
+    scheduleProfile(true);
+    return;
+  }
+  if(!fromText || !toText) return;
+  const p0 = parsePoint(fromText, "From"), p1 = parsePoint(toText, "To");
+  const q0 = plotPoint(res, p0[0], p0[1], p0[2]), q1 = plotPoint(res, p1[0], p1[1], p1[2]);
+  if(!(normVec(q1.map((v, c) => v - q0[c])) > 1e-12)) throw new Error("From and To are the same point.");
+  if(triOn()) toggleTri();
+  let cut = null;
+  if($("sliceMode").value === "axis"){
+    const f0 = nativeToFraction(res, p0), f1 = nativeToFraction(res, p1), ranges = displayIndexRanges(res);
+    const current = {h:0, k:1, l:2}[$("axis").value], offInt = v => Math.abs(v - Math.round(v));
+    const shared = [0, 1, 2].filter(a => {
+      const i = Math.round((f0[a] + f1[a]) / 2);
+      return Math.abs(f0[a] - f1[a]) < 0.5 && i >= ranges[a][0] && i <= ranges[a][1];
+    });
+    if(shared.length){
+      // The plane shown stays if it holds the cut; otherwise the one at the
+      // roundest coordinate, such as K = 0 before H = 0.5.
+      const a = shared.includes(current) ? current : shared.slice().sort((x, y) => offInt(p0[x]) - offInt(p0[y]) || x - y)[0];
+      if(a !== current){
+        $("axis").value = ["h", "k", "l"][a];
+        $("axis").dispatchEvent(new Event("change"));
+      }
+      goToAxisIndex(Math.round((f0[a] + f1[a]) / 2));
+      const {col, row} = AXIS_PLANE[a], axes = [res.h, res.k, res.l];
+      cut = {key:`axis|${a}`, a:[axisValueAt(axes[col], f0[col]), axisValueAt(axes[row], f0[row])], b:[axisValueAt(axes[col], f1[col]), axisValueAt(axes[row], f1[row])]};
+    }
+  }else{
+    const sl = state.lastSlice && state.lastSlice.slice;
+    if(sl && sl.type !== "axis"){
+      const s0 = slicePointOf(sl, p0), s1 = slicePointOf(sl, p1), tol = plotGridFrame(res).step / 2;
+      if(Math.abs(s0.off) <= tol && Math.abs(s1.off) <= tol) cut = {key:sliceKeyForCut(sl), a:[s0.x, s0.y], b:[s1.x, s1.y]};
+    }
+  }
+  state.cut = cut || {free:true, p0, p1};
+  if(state.cutMode) setCutMode(false);
+  if(!profileOpen() || state.ui.profileKind !== "line") setProfileOpen(true, "line");
+  paint2d();
+  scheduleProfile(true);
+  status(cut
+    ? "The cut lies in the slice shown; it follows the slice as you step."
+    : "The cut runs through the volume: it is averaged over a rod as wide as Width, and its shadow is drawn on the map, with a ring where it crosses the slice.", "ok");
+}
+
+// Grid point nearest to a point of an axis slice, for Shift while drawing.
+function snapSlicePoint(sl, s){
+  if(!sl || sl.type !== "axis") return s;
+  const res = state.res, f = nativeToFraction(res, sliceToNative(sl, s[0], s[1])), axes = [res.h, res.k, res.l];
+  return [axisValueAt(axes[sl.colAxis], Math.round(f[sl.colAxis])), axisValueAt(axes[sl.rowAxis], Math.round(f[sl.rowAxis]))];
+}
+
+// A small label on the map, set off from (x, y) towards (dx, dy) and kept
+// inside the plot area.
+function drawCanvasTag(ctx, text, x, y, dx, dy, area){
+  ctx.save();
+  ctx.font = "600 11px Consolas, ui-monospace, monospace";
+  const w = Math.ceil(ctx.measureText(text).width) + 12, h = 20;
+  let bx = dx < -0.35 ? x - w : dx > 0.35 ? x : x - w / 2;
+  let by = dy < -0.35 ? y - h : dy > 0.35 ? y : y - h / 2;
+  bx = clamp(bx, area.x + 2, Math.max(area.x + 2, area.x + area.w - w - 2));
+  by = clamp(by, area.y + 2, Math.max(area.y + 2, area.y + area.h - h - 2));
+  ctx.fillStyle = "rgba(24,23,20,.86)";
+  ctx.beginPath();
+  if(ctx.roundRect) ctx.roundRect(bx, by, w, h, 5); else ctx.rect(bx, by, w, h);
+  ctx.fill();
+  ctx.fillStyle = "#f5f2ea";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, bx + 6, by + h / 2 + 0.5);
+  ctx.restore();
+}
+
+// The ends' coordinates and the length, while a cut is drawn or dragged.
+function drawCutTags(ctx, layout, sl, A, B){
+  const ends = cutEnds(sl);
+  if(!ends) return;
+  const res = state.res, len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+  const ux = len > 0 ? (B[0] - A[0]) / len : 1, uy = len > 0 ? (B[1] - A[1]) / len : 0;
+  const q0 = plotPoint(res, ends[0][0], ends[0][1], ends[0][2]), q1 = plotPoint(res, ends[1][0], ends[1][1], ends[1][2]);
+  const length = normVec(q1.map((v, c) => v - q0[c])), unit = plotUnit();
+  drawCanvasTag(ctx, `A ${fmtPoint(ends[0])}`, A[0] - ux * 10, A[1] - uy * 10, -ux, -uy, layout.area);
+  drawCanvasTag(ctx, `B ${fmtPoint(ends[1])}`, B[0] + ux * 10, B[1] + uy * 10, ux, uy, layout.area);
+  if(len > 70) drawCanvasTag(ctx, `${fmt(length, 4)}${unit ? ` ${unit}` : ""}`, (A[0] + B[0]) / 2 - uy * 12, (A[1] + B[1]) / 2 + ux * 12, -uy, ux, layout.area);
+}
+
+// A cut through the volume on a slice: its shadow, dashed, with open ends,
+// and a ring where it crosses the slice.
+function drawFreeCut(ctx, layout, sl){
+  const cut = state.cut;
+  let s0, s1;
+  try{ s0 = slicePointOf(sl, cut.p0); s1 = slicePointOf(sl, cut.p1); }catch(_){ return; }
+  const A = layout.toCanvas(s0.x, s0.y), B = layout.toCanvas(s1.x, s1.y), a = layout.area;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(a.x, a.y, a.w, a.h);
+  ctx.clip();
+  ctx.lineCap = "round";
+  ctx.setLineDash([7, 5]);
+  for(const [stroke, width] of [["rgba(2,6,23,.75)", 3.5], ["rgba(255,255,255,.9)", 1.6]]){
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = width;
+    ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  for(const [p, label] of [[A, "A"], [B, "B"]]){
+    ctx.beginPath();
+    ctx.arc(p[0], p[1], 4.5, 0, 2 * Math.PI);
+    ctx.fillStyle = "rgba(2,6,23,.75)";
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.font = "bold 11px Segoe UI, sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(label, p[0] + 7, p[1] - 7);
+  }
+  const t = s0.off !== s1.off ? s0.off / (s0.off - s1.off) : NaN;
+  if(t >= 0 && t <= 1){
+    const X = A[0] + t * (B[0] - A[0]), Y = A[1] + t * (B[1] - A[1]);
+    ctx.beginPath();
+    ctx.arc(X, Y, 7, 0, 2 * Math.PI);
+    ctx.strokeStyle = "rgba(2,6,23,.85)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // The drawn cut on the map: its integration band, the line and its ends.
 function drawCutOverlay(ctx, layout, sl){
   const cut = state.cut;
+  if(cut && cut.free){ drawFreeCut(ctx, layout, sl); return; }
   if(!cut || cut.key !== sliceKeyForCut(sl)) return;
   const A = layout.toCanvas(cut.a[0], cut.a[1]), B = layout.toCanvas(cut.b[0], cut.b[1]);
   const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
@@ -13242,18 +13479,20 @@ function drawCutOverlay(ctx, layout, sl){
     ctx.strokeStyle = "rgba(2,6,23,.9)";
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    if(state.cutDrag) continue;
     ctx.font = "bold 11px Segoe UI, sans-serif";
     ctx.fillStyle = "#ffffff";
     ctx.fillText(label, p[0] + 7, p[1] - 7);
   }
+  if(state.cutDrag) drawCutTags(ctx, layout, sl, A, B);
   ctx.restore();
 }
 
 function startCutDrag(ev, pt){
   const last = state.lastSlice, sl = last.slice, layout = last.layout, key = sliceKeyForCut(sl);
-  const s = layout.toSlice(pt.x, pt.y);
+  const s = ev.shiftKey ? snapSlicePoint(sl, layout.toSlice(pt.x, pt.y)) : layout.toSlice(pt.x, pt.y);
   let handle = "b";
-  if(state.cut && state.cut.key === key){
+  if(state.cut && !state.cut.free && state.cut.key === key){
     const A = layout.toCanvas(state.cut.a[0], state.cut.a[1]), B = layout.toCanvas(state.cut.b[0], state.cut.b[1]);
     const dA = Math.hypot(pt.x - A[0], pt.y - A[1]), dB = Math.hypot(pt.x - B[0], pt.y - B[1]);
     const len2 = (B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2;
@@ -13270,10 +13509,10 @@ function startCutDrag(ev, pt){
   ev.preventDefault();
 }
 
-function moveCutDrag(pt){
+function moveCutDrag(pt, ev){
   const drag = state.cutDrag, layout = state.lastSlice && state.lastSlice.layout;
   if(!drag || !layout || !state.cut) return;
-  const s = layout.toSlice(pt.x, pt.y);
+  const s = ev && ev.shiftKey && drag.handle !== "move" ? snapSlicePoint(state.lastSlice.slice, layout.toSlice(pt.x, pt.y)) : layout.toSlice(pt.x, pt.y);
   if(drag.handle === "a") state.cut.a = s;
   else if(drag.handle === "b") state.cut.b = s;
   else{
@@ -13282,6 +13521,7 @@ function moveCutDrag(pt){
     state.cut.b = [drag.b0[0] + dx, drag.b0[1] + dy];
   }
   paint2d();
+  syncCutFields();
   scheduleProfile();
 }
 
@@ -13289,12 +13529,13 @@ function endCutDrag(ev){
   const drag = state.cutDrag, layout = state.lastSlice && state.lastSlice.layout;
   state.cutDrag = null;
   try{ $("heatmap").releasePointerCapture(ev.pointerId); }catch(_){}
-  if(state.cut && layout){
+  if(state.cut && !state.cut.free && layout){
     const A = layout.toCanvas(state.cut.a[0], state.cut.a[1]), B = layout.toCanvas(state.cut.b[0], state.cut.b[1]);
     // A click without a drag clears the cut.
     if(drag && drag.handle === "b" && Math.hypot(B[0] - A[0], B[1] - A[1]) < 4) state.cut = null;
   }
   paint2d();
+  syncCutFields();
   scheduleProfile();
 }
 
@@ -13312,6 +13553,17 @@ function bind(){
   });
   $("openFolder").addEventListener("click", () => $("folderFile").click());
   $("cmpLoad").addEventListener("click", () => $("cmpFile").click());
+  for(const id of ["cutFrom", "cutTo"]){
+    const el = $(id);
+    el.addEventListener("keydown", ev => {
+      if(ev.key === "Enter"){ ev.preventDefault(); el.blur(); }
+      else if(ev.key === "Escape"){ ev.preventDefault(); el.blur(); syncCutFields(); }
+    });
+    el.addEventListener("change", () => {
+      try{ applyCutEnds(); }
+      catch(err){ status(err.message, "warn"); }
+    });
+  }
   $("cmpFile").addEventListener("change", e => {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";

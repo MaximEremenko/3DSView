@@ -62,10 +62,20 @@ and slab-average slicing with linked 2-D and 3-D views.
     averages the voxels in a band of the given width across it and thickness along the
     slice normal, one slice by default. Distances are in the plot frame (Å⁻¹ for Q), so
     skewed and non-orthogonal grids measure true lengths. A drawn cut follows its plane as
-    you step through the slices, and its band is drawn on the map.
+    you step through the slices, and its band is drawn on the map. While a cut is drawn or
+    dragged, its ends are labelled on the map with their coordinates and the cut with its
+    length; **From** and **To** in the strip follow them, and Shift puts the ends on grid
+    points.
+  - **Typed cuts:** type **From** and **To** in the data's coordinates, such as
+    `0.5, 0, -4` and `0.5, 0, 4`, and press Enter. Ends in one slice of an axis give a cut
+    in that slice, and the map moves to it (here the H-L plane at K = 0; the plane shown
+    stays when it holds the cut). Any other ends, such as `-2, -2, -2` to `2, 2, 2`, give a
+    cut through the volume, averaged over a rod whose diameter is the width; its shadow
+    is drawn dashed on the map, with a ring where it crosses the slice.
   - **|Q| profiles:** the shown volume is averaged in shells of |Q| (|r| for real-space
     data).
-  - **What comes along:** the σ of each mean when σ is known, and the scaled comparison
+  - **What comes along:** the σ of each mean when σ is known, drawn as a
+    half-transparent band around the line, and the scaled comparison
     when a calculation is loaded, with R per shell on the |Q| profile (sparsely filled
     shells are left out).
   - **Export:** both profiles save as CSV.
