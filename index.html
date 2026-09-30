@@ -334,6 +334,7 @@ html[data-theme="light"] .mapPanel,html[data-theme="light"] .dock{border-color:v
 .viewTag .iconBtn{color:var(--on-accent)}
 .viewTag .iconBtn:hover:not(:disabled){background:rgba(0,0,0,.08);color:var(--on-accent)}
 .levelPair{display:flex;align-items:center;gap:6px}
+.viewHead input.miniRange{flex:0 1 96px;min-width:56px;width:96px;height:20px}
 .levelPair label>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .lpName{color:var(--view-muted);font-size:11.5px}
 .lpDash{color:var(--view-muted)}
@@ -795,7 +796,7 @@ window.addEventListener("resize", applyPageZoom);
       <div class="dockHead">
         <div class="tabs" role="group" aria-label="3-D views">
           <button type="button" data-dock="plane">Slice plane</button>
-          <button type="button" data-dock="iso">Isosurface</button>
+          <button type="button" data-dock="iso" title="Isosurfaces or the cut-away cube">Volume</button>
           <button type="button" data-dock="both">Both</button>
           <button type="button" data-dock="struct">Structure</button>
         </div>
@@ -826,7 +827,17 @@ window.addEventListener("resize", applyPageZoom);
         </section>
         <div class="splitH" id="stackSplit" role="separator" aria-orientation="horizontal" aria-label="Resize the two 3-D views" tabindex="0" title="Drag to resize; double-click to reset"></div>
         <section class="view3d" id="viewIso">
-          <div class="viewHead"><h3>Isosurface</h3><span id="iso3dStatus" class="st">Idle</span></div>
+          <div class="viewHead"><h3>Volume</h3>
+            <select id="volumeStyle" class="mini" title="Isosurfaces, or the faces of the shown volume with one corner cut away, so three planes show inside">
+              <option value="iso">Isosurface</option>
+              <option value="cube">Cut-away cube</option>
+            </select>
+            <input id="cubeCut" class="miniRange hidden" type="range" min="0" max="100" step="1" value="50" aria-label="Cut size" title="Cut size: nothing at the left, the three planes through the cut point in the middle, the far corner at the right">
+            <select id="cubeAt" class="mini hidden" title="Where the three planes cross: the grid point nearest the origin, or the slices on the map (each axis keeps its own)">
+              <option value="origin">At 0</option>
+              <option value="slices">At the slices</option>
+            </select>
+            <span id="iso3dStatus" class="st">Idle</span></div>
           <div class="plotWrap" id="isoWrap">
             <div id="plot3dIso"></div>
             <div id="empty3dIso" class="empty3d">The isosurface appears here.</div>
@@ -1192,7 +1203,7 @@ window.addEventListener("resize", applyPageZoom);
           <button id="savePlanePng" class="alt" disabled>PNG</button>
           <button id="savePlaneSvg" class="alt" disabled>SVG</button>
           <button id="savePlaneHtml" class="alt" disabled title="A page with the interactive 3-D figure">HTML</button>
-          <span class="k">Isosurface</span>
+          <span class="k">Volume</span>
           <button id="saveIsoPng" class="alt" disabled>PNG</button>
           <button id="saveIsoSvg" class="alt" disabled>SVG</button>
           <button id="saveIsoHtml" class="alt" disabled title="A page with the interactive 3-D figure">HTML</button>
@@ -5912,11 +5923,19 @@ function cutawayMesh(res, sl, mode, {maxCells=150 * 150, keep="below"}={}){
     faces.push({fix:b, at:ranges[b][0], u:a, ur:span, v:c, vr:ranges[c]}, {fix:b, at:ranges[b][1], u:a, ur:span, v:c, vr:ranges[c]});
     faces.push({fix:c, at:ranges[c][0], u:a, ur:span, v:b, vr:ranges[b]}, {fix:c, at:ranges[c][1], u:a, ur:span, v:b, vr:ranges[b]});
   }
+  for(const face of faces) face.step = Math.max(1, Math.ceil(Math.sqrt((face.ur[1] - face.ur[0] + 1) * (face.vr[1] - face.vr[0] + 1) / maxCells)));
+  return facesMesh(res, mode, faces);
+}
+
+// Rectangles of grid faces as one mesh: each face {fix, at, u, ur, v, vr,
+// step} holds axis fix at index at over the index ranges ur and vr, averaged
+// in blocks of step x step voxels; empty blocks leave holes.
+function facesMesh(res, mode, faces){
   const [, n1, n2] = res.shape, I = res.I;
   const x = [], y = [], z = [], intensity = [], custom = [], ti = [], tj = [], tk = [];
   for(const face of faces){
     const nu = face.ur[1] - face.ur[0] + 1, nv = face.vr[1] - face.vr[0] + 1;
-    const step = Math.max(1, Math.ceil(Math.sqrt(nu * nv / maxCells)));
+    const step = face.step;
     const cu = Math.ceil(nu / step), cv = Math.ceil(nv / step);
     const index = new Int32Array(cu * cv).fill(-1);
     for(let p=0;p<cu;p++){
@@ -5960,19 +5979,69 @@ function cutawayMesh(res, sl, mode, {maxCells=150 * 150, keep="below"}={}){
 function cutawayTrace(sl, mode, levels, maxCells){
   const plot = cutawayMesh(viewRes(), sl, mode, {maxCells, keep:state.ui && state.ui.cutawayKeep || "below"});
   if(!plot || !plot.i.length) return null;
+  return {plot, trace:faceMeshTrace(plot, levels, {ambient:0.95, diffuse:0.2, specular:0, roughness:1})};
+}
+
+// ---- The cut-away cube: the faces of the shown volume with the corner
+// beyond a cut point removed, toward +H, +K, +L (which faces the default
+// camera), so the three planes through the point show inside. The point is
+// the grid point nearest the origin (the middle of an axis without 0) or the
+// slices on the map; the cut size runs from no cut (0) through the point
+// (50) to the far corner (100).
+function cubeCutIndex(res){
+  const ranges = displayIndexRanges(res);
+  const at = state.ui && state.ui.cubeAt === "slices"
+    ? ["h", "k", "l"].map(triIndexFor)
+    : [0, 1, 2].map(a => clamp(indexNearestZero(res, a), ranges[a][0], ranges[a][1]));
+  const lam = clamp(Number(state.ui && Number.isFinite(state.ui.cubeCut) ? state.ui.cubeCut : 50) / 50, 0, 2);
+  return at.map((c, a) => {
+    const [lo, hi] = ranges[a];
+    return Math.round(lam <= 1 ? hi - lam * (hi - c) : lo + (c - lo) * (2 - lam));
+  });
+}
+
+// The faces of the cube: each far face whole, each near face as an L of two
+// rectangles around the removed corner, and the three faces the cut opens.
+// A face orientation keeps one block size, so its pieces match.
+function cubeMesh(res, mode, cut, cellsPerSide=150){
+  const R = displayIndexRanges(res), faces = [];
+  const len = a => R[a][1] - R[a][0] + 1;
+  const add = (fix, at, u, ur, v, vr) => {
+    if(ur[1] >= ur[0] && vr[1] >= vr[0]) faces.push({fix, at, u, ur, v, vr, step:Math.max(1, Math.ceil(Math.sqrt(len(u) * len(v)) / cellsPerSide))});
+  };
+  for(let a=0;a<3;a++){
+    const [u, v] = [0, 1, 2].filter(x => x !== a), cu = cut[u], cv = cut[v];
+    add(a, R[a][0], u, R[u], v, R[v]);
+    add(a, R[a][1], u, [R[u][0], cu], v, R[v]);
+    if(cu < R[u][1]) add(a, R[a][1], u, [cu, R[u][1]], v, [R[v][0], cv]);
+    if(cut[a] < R[a][1]) add(a, cut[a], u, [cu, R[u][1]], v, [cv, R[v][1]]);
+  }
+  return facesMesh(res, mode, faces);
+}
+
+function cubeOn(){
+  return !!(state.ui && state.ui.volumeStyle === "cube");
+}
+
+// The cube as a Plotly mesh, shaded flat in the map's colours and levels.
+function cubeTrace(mode, levels){
+  const cut = cubeCutIndex(state.res), plot = cubeMesh(viewRes(), mode, cut);
+  if(!plot.i.length) return null;
+  return {plot, cut, trace:faceMeshTrace(plot, levels, {ambient:1, diffuse:0, specular:0, roughness:1, fresnel:0})};
+}
+
+// A mesh of grid faces as a Plotly trace, with the hover of the 3-D views.
+function faceMeshTrace(plot, levels, lighting){
   const nativeLabels = nativeAxisLabels(state.res), valLabel = valueLabel(viewRes());
   const q = useBasisToQ(state.res) ? ["Qx", "Qy", "Qz"] : ["X", "Y", "Z"];
   return {
-    plot,
-    trace:{
-      type:"mesh3d", x:plot.x, y:plot.y, z:plot.z, i:plot.i, j:plot.j, k:plot.k,
-      intensity:plot.intensity, intensitymode:"vertex", customdata:plot.custom,
-      hovertemplate:plot.transformed
-        ? `${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${q[0]}=%{customdata[3]:.5g}<br>${q[1]}=%{customdata[4]:.5g}<br>${q[2]}=%{customdata[5]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`
-        : `${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`,
-      colorscale:plotlyColorscale(), cmin:levels.min, cmax:levels.max, showscale:true,
-      flatshading:true, lighting:{ambient:0.95, diffuse:0.2, specular:0, roughness:1}
-    }
+    type:"mesh3d", x:plot.x, y:plot.y, z:plot.z, i:plot.i, j:plot.j, k:plot.k,
+    intensity:plot.intensity, intensitymode:"vertex", customdata:plot.custom,
+    hovertemplate:plot.transformed
+      ? `${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${q[0]}=%{customdata[3]:.5g}<br>${q[1]}=%{customdata[4]:.5g}<br>${q[2]}=%{customdata[5]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`
+      : `${nativeLabels[0]}=%{customdata[0]:.5g}<br>${nativeLabels[1]}=%{customdata[1]:.5g}<br>${nativeLabels[2]}=%{customdata[2]:.5g}<br>${valLabel}=%{customdata[6]:.5g}<extra></extra>`,
+    colorscale:plotlyColorscale(), cmin:levels.min, cmax:levels.max, showscale:true,
+    flatshading:true, lighting
   };
 }
 
@@ -10617,7 +10686,11 @@ function hklTickValues(min, max, target=6){
   return out;
 }
 
-function hklAxisOverlayTraces(res=state.res){
+// With front, the axes run along the box edges that face the default camera
+// (from +H, +K, +L): H at K max and L min, K at H max and L min, L up the
+// edge at H max and K min, so an opaque volume does not hide them; the box's
+// wire edges are left out, since the volume shows its own.
+function hklAxisOverlayTraces(res=state.res, {front=false}={}){
   if(!res || !usePlotBasis(res)) return [];
   const indexRanges = displayIndexRanges(res);
   const ranges = [res.h,res.k,res.l].map((axis, i) => {
@@ -10637,7 +10710,7 @@ function hklAxisOverlayTraces(res=state.res){
     ey.push(corners[a][1],corners[b][1],null);
     ez.push(corners[a][2],corners[b][2],null);
   }
-  const traces = [{
+  const traces = front ? [] : [{
     type:"scatter3d", mode:"lines", x:ex, y:ey, z:ez,
     line:{color:isLightTheme() ? "rgba(94,91,83,.55)" : "rgba(214,210,199,.5)", width:2}, hoverinfo:"skip", showlegend:false,
     name:useBasisToQ(res) ? "Reciprocal cell edges" : "Direct-space cell edges"
@@ -10657,8 +10730,9 @@ function hklAxisOverlayTraces(res=state.res){
   const vOrth = (v,u) => { const uh=vHat(u), d=dot(v,uh); return vSub(v,vScale(uh,d)); };
   const basisDirs = [0,1,2].map(i => vHat(plotVector(res,[i===0?1:0,i===1?1:0,i===2?1:0])));
   const axisUnit = useBasisToQ(res) ? " (r.l.u.)" : "";
+  const baseFor = axis => !front ? base : axis === 0 ? [ranges[0][0], ranges[1][1], ranges[2][0]] : [ranges[0][1], ranges[1][0], ranges[2][0]];
   for(let axis=0;axis<3;axis++){
-    const start = base.slice(), end = base.slice();
+    const axisBase = baseFor(axis), start = axisBase.slice(), end = axisBase.slice();
     start[axis] = ranges[axis][0]; end[axis] = ranges[axis][1];
     const qs = plotPoint(res,start[0],start[1],start[2]);
     const qe = plotPoint(res,end[0],end[1],end[2]);
@@ -10679,7 +10753,7 @@ function hklAxisOverlayTraces(res=state.res){
     });
     const bx=[], by=[], bz=[], tx=[], ty=[], tz=[], tt=[];
     for(const tick of hklTickValues(ranges[axis][0],ranges[axis][1])){
-      const p = base.slice(); p[axis] = tick;
+      const p = axisBase.slice(); p[axis] = tick;
       const q = plotPoint(res,p[0],p[1],p[2]);
       const qBar = vAdd(q,vScale(outward,tickLen));
       const qText = vAdd(q,vScale(outward,tickGap));
@@ -11123,6 +11197,27 @@ async function renderIso3d(Plotly){
     $("empty3dIso").textContent = `${dim} data has no 3D isosurface.`;
     $("empty3dIso").style.display = "flex";
     setIsoStatus(`${dim} data`);
+    return;
+  }
+  if(cubeOn()){
+    const mode = $("scale").value;
+    setIsoStatus("Building the cut-away cube...");
+    const levels = state.lastSlice && state.lastSlice.levels && Number.isFinite(state.lastSlice.levels.min) ? state.lastSlice.levels : displayLevels(sliceTransformed(currentSlice(), mode), mode);
+    const built = cubeTrace(mode, levels);
+    if(!built){
+      await Plotly.react("plot3dIso", [], sceneLayout("No values on the faces", isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
+      $("empty3dIso").textContent = "The faces of the shown volume hold no values.";
+      $("empty3dIso").style.display = "flex";
+      setIsoStatus("No values on the faces");
+      return;
+    }
+    const res = state.res, labels = nativeAxisLabels(res), axes = [res.h, res.k, res.l];
+    const at = built.cut.map((c, a) => `${labels[a]} ${fmtAxis(axes[a][c], axes[a])}`).join(", ");
+    await Plotly.react("plot3dIso", [built.trace, ...hklAxisOverlayTraces(res, {front:true})], sceneLayout(`Cut-away cube at ${at}`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
+    wireCamera("plot3dIso", "iso");
+    captureSceneCamera("plot3dIso", "iso");
+    $("empty3dIso").style.display = "none";
+    setIsoStatus(`Cut at ${at}; ${built.plot.faces} faces, ${built.plot.i.length.toLocaleString()} triangles`);
     return;
   }
   setIsoStatus("Sampling volume...");
@@ -11972,7 +12067,7 @@ function showDataset(parsed, {name=parsed.file, note=""}={}){
 // ---- Window layout: the panel of steps, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data", grid:false};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data", grid:false, volumeStyle:"iso", cubeCut:50, cubeAt:"origin"};
 const PAGE_TITLES = {data:"Data", compare:"Compare", process:"Symmetry", mask:"Mask preview"};
 // Settings that open from the views rather than the panel.
 const PAGE_POPS = {slice:["slicePop", "slicePopBtn"], levels:["levelsPop", "levelsPopBtn"], render:["renderPop", "renderPopBtn"], export:["exportPop", "exportBtn"]};
@@ -11994,6 +12089,9 @@ function loadUiPrefs(){
     if(Number.isFinite(saved.profileH)) ui.profileH = clamp(saved.profileH, 0.15, 0.7);
     if(["plane", "cutaway"].includes(saved.planeStyle)) ui.planeStyle = saved.planeStyle;
     if(["below", "above"].includes(saved.cutawayKeep)) ui.cutawayKeep = saved.cutawayKeep;
+    if(["iso", "cube"].includes(saved.volumeStyle)) ui.volumeStyle = saved.volumeStyle;
+    if(Number.isFinite(saved.cubeCut)) ui.cubeCut = clamp(Math.round(saved.cubeCut), 0, 100);
+    if(["origin", "slices"].includes(saved.cubeAt)) ui.cubeAt = saved.cubeAt;
     if(typeof saved.ortho === "boolean") ui.ortho = saved.ortho;
     if(typeof saved.vectors === "boolean") ui.vectors = saved.vectors;
     if(Number.isFinite(saved.plane3dRes)) ui.plane3dRes = clamp(Math.round(saved.plane3dRes), 32, 520);
@@ -12006,8 +12104,8 @@ function loadUiPrefs(){
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt})); }catch(_){}
 }
 
 function applyUi(){
@@ -12036,6 +12134,11 @@ function applyUi(){
   $("profileToggle").setAttribute("aria-pressed", String(!!ui.profile));
   $("planeStyle").value = ui.planeStyle;
   $("cutawayFlip").classList.toggle("hidden", ui.planeStyle !== "cutaway");
+  $("volumeStyle").value = ui.volumeStyle;
+  $("cubeCut").classList.toggle("hidden", ui.volumeStyle !== "cube");
+  $("cubeAt").classList.toggle("hidden", ui.volumeStyle !== "cube");
+  if(document.activeElement !== $("cubeCut")) $("cubeCut").value = String(ui.cubeCut);
+  $("cubeAt").value = ui.cubeAt;
   $("cutawayFlip").title = ui.cutawayKeep === "above" ? "Showing the block above the slice; show the part below" : "Showing the block below the slice; show the part above";
   $("camOrtho").checked = !!ui.ortho;
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
@@ -13741,6 +13844,9 @@ function bind(){
   $("cutTool").addEventListener("click", () => setCutMode(!state.cutMode));
   $("planeStyle").addEventListener("change", () => { setUi({planeStyle:$("planeStyle").value}); scheduleRender3d(0, true); });
   $("cutawayFlip").addEventListener("click", () => { setUi({cutawayKeep:state.ui.cutawayKeep === "above" ? "below" : "above"}); scheduleRender3d(0, true); });
+  $("volumeStyle").addEventListener("change", () => { setUi({volumeStyle:$("volumeStyle").value}); scheduleRender3d(0, true); });
+  $("cubeCut").addEventListener("input", () => { setUi({cubeCut:Number($("cubeCut").value)}); scheduleRender3d(60, true); });
+  $("cubeAt").addEventListener("change", () => { setUi({cubeAt:$("cubeAt").value}); scheduleRender3d(0, true); });
   const camMenu = $("cameraMenu");
   for(const b of document.querySelectorAll("[data-camera-for]")){
     b.addEventListener("click", ev => {

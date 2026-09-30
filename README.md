@@ -13,8 +13,8 @@ and slab-average slicing with linked 2-D and 3-D views.
 ## Features
 
 - **Three linked views**: a 2-D slice heatmap drawn on a canvas, a 3-D rendering of the
-  current slice plane and a 3-D isosurface of the whole volume (both Plotly), plus a
-  Structure view of the crystal structure.
+  current slice plane and a 3-D view of the whole volume, as isosurfaces or a cut-away
+  cube (both Plotly), plus a Structure view of the crystal structure.
 - **Window layout**: everything sits on one screen. The top bar holds **Open**, the
   file and its grid, the latest message (click it for recent messages), **Export**, the
   theme and the shortcuts. Under it, one bar serves every view: the volume on show (with
@@ -29,7 +29,7 @@ and slab-average slicing with linked 2-D and 3-D views.
   typed into: the slice coordinate or slice number, and the centre of a normal plane
   (e.g. `0.4, 0, 0`), which the plane then passes through exactly. Before a file is
   opened, the map shows only the welcome card. The 3-D views share a dock beside the
-  map, with their settings in its head. Show the slice plane, the isosurface, both, or
+  map, with their settings in its head. Show the slice plane, the volume, both, or
   the structure, drag the splitters to resize, enlarge the map or the dock, or hide the
   dock. Only the 3-D views on screen are drawn; a hidden view is drawn when it is shown
   again, and Plotly is not loaded until a 3-D view is needed.
@@ -311,6 +311,12 @@ and slab-average slicing with linked 2-D and 3-D views.
   at the current axis slice instead of the slice alone. The block has its cut face, a cap
   and four walls, each coloured like the map, and empty voxels leave holes. ⇅ shows the
   other side of the cut.
+- **Cut-away cube** (*Cut-away cube* in the Volume view's head): the faces of the shown
+  volume with the corner toward +H, +K, +L cut away, so three planes through a point show
+  inside, each coloured like the map. The point is the grid point nearest the origin (the
+  middle of an axis without 0), or, with *At the slices*, the slices on the map, so the
+  cube follows as you step. *Cut size* runs from no cut, through the point, to the far
+  corner. The axes run along the front edges, which the cube does not hide.
 - **3-D camera tools** (the compass button on each 3-D view): look along a*, b*, c*, a,
   b or c, or along a typed [hkl] or [uvw] direction. Roll, tilt and turn in steps of a
   chosen angle, and switch to an orthographic projection; the choice is remembered.
