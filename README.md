@@ -42,6 +42,15 @@ and slab-average slicing with linked 2-D and 3-D views.
   volume exists, and the one on show is lit. Options and explanations open from the ⚙
   and ⓘ buttons. <kbd>B</kbd> or the button at the left of the top bar hides the panel.
   The layout and the splitter positions are remembered between visits.
+- **Screens and touch**: from phones to 4K and ultrawide monitors. Above 2560 × 1440 at
+  100 % scaling the page is drawn 1.25 to 2 times larger. Between 900 and 1200 pixels
+  (a tablet held sideways) the steps panel slides over the views, which keep the full
+  width; it opens from the button at the left of the top bar. Below 900 pixels the views
+  come first and the page scrolls, with the steps after them; the three linked slices
+  stack as a column of full-width views, and the profiles get a strip of their own under
+  the map. On touch screens the controls are sized for a finger, Plotly's own toolbar is
+  hidden (each view has its zoom, camera and export buttons), one finger scrolls past the
+  map and two zoom and pan it, and the cut tool takes every touch while it draws.
 - **Files**: drop a file anywhere in the window, or use **Open**. *Details* in the Data
   step (or a click on the file name) gives the file's format, grid and value range, and the ranges of its axes
   as the map and the shown volume use them (H, K, L in r.l.u. for an HKL grid); when the

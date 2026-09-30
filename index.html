@@ -354,8 +354,8 @@ html[data-theme="light"] .mapPanel,html[data-theme="light"] .dock{border-color:v
 #heatmap{width:100%;height:100%;display:block;touch-action:none}
 #plot3dPlane,#plot3dIso,#plot3dStruct{width:100%;height:100%}
 .sliceBar{flex:none;display:flex;align-items:center;min-height:42px;padding:6px 10px;border-top:1px solid var(--view-line);color:var(--view-text)}
-.navGroup{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
-.navGroup input[type=range]{flex:1 1 auto;min-width:80px}
+.navGroup{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;flex:1 1 auto;min-width:0}
+.navGroup input[type=range]{width:auto;flex:1 1 90px;min-width:80px}
 .navGroup .val{flex:0 0 auto;min-width:150px;max-width:62%}
 .navLabel{color:var(--view-muted);font-size:12px;white-space:nowrap}
 .val{min-width:0;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--view-text);font:12px var(--mono)}
@@ -367,22 +367,25 @@ html[data-theme="light"] .mapPanel,html[data-theme="light"] .dock{border-color:v
 .stepBtn{flex:none;width:28px;height:28px;min-height:0;padding:0;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface-3);color:var(--text-2);font-size:16px;font-weight:600;line-height:1}
 .stepBtn:hover:not(:disabled){background:var(--surface-hover);border-color:var(--text-3);color:var(--text)}
 
-.profileStrip{flex:0 0 var(--profile-h, 34%);min-height:120px;display:flex;flex-direction:column;background:var(--plot-bg)}
+.profileStrip{flex:0 0 auto;height:auto;min-height:max(120px, var(--profile-h, 34%));display:flex;flex-direction:column;background:var(--plot-bg)}
 .profileHead{flex:none;display:flex;align-items:flex-start;gap:8px;padding:6px 8px 6px 10px;border-bottom:1px solid var(--view-line);color:var(--view-muted);font-size:12px}
 .profileControls{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .profileEnd{flex:none;display:flex;align-items:center;gap:4px}
 .profileHead label{flex-direction:row;align-items:center;gap:6px;color:var(--view-muted);font-size:12px}
 .profileHead label.check{min-height:0;align-self:center}
 .profileHead input[type=number]{width:66px}
-.profileFields{display:inline-flex;align-items:center;gap:12px}
+.profileFields{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .profileHead input.qStep{width:120px;height:20px}
 .profileHead #qRebin{width:130px;height:var(--control-sm);font-size:12px}
 .profileHead input.cutEnd{width:124px;height:var(--control-sm);padding:0 7px;font:12px var(--mono)}
 .profileInfo{padding:3px 12px;min-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--view-muted);font:11px var(--mono)}
-.profilePlot{position:relative;flex:1;min-height:0}
+.profilePlot{position:relative;flex:1;min-height:160px}
 #profileChart{width:100%;height:100%}
 /* The 3-D dock */
 .dockHead{flex:none;display:flex;align-items:center;gap:6px;height:44px;padding:0 6px 0 8px;border-bottom:1px solid var(--view-line)}
+.dockHead .tabs{flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.dockHead .tabs::-webkit-scrollbar{display:none}
+.dockHead .tabs button,.dockHead .iconBtn{flex:none}
 .dockBody{flex:1;display:flex;flex-direction:column;min-height:0;--stack:50%}
 .view3d{flex:1 1 0;display:flex;flex-direction:column;min-height:0}
 .dockBody[data-show="both"] #viewPlane{flex:0 0 var(--stack)}
@@ -462,6 +465,11 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
   .topbar-subtitle{display:none}
   #status{max-width:28%}
 }
+/* Tablets: the steps panel slides over the views, which keep the full width */
+@media (min-width:901px) and (max-width:1199px){
+  .app,.app[data-side="closed"]{grid-template-areas:"top" "work";grid-template-columns:minmax(0,1fr)}
+  .side{position:fixed;z-index:36;left:var(--gap);top:calc(var(--topbar-h) + var(--gap));bottom:var(--gap);width:min(340px, calc(100vw - 32px));box-shadow:0 10px 40px rgba(0,0,0,.35)}
+}
 @media (max-width:900px){
   html,body{height:auto;overflow-x:hidden;overflow-y:auto}
   .app,.app[data-side="closed"]{height:auto;min-height:100vh;grid-template-areas:"top" "work" "side";grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto}
@@ -469,9 +477,14 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
   .dataset{order:5;flex-basis:100%}
   #status{order:6;flex-basis:100%;max-width:none}
   .work{flex-direction:column;gap:var(--gap)}
-  .mapPanel{flex:0 0 auto;height:min(78vh,760px)}
+  .mapPanel{flex:0 0 auto;height:max(440px, min(78vh,760px))}
+  .mapPanel.triTall{height:calc(3 * min(100vw - 16px, 560px) + 330px)}
+  .mapPanel.withProfile{height:calc(max(440px, min(78vh,760px)) + 420px)}
+  .mapPanel.triTall.withProfile{height:calc(3 * min(100vw - 16px, 560px) + 330px + 420px)}
+  .mapPanel.withProfile .profileStrip{flex:0 0 420px}
+  .mapPanel .splitH{display:none}
   .splitV{display:none}
-  .dock{flex:0 0 auto;height:min(72vh,700px);min-width:0;max-width:none}
+  .dock{flex:0 0 auto;height:max(560px, min(72vh,700px));min-width:0;max-width:none}
   .dlgBody{grid-template-columns:1fr}
   :root{--control-h:38px;--control-sm:34px}
   .seg button,.tabs button{height:32px;min-height:32px}
@@ -485,6 +498,29 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
   .row2,.row3{grid-template-columns:1fr}
   .topbar h1{font-size:14px}
   .seg button{padding:0 8px}
+  .profileHead input.cutEnd{width:112px}
+}
+/* Touch screens: controls a finger can hit; one finger scrolls past the map,
+   two zoom and pan it, and drawing a cut takes every touch */
+@media (pointer:coarse){
+  :root{--control-h:38px;--control-sm:34px}
+  .seg button,.tabs button{height:34px;min-height:34px}
+  .iconBtn,.stepBtn,.actRow>.iconBtn{width:38px;height:38px}
+  .iconBtn.mini{width:34px;height:34px}
+  .plotOverlay .iconBtn,.plotOverlay .iconBtn.mini{width:38px;height:38px}
+  .iconBtn.withText{height:34px}
+  .navThick input{height:34px}
+  .exportGrid button,#volumeExports button{min-height:36px}
+  .showChip{height:34px;padding:0 12px}
+  .linkBtn{height:34px;padding:0 9px}
+  .levelPair button,.topBtn{height:38px;min-height:38px}
+  .viewHead select.mini{height:34px}
+  .val .valEdit{height:32px}
+  input[type=range]{height:30px}
+  input[type=range]::-webkit-slider-thumb{width:24px;height:24px;margin-top:-10px}
+  input[type=range]::-moz-range-thumb{width:24px;height:24px}
+  #heatmap{touch-action:pan-y}
+  #heatmap.drawing{touch-action:none}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
@@ -8003,10 +8039,22 @@ const TRI_DEFAULT_SLOTS = {l:[0, 0], k:[1, 0], h:[0, 1], info:[1, 1]};
 const TRI_DEFAULT_ORDER = ["l", "k", "h", "info"];
 const TRI_TILES = ["l", "k", "h", "info"], TRI_TITLE_H = 20, TRI_SPLIT_GRAB = 6;
 
+// Auto takes a column on a phone (the page scrolls through the views), a row
+// on a wide map and the grid otherwise.
 function triArrangement(cssW, cssH){
   const a = state.ui && state.ui.triArrange;
   if(a === "grid" || a === "row") return a;
+  if(window.innerWidth <= 900) return "col";
   return cssW >= 2.2 * cssH ? "row" : "grid";
+}
+
+// The map grows tall enough for a column of square views.
+function syncTriTall(){
+  const tall = triOn() && (!state.ui.triArrange || state.ui.triArrange === "auto") && window.innerWidth <= 900;
+  if($("mapPanel").classList.contains("triTall") !== tall){
+    $("mapPanel").classList.toggle("triTall", tall);
+    requestAnimationFrame(() => paint2d());
+  }
 }
 
 function triOrder(){
@@ -8014,10 +8062,11 @@ function triOrder(){
   return Array.isArray(o) && o.length === 4 && TRI_TILES.every(n => o.includes(n)) ? o : TRI_DEFAULT_ORDER;
 }
 
-// Widths of the tiles in a row, as fractions of the map: the point and the
-// colour bar take about 300 pixels, and the slices share the rest.
-function triRowWidths(cssW){
-  const saved = state.ui && state.ui.triWidths, info = clamp(300 / Math.max(1, cssW), 0.1, 0.25);
+// Widths of the tiles in a row (heights in a column), as fractions of the
+// map: the point and the colour bar take about 300 pixels across (190 down),
+// and the slices share the rest.
+function triRowWidths(cssW, column=false){
+  const saved = state.ui && (column ? state.ui.triHeights : state.ui.triWidths), info = clamp((column ? 190 : 300) / Math.max(1, cssW), 0.08, column ? 0.3 : 0.25);
   const w = Object.fromEntries(TRI_TILES.map(n => [n, saved && saved[n] > 0 ? saved[n] : n === "info" ? info : (1 - info) / 3]));
   const sum = TRI_TILES.reduce((s, n) => s + w[n], 0);
   for(const n of TRI_TILES) w[n] /= sum;
@@ -8033,16 +8082,16 @@ function triSlots(){
 // hlines between rows), and the rectangle of each tile.
 function triGrid(cssW, cssH){
   const arrange = triArrangement(cssW, cssH);
-  if(arrange === "row"){
-    const order = triOrder(), widths = triRowWidths(cssW), xs = [0];
-    for(const n of order) xs.push(xs[xs.length - 1] + widths[n] * cssW);
+  if(arrange === "row" || arrange === "col"){
+    const col = arrange === "col", size = col ? cssH : cssW, order = triOrder(), share = triRowWidths(size, col), xs = [0];
+    for(const n of order) xs.push(xs[xs.length - 1] + share[n] * size);
     const bounds = xs.map(Math.round);
-    bounds[4] = cssW;
+    bounds[4] = size;
     const rect = name => {
       const c = order.indexOf(name);
-      return {x:bounds[c], y:0, w:bounds[c + 1] - bounds[c], h:cssH};
+      return col ? {x:0, y:bounds[c], w:cssW, h:bounds[c + 1] - bounds[c]} : {x:bounds[c], y:0, w:bounds[c + 1] - bounds[c], h:cssH};
     };
-    return {arrange, cssW, cssH, rect, order, bounds, vlines:bounds.slice(1, 4), hlines:[]};
+    return {arrange, cssW, cssH, rect, order, bounds, vlines:col ? [] : bounds.slice(1, 4), hlines:col ? bounds.slice(1, 4) : []};
   }
   const split = (state.ui && state.ui.triSplit) || [0.5, 0.5];
   const w0 = Math.round(clamp(Number(split[0]) || 0.5, 0.15, 0.85) * cssW), h0 = Math.round(clamp(Number(split[1]) || 0.5, 0.15, 0.85) * cssH);
@@ -8197,14 +8246,15 @@ function paintTriOn(ctx, cssW, cssH){
     ctx.restore();
   }
   // The fourth tile: the shared colour bar and the point.
-  const info = grid.rect("info");
-  drawColorbar(ctx, last.stops, last.levels, last.transformed, info.x + info.w - 28, info.y + 20, 18, Math.max(40, info.h - 40));
+  const info = grid.rect("info"), narrow = info.w < 330;
+  const barTop = narrow ? info.y + 30 + 4 * 18 : info.y + 20;
+  drawColorbar(ctx, last.stops, last.levels, last.transformed, info.x + info.w - 28, barTop, 18, Math.max(40, info.y + info.h - 20 - barTop));
   const idx = ["h", "k", "l"].map(triIndexFor);
   ctx.font = "12px Consolas";
   ctx.fillStyle = tc.canvasText;
   const room = Math.max(80, info.w - 28 - 126 - 18);
   const hint = wrapCanvasText(ctx, "Click a view to move the other two through it. Drag a box to zoom. Drag a title to move a view, or the lines between the views to resize them. The framed view follows the slider and the keys.", room);
-  const lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), "", ...hint];
+  const lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), ...(narrow ? [] : ["", ...hint])];
   const fits = Math.max(4, Math.floor((info.h - 30) / 18));
   lines.slice(0, fits).forEach((text, i) => {
     if(i >= 1 && i <= 3) ctx.fillStyle = AXIS_COLOURS[i - 1];
@@ -8221,7 +8271,7 @@ function paintTriOn(ctx, cssW, cssH){
   for(const x of grid.vlines){ ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, cssH); }
   for(const y of grid.hlines){ ctx.moveTo(0, y + 0.5); ctx.lineTo(cssW, y + 0.5); }
   ctx.stroke();
-  const grips = grid.hlines.length ? grid.vlines.flatMap(x => grid.hlines.map(y => [x, y])) : grid.vlines.map(x => [x, cssH / 2]);
+  const grips = grid.arrange === "col" ? grid.hlines.map(y => [cssW / 2, y]) : grid.hlines.length ? grid.vlines.flatMap(x => grid.hlines.map(y => [x, y])) : grid.vlines.map(x => [x, cssH / 2]);
   for(const [x, y] of grips){
     ctx.beginPath();
     ctx.arc(x + 0.5, y + 0.5, hot ? 5 : 3.5, 0, 2 * Math.PI);
@@ -8334,14 +8384,15 @@ function onTriPointerMove(ev, pt){
   }
   if(state.triSplitDrag){
     const g = state.tri.grid, s = state.triSplitDrag;
-    if(g.arrange === "row"){
-      // The line between two tiles moves; the tiles beside it trade width.
-      const a = g.order[s.v], b = g.order[s.v + 1], widths = triRowWidths(g.cssW);
-      const left = g.bounds[s.v], right = g.bounds[s.v + 2], min = 0.05 * g.cssW;
-      const x = clamp(pt.x, left + min, right - min);
-      widths[a] = (x - left) / g.cssW;
-      widths[b] = (right - x) / g.cssW;
-      state.ui.triWidths = widths;
+    if(g.arrange === "row" || g.arrange === "col"){
+      // The line between two tiles moves; the tiles beside it trade size.
+      const col = g.arrange === "col", i = col ? s.h : s.v, size = col ? g.cssH : g.cssW;
+      const a = g.order[i], b = g.order[i + 1], share = triRowWidths(size, col);
+      const lo = g.bounds[i], hi = g.bounds[i + 2], min = 0.05 * size;
+      const at = clamp(col ? pt.y : pt.x, lo + min, hi - min);
+      share[a] = (at - lo) / size;
+      share[b] = (hi - at) / size;
+      state.ui[col ? "triHeights" : "triWidths"] = share;
     }else{
       const split = ((state.ui && state.ui.triSplit) || [0.5, 0.5]).slice();
       if(s.v >= 0) split[0] = clamp(pt.x / g.cssW, 0.15, 0.85);
@@ -8414,9 +8465,10 @@ function onTriPointerUp(){
     state.triSplitDrag = null;
     state.triMove = null;
     try{ $("heatmap").releasePointerCapture((s || m).pointerId); }catch(_){}
-    if(s) setUi(state.tri.grid.arrange === "row" ? {triWidths:state.ui.triWidths} : {triSplit:state.ui.triSplit});
+    const arrange = state.tri.grid.arrange;
+    if(s) setUi(arrange === "row" ? {triWidths:state.ui.triWidths} : arrange === "col" ? {triHeights:state.ui.triHeights} : {triSplit:state.ui.triSplit});
     else if(m && m.moved && m.target){
-      if(state.tri.grid.arrange === "row"){
+      if(arrange === "row" || arrange === "col"){
         const order = triOrder().slice(), i = order.indexOf(m.name), j = order.indexOf(m.target);
         [order[i], order[j]] = [order[j], order[i]];
         setUi({triOrder:order});
@@ -10898,8 +10950,14 @@ function percentileSorted(sorted, pct){
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
+// Touch screens show Plotly's toolbar all the time, over the titles; the
+// views have their own zoom, camera and export buttons.
+function touchOnly(){
+  return typeof window.matchMedia === "function" && window.matchMedia("(hover: none)").matches;
+}
+
 function plotlyConfig(){
-  return {responsive:true, displaylogo:false};
+  return {responsive:true, displaylogo:false, displayModeBar:!touchOnly()};
 }
 
 function hklTickValues(min, max, target=6){
@@ -12298,7 +12356,7 @@ function showDataset(parsed, {name=parsed.file, note=""}={}){
 // ---- Window layout: the panel of steps, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data", grid:false, volumeStyle:"iso", cubeCut:50, cubeAt:"origin", triSplit:[0.5, 0.5], triSlots:null, triArrange:"auto", triOrder:null, triWidths:null};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data", grid:false, volumeStyle:"iso", cubeCut:50, cubeAt:"origin", triSplit:[0.5, 0.5], triSlots:null, triArrange:"auto", triOrder:null, triWidths:null, triHeights:null};
 const PAGE_TITLES = {data:"Data", compare:"Compare", process:"Symmetry", mask:"Mask preview"};
 // Settings that open from the views rather than the panel.
 const PAGE_POPS = {slice:["slicePop", "slicePopBtn"], levels:["levelsPop", "levelsPopBtn"], render:["renderPop", "renderPopBtn"], export:["exportPop", "exportBtn"]};
@@ -12307,11 +12365,13 @@ function loadUiPrefs(){
   let saved = null;
   try{ saved = JSON.parse(localStorage.getItem(UI_KEY) || "null"); }catch(_){}
   const ui = {...UI_DEFAULTS, max:null};
+  if(!saved && window.innerWidth > 900 && window.innerWidth < 1200) ui.side = false;
   if(saved && typeof saved === "object"){
     if(["map", "split"].includes(saved.layout)) ui.layout = saved.layout;
     if(["plane", "iso", "both", "struct"].includes(saved.dock)) ui.dock = saved.dock;
     if(PAGE_TITLES[saved.tab]) ui.tab = saved.tab;
     if(typeof saved.side === "boolean") ui.side = saved.side;
+    else if(window.innerWidth > 900 && window.innerWidth < 1200) ui.side = false;
     if(Number.isFinite(saved.dockW)) ui.dockW = clamp(saved.dockW, 0.2, 0.75);
     if(Number.isFinite(saved.stack)) ui.stack = clamp(saved.stack, 0.15, 0.85);
     if(["global", "slice"].includes(saved.levels)) ui.levels = saved.levels;
@@ -12329,6 +12389,7 @@ function loadUiPrefs(){
     if(["auto", "grid", "row"].includes(saved.triArrange)) ui.triArrange = saved.triArrange;
     if(Array.isArray(saved.triOrder) && saved.triOrder.length === 4 && TRI_TILES.every(n => saved.triOrder.includes(n))) ui.triOrder = saved.triOrder;
     if(saved.triWidths && TRI_TILES.every(n => saved.triWidths[n] > 0)) ui.triWidths = saved.triWidths;
+    if(saved.triHeights && TRI_TILES.every(n => saved.triHeights[n] > 0)) ui.triHeights = saved.triHeights;
     if(typeof saved.ortho === "boolean") ui.ortho = saved.ortho;
     if(typeof saved.vectors === "boolean") ui.vectors = saved.vectors;
     if(Number.isFinite(saved.plane3dRes)) ui.plane3dRes = clamp(Math.round(saved.plane3dRes), 32, 520);
@@ -12341,8 +12402,8 @@ function loadUiPrefs(){
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt, triSplit, triSlots, triArrange, triOrder, triWidths} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt, triSplit, triSlots, triArrange, triOrder, triWidths})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt, triSplit, triSlots, triArrange, triOrder, triWidths, triHeights} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt, triSplit, triSlots, triArrange, triOrder, triWidths, triHeights})); }catch(_){}
 }
 
 function applyUi(){
@@ -12361,6 +12422,7 @@ function applyUi(){
   for(const b of document.querySelectorAll("[data-dock]")) b.classList.toggle("on", b.dataset.dock === ui.dock);
   $("mapMax").title = ui.max === "map" ? "Restore the layout (F or Esc)" : "Enlarge the map (F)";
   $("profileStrip").classList.toggle("hidden", !ui.profile);
+  $("mapPanel").classList.toggle("withProfile", !!ui.profile);
   $("profileSplit").classList.toggle("hidden", !ui.profile);
   $("mapPanel").style.setProperty("--profile-h", `${(ui.profileH * 100).toFixed(1)}%`);
   for(const b of document.querySelectorAll("[data-profile]")) b.classList.toggle("on", b.dataset.profile === ui.profileKind);
@@ -12383,6 +12445,7 @@ function applyUi(){
   $("triToggle").classList.toggle("on", !!ui.tri);
   $("gridToggle").classList.toggle("on", !!ui.grid);
   $("triArrange").classList.toggle("hidden", !(ui.tri && state.res && $("sliceMode").value === "axis"));
+  syncTriTall();
   for(const b of $("triArrange").children) b.classList.toggle("on", b.dataset.arrange === (ui.triArrange || "auto"));
   $("gridToggle").setAttribute("aria-pressed", String(!!ui.grid));
   $("mapQuality").value = ui.mapQuality;
@@ -12744,6 +12807,8 @@ function bindLayout(){
   }, true);
   // A width change moves the anchors; a height change alone may be a
   // phone's keyboard opening for a field in the popover.
+  window.addEventListener("scroll", () => { if(popOpen()) closePops(); }, {passive:true});
+  window.addEventListener("resize", () => syncTriTall());
   let popWidth = window.innerWidth;
   window.addEventListener("resize", () => {
     if(window.innerWidth === popWidth) return;
@@ -13345,6 +13410,7 @@ function setProfileOpen(open, kind=null){
 
 function setCutMode(on){
   state.cutMode = !!on;
+  $("heatmap").classList.toggle("drawing", state.cutMode);
   $("cutTool").classList.toggle("on", state.cutMode);
   $("cutTool").setAttribute("aria-pressed", String(state.cutMode));
   $("heatmap").style.cursor = state.cutMode ? "crosshair" : "";
@@ -13541,7 +13607,7 @@ async function renderProfile(){
     layout.yaxis2 = {...axis("Coverage"), overlaying:"y", side:"right", range:[0, 1.25], showgrid:false};
     layout.margin.r = 52;
   }
-  await Plotly.react(chart, traces, layout, {responsive:true, displaylogo:false, modeBarButtonsToRemove:["select2d", "lasso2d"]});
+  await Plotly.react(chart, traces, layout, {responsive:true, displaylogo:false, displayModeBar:!touchOnly(), modeBarButtonsToRemove:["select2d", "lasso2d"]});
   $("profileInfo").textContent = line
     ? `${fmt(data.length, 4)}${unit ? ` ${unit}` : ""} from (${fmtVec(data.p0)}) to (${fmtVec(data.p1)}); ${data.thickness !== null ? `width ${fmt(data.width, 4)}, thickness ${fmt(data.thickness, 4)}` : `through the volume, rod diameter ${fmt(data.width, 4)}`}; ${data.voxels.toLocaleString()} voxels in ${data.bins} bins`
     : `${data.voxels.toLocaleString()} voxels in ${data.bins} shells${data.width ? ` of ${fmt(data.width, 4)}${unit ? ` ${unit}` : ""}` : data.log ? ", logarithmic" : ", ranges"}${data.sub > 1 ? `, voxels split ${data.cells ? data.cells.join(" x ") : `${data.sub}³`}` : ""}${data.cov ? `; coverage ${fmt(Math.min(...Array.from(data.cov).filter(Number.isFinite)), 3)} to ${fmt(Math.max(...Array.from(data.cov).filter(Number.isFinite)), 3)}` : ""}`;
@@ -14190,9 +14256,9 @@ function bind(){
   $("heatmap").addEventListener("dblclick", ev => {
     if(triOn()){
       const pt = canvasPoint(ev);
-      const row = state.tri.grid && state.tri.grid.arrange === "row";
-      if(triSplitAt(pt)){ setUi(row ? {triWidths:null} : {triSplit:[0.5, 0.5]}); paint2d(); return; }
-      if(triTileAt(pt, true)){ setUi(row ? {triOrder:null} : {triSlots:null}); paint2d(); return; }
+      const arrange = state.tri.grid && state.tri.grid.arrange, line = arrange === "row" || arrange === "col";
+      if(triSplitAt(pt)){ setUi(arrange === "row" ? {triWidths:null} : arrange === "col" ? {triHeights:null} : {triSplit:[0.5, 0.5]}); paint2d(); return; }
+      if(triTileAt(pt, true)){ setUi(line ? {triOrder:null} : {triSlots:null}); paint2d(); return; }
       const p = triPanelAt(pt);
       if(p){ state.tri.views[p.axisName] = null; paint2d(); }
       return;
