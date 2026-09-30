@@ -478,9 +478,9 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
   #status{order:6;flex-basis:100%;max-width:none}
   .work{flex-direction:column;gap:var(--gap)}
   .mapPanel{flex:0 0 auto;height:max(440px, min(78vh,760px))}
-  .mapPanel.triTall{height:calc(3 * min(100vw - 16px, 560px) + 330px)}
+  .mapPanel.triTall{height:calc(3 * min(100vw - 16px, 560px) + 440px)}
   .mapPanel.withProfile{height:calc(max(440px, min(78vh,760px)) + 420px)}
-  .mapPanel.triTall.withProfile{height:calc(3 * min(100vw - 16px, 560px) + 330px + 420px)}
+  .mapPanel.triTall.withProfile{height:calc(3 * min(100vw - 16px, 560px) + 440px + 420px)}
   .mapPanel.withProfile .profileStrip{flex:0 0 420px}
   .mapPanel .splitH{display:none}
   .splitV{display:none}
@@ -8039,18 +8039,28 @@ const TRI_DEFAULT_SLOTS = {l:[0, 0], k:[1, 0], h:[0, 1], info:[1, 1]};
 const TRI_DEFAULT_ORDER = ["l", "k", "h", "info"];
 const TRI_TILES = ["l", "k", "h", "info"], TRI_TITLE_H = 20, TRI_SPLIT_GRAB = 6;
 
-// Auto takes a column on a phone (the page scrolls through the views), a row
-// on a wide map and the grid otherwise.
+// A phone or a narrow window takes a column (the page scrolls through the
+// views), whatever was chosen on a larger screen. Elsewhere Auto takes a row
+// on a wide map and the grid otherwise, and a row that would leave the views
+// narrower than 200 pixels gives way to the grid.
 function triArrangement(cssW, cssH){
-  const a = state.ui && state.ui.triArrange;
-  if(a === "grid" || a === "row") return a;
   if(window.innerWidth <= 900) return "col";
-  return cssW >= 2.2 * cssH ? "row" : "grid";
+  const a = state.ui && state.ui.triArrange, rowFits = cssW / 3.3 >= 200;
+  if(a === "grid") return "grid";
+  if(a === "row") return rowFits ? "row" : "grid";
+  return cssW >= 2.2 * cssH && rowFits ? "row" : "grid";
+}
+
+// The arrangement switch has nothing to choose on a phone.
+function syncTriArrangeSeg(){
+  const seg = $("triArrange");
+  if(!seg) return;
+  seg.classList.toggle("hidden", !(state.ui && state.ui.tri && state.res && $("sliceMode").value === "axis") || window.innerWidth <= 900);
 }
 
 // The map grows tall enough for a column of square views.
 function syncTriTall(){
-  const tall = triOn() && (!state.ui.triArrange || state.ui.triArrange === "auto") && window.innerWidth <= 900;
+  const tall = triOn() && window.innerWidth <= 900;
   if($("mapPanel").classList.contains("triTall") !== tall){
     $("mapPanel").classList.toggle("triTall", tall);
     requestAnimationFrame(() => paint2d());
@@ -8214,6 +8224,9 @@ function paintTriOn(ctx, cssW, cssH){
     if(p.axisName === active) last.layout = null;
     ctx.save();
     ctx.translate(ox, oy);
+    ctx.beginPath();
+    ctx.rect(0, 0, pw, ph);
+    ctx.clip();
     const area = layout.area, t = layout.imageTransform;
     ctx.save();
     ctx.beginPath();
@@ -8253,14 +8266,25 @@ function paintTriOn(ctx, cssW, cssH){
   ctx.font = "12px Consolas";
   ctx.fillStyle = tc.canvasText;
   const room = Math.max(80, info.w - 28 - 126 - 18);
-  const hint = wrapCanvasText(ctx, "Click a view to move the other two through it. Drag a box to zoom. Drag a title to move a view, or the lines between the views to resize them. The framed view follows the slider and the keys.", room);
-  const lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), ...(narrow ? [] : ["", ...hint])];
-  const fits = Math.max(4, Math.floor((info.h - 30) / 18));
+  const hint = wrapCanvasText(ctx, touchOnly()
+    ? "Tap a view to move the other two through it; pinch to zoom. The framed view follows the slider."
+    : "Click a view to move the other two through it. Drag a box to zoom. Drag a title to move a view, or the lines between the views to resize them. The framed view follows the slider and the keys.", room);
+  let lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), ...(narrow ? [] : ["", ...hint])];
+  // The zoom buttons sit at the map's lower left: text stays above them there.
+  const underButtons = info.x < 140 && info.y + info.h >= cssH - 4;
+  const fits = Math.max(4, Math.floor((info.h - 30 - (underButtons ? 44 : 0)) / 18));
+  // A hint that does not fit whole is left out rather than cut off.
+  if(lines.length > fits) lines = lines.slice(0, 4);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(info.x, info.y, narrow ? info.w : Math.max(0, info.w - 28 - 126), info.h);
+  ctx.clip();
   lines.slice(0, fits).forEach((text, i) => {
     if(i >= 1 && i <= 3) ctx.fillStyle = AXIS_COLOURS[i - 1];
     else ctx.fillStyle = i === 0 ? tc.canvasText : tc.mutedText;
     ctx.fillText(text, info.x + 18, info.y + 30 + i * 18);
   });
+  ctx.restore();
   // The lines between the tiles, brighter while hovered or dragged, with a
   // grip where they cross.
   const hot = !!(state.triSplitDrag || state.tri.hoverSplit);
@@ -8921,12 +8945,29 @@ function slice2dTicks(sl, layout){
   const left = Math.max(...[visY[0], visY[1]].map(yv => layout.toSliceXAtLeft(yv)));
   const xEdge = clamp(Math.max(ext.x0, left), ext.x0, ext.x1);
   const inside = (p, tol=1) => p[0] >= area.x - tol && p[0] <= area.x + area.w + tol && p[1] >= area.y - tol && p[1] <= area.y + area.h + tol;
-  const x = niceTicks(visX[0], visX[1]).map(v => ({v, p:layout.toCanvas(v, yEdge)})).filter(t => inside(t.p));
-  const y = niceTicks(visY[0], visY[1]).map(v => ({v, p:layout.toCanvas(xEdge, v)})).filter(t => inside(t.p));
+  // The densest nice step whose labels do not touch: across, their width
+  // (11-pixel monospace, about 6.6 pixels a character) plus 10; down, 22
+  // pixels. A narrow view gets fewer labels instead of labels over each other.
+  const pick = (v0, v1, atX) => {
+    const a = atX ? layout.toCanvas(v0, yEdge) : layout.toCanvas(xEdge, v0), b = atX ? layout.toCanvas(v1, yEdge) : layout.toCanvas(xEdge, v1);
+    const perUnit = Math.hypot(b[0] - a[0], b[1] - a[1]) / (Math.abs(v1 - v0) || 1);
+    for(let c=7;c>=2;c--){
+      const vals = niceTicks(v0, v1, c);
+      if(vals.length < 2) return vals;
+      const room = atX ? Math.max(...vals.map(v => fmt(v, 2).length)) * 6.6 + 10 : 22;
+      if(Math.abs(vals[1] - vals[0]) * perUnit >= room) return vals;
+    }
+    return niceTicks(v0, v1, 2);
+  };
+  const x = pick(visX[0], visX[1], true).map(v => ({v, p:layout.toCanvas(v, yEdge)})).filter(t => inside(t.p));
+  const y = pick(visY[0], visY[1], false).map(v => ({v, p:layout.toCanvas(xEdge, v)})).filter(t => inside(t.p));
   const box = layout.imageBox;
   const bx0 = Math.max(area.x, box.x0), bx1 = Math.min(area.x + area.w, box.x1);
   const by0 = Math.max(area.y, box.y0), by1 = Math.min(area.y + area.h, box.y1);
-  return {x, y, xLabelAt:[bx0 + Math.max(4, (bx1 - bx0) / 2 - 8), by1 + 38], yLabelAt:[Math.max(14, bx0 - 47), by0 + (by1 - by0) / 2 + 12]};
+  // The y labels end 8 pixels left of their ticks; the axis name stands left
+  // of the widest of them (11-pixel monospace is about 6.6 pixels a character).
+  const tickX = y.length ? Math.min(...y.map(t => t.p[0])) : bx0, yWidth = Math.max(0, ...y.map(t => fmt(t.v, 2).length)) * 6.6;
+  return {x, y, xLabelAt:[bx0 + Math.max(4, (bx1 - bx0) / 2 - 8), by1 + 38], yLabelAt:[Math.max(12, tickX - 8 - yWidth - 6), by0 + (by1 - by0) / 2 + 12]};
 }
 
 function drawAxes(ctx, sl, layout, cssH){
@@ -8937,11 +8978,13 @@ function drawAxes(ctx, sl, layout, cssH){
   const ticks = slice2dTicks(sl, layout);
   for(const t of ticks.x){
     ctx.beginPath(); ctx.moveTo(t.p[0], t.p[1]); ctx.lineTo(t.p[0], t.p[1]+5); ctx.stroke();
-    ctx.fillText(fmt(t.v,2), t.p[0] - 14, Math.min(cssH - 24, t.p[1]+18));
+    const label = fmt(t.v,2);
+    ctx.fillText(label, t.p[0] - ctx.measureText(label).width / 2, Math.min(cssH - 24, t.p[1]+18));
   }
   for(const t of ticks.y){
     ctx.beginPath(); ctx.moveTo(t.p[0]-5, t.p[1]); ctx.lineTo(t.p[0], t.p[1]); ctx.stroke();
-    ctx.fillText(fmt(t.v,2), Math.max(4, t.p[0] - 48), t.p[1] + 4);
+    const label = fmt(t.v,2);
+    ctx.fillText(label, Math.max(2, t.p[0] - 8 - ctx.measureText(label).width), t.p[1] + 4);
   }
   ctx.fillText(sl.xLabel, ticks.xLabelAt[0], Math.min(cssH - 8, ticks.xLabelAt[1]));
   ctx.save();
@@ -9494,7 +9537,8 @@ function syncControls(){
   $("sliceThick").disabled = !has || !axisMode;
   $("sliceThickUnits").disabled = !has || !axisMode;
   $("triToggle").disabled = !has || !axisMode;
-  $("triArrange").classList.toggle("hidden", !(state.ui && state.ui.tri && has && axisMode));
+  syncTriArrangeSeg();
+  syncTriTall();
   $("gridToggle").disabled = !has || !integerGridApplies(state.res);
   updateSliceThickInfo();
   $("axisPick").classList.toggle("hidden", !axisMode);
@@ -11756,8 +11800,8 @@ function sliceSvg(){
   out.push(`<g clip-path="url(#map)"><image width="${sl.cols}" height="${sl.rows}" preserveAspectRatio="none" style="image-rendering:pixelated" transform="matrix(${layout.imageTransform.map(v => Number(v.toPrecision(10))).join(" ")})" href="${png}" xlink:href="${png}"/>`);
   out.push(`<polygon points="${layout.outline.map(p => `${n(p[0])},${n(p[1])}`).join(" ")}" fill="none" stroke="rgba(148,163,184,.8)"/></g>`);
   out.push(`<g stroke="${th.axisStroke}" fill="${th.canvasText}">`);
-  for(const t of ticks.x) out.push(`<line x1="${n(t.p[0])}" y1="${n(t.p[1])}" x2="${n(t.p[0])}" y2="${n(t.p[1] + 5)}"/><text x="${n(t.p[0] - 14)}" y="${n(Math.min(H - 24, t.p[1] + 18))}" stroke="none">${xmlEscape(fmt(t.v, 2))}</text>`);
-  for(const t of ticks.y) out.push(`<line x1="${n(t.p[0] - 5)}" y1="${n(t.p[1])}" x2="${n(t.p[0])}" y2="${n(t.p[1])}"/><text x="${n(Math.max(4, t.p[0] - 48))}" y="${n(t.p[1] + 4)}" stroke="none">${xmlEscape(fmt(t.v, 2))}</text>`);
+  for(const t of ticks.x) out.push(`<line x1="${n(t.p[0])}" y1="${n(t.p[1])}" x2="${n(t.p[0])}" y2="${n(t.p[1] + 5)}"/><text x="${n(t.p[0])}" y="${n(Math.min(H - 24, t.p[1] + 18))}" text-anchor="middle" stroke="none">${xmlEscape(fmt(t.v, 2))}</text>`);
+  for(const t of ticks.y) out.push(`<line x1="${n(t.p[0] - 5)}" y1="${n(t.p[1])}" x2="${n(t.p[0])}" y2="${n(t.p[1])}"/><text x="${n(t.p[0] - 8)}" y="${n(t.p[1] + 4)}" text-anchor="end" stroke="none">${xmlEscape(fmt(t.v, 2))}</text>`);
   out.push(`<text x="${n(ticks.xLabelAt[0])}" y="${n(Math.min(H - 8, ticks.xLabelAt[1]))}" stroke="none">${xmlEscape(sl.xLabel)}</text>`);
   out.push(`<text transform="translate(${n(ticks.yLabelAt[0])} ${n(ticks.yLabelAt[1])}) rotate(-90)" stroke="none">${xmlEscape(sl.yLabel)}</text></g>`);
   const bx = W - 20, by = 20, bw = 16, bh = H - 48, span = levels.max - levels.min || 1;
@@ -12444,7 +12488,7 @@ function applyUi(){
   $("imageScale").value = String(ui.imageScale);
   $("triToggle").classList.toggle("on", !!ui.tri);
   $("gridToggle").classList.toggle("on", !!ui.grid);
-  $("triArrange").classList.toggle("hidden", !(ui.tri && state.res && $("sliceMode").value === "axis"));
+  syncTriArrangeSeg();
   syncTriTall();
   for(const b of $("triArrange").children) b.classList.toggle("on", b.dataset.arrange === (ui.triArrange || "auto"));
   $("gridToggle").setAttribute("aria-pressed", String(!!ui.grid));
@@ -12808,7 +12852,7 @@ function bindLayout(){
   // A width change moves the anchors; a height change alone may be a
   // phone's keyboard opening for a field in the popover.
   window.addEventListener("scroll", () => { if(popOpen()) closePops(); }, {passive:true});
-  window.addEventListener("resize", () => syncTriTall());
+  window.addEventListener("resize", () => { syncTriArrangeSeg(); syncTriTall(); });
   let popWidth = window.innerWidth;
   window.addEventListener("resize", () => {
     if(window.innerWidth === popWidth) return;

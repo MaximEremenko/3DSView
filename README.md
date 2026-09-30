@@ -152,7 +152,10 @@ and slab-average slicing with linked 2-D and 3-D views.
     three.
   - **Arrangement:** *2 × 2* puts the four tiles in a grid, *Row* the three views side by
     side with the point and the colour bar beside them, and *Auto* (the default) takes
-    the row on a map more than 2.2 times as wide as it is tall.
+    the row on a map more than 2.2 times as wide as it is tall. A row that would leave
+    the views narrower than 200 pixels gives way to the grid. On a phone or a window up to
+    900 pixels wide the views always stack in a column of full-width tiles, whatever was
+    chosen on a larger screen, and the switch is hidden.
   - **Resize and move:** drag the lines between the tiles to resize them (in the grid,
     the grip where the lines cross moves both), and drag a view by its title onto another
     tile to swap the two; the point's tile moves the same way. A double-click on a line
