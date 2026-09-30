@@ -158,7 +158,7 @@ label.check:has(input:disabled){color:var(--text-3)}
 
 /* ===== Frame: top bar, rail, side panel and workspace as cards on the page ===== */
 .app{
-  height:100vh;height:100dvh;width:100%;display:grid;background:var(--bg);
+  height:calc(100vh / var(--page-zoom, 1));height:calc(100dvh / var(--page-zoom, 1));width:100%;display:grid;background:var(--bg);
   grid-template-areas:"top top top" "rail side work";
   grid-template-columns:58px 320px minmax(0,1fr);
   grid-template-rows:var(--topbar-h) minmax(0,1fr);
@@ -337,7 +337,7 @@ html[data-theme="light"] .mapPanel,html[data-theme="light"] .dock{border-color:v
 .welcomeCard button{min-height:38px;padding:0 20px;font-size:13.5px}
 .welcomeCard .formats{font-size:11.5px;line-height:1.5;color:var(--view-muted)}
 /* Pop-ups and dialogs */
-.popover{position:fixed;z-index:40;width:min(580px,calc(100vw - 20px));max-height:52vh;overflow:auto;padding:6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);color:var(--text);box-shadow:var(--shadow);font-size:12px}
+.popover{position:fixed;z-index:40;width:min(580px,calc(100vw / var(--page-zoom, 1) - 20px));max-height:calc(52vh / var(--page-zoom, 1));overflow:auto;padding:6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);color:var(--text);box-shadow:var(--shadow);font-size:12px}
 #statusLog{top:calc(var(--topbar-h) + 6px);left:50%;transform:translateX(-50%)}
 .popover h3{margin:4px 6px 6px;color:var(--text-3);font-size:10.5px;font-weight:650;letter-spacing:.08em;text-transform:uppercase}
 .logItem{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:6px;border-radius:6px;line-height:1.45}
@@ -415,6 +415,20 @@ body.resizing .plotWrap,body.resizing .canvasWrap{pointer-events:none}
 html[data-theme="light"] .themeIcon.sun{display:none}
 html[data-theme="light"] .themeIcon.moon{display:inline-grid}
 </style>
+<script>
+// On a large screen at 100% scaling (more than 2560 x 1440 CSS pixels) the
+// page is drawn 1.25 to 2 times larger, so it is not tiny; browser zoom
+// still works on top.
+function applyPageZoom(){
+  var w = window.innerWidth, h = window.innerHeight, z = 1;
+  if(w > 2560 && h > 1300) z = Math.max(1.25, Math.min(2, Math.round(Math.min(w / 2048, h / 1152) * 4) / 4));
+  document.documentElement.style.zoom = z === 1 ? "" : String(z);
+  // Viewport units grow with the zoom; the page divides them back.
+  document.documentElement.style.setProperty("--page-zoom", String(z));
+}
+applyPageZoom();
+window.addEventListener("resize", applyPageZoom);
+</script>
 <script>(function(){try{var t=localStorage.getItem("view3ds-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(_){}})();</script>
 </head>
 <body>
@@ -847,6 +861,11 @@ html[data-theme="light"] .themeIcon.moon{display:inline-grid}
           <option value="masked">Masked data (preview)</option>
           <option value="maskdrop">Removed by the mask</option>
         </select>
+        <div class="seg hidden" id="abSwitch" role="group" aria-label="Data or comparison">
+          <button type="button" data-ab="data" title="A: the data (C flips)">A</button>
+          <button type="button" data-ab="split" title="Split: the data below the diagonal, the scaled comparison above it">Split</button>
+          <button type="button" data-ab="cmp" title="B: the scaled comparison (C flips)">B</button>
+        </div>
         <select id="sliceMode" disabled title="Slice mode">
           <option value="axis" selected>Axis slice</option>
           <option value="plane">Normal plane</option>
@@ -858,6 +877,7 @@ html[data-theme="light"] .themeIcon.moon{display:inline-grid}
             <option value="k">H-L</option>
           </select>
           <button type="button" id="triToggle" class="iconBtn ghost" title="Three linked slices through one point (G)" aria-pressed="false" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M15 17h4M17 15v4"/></svg></button>
+          <button type="button" id="gridToggle" class="iconBtn ghost" title="Integer grid: lines at whole-number H, K, L (I)" aria-pressed="false" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h18M3 16h18" opacity=".9"/></svg></button>
         </span>
         <div class="barRight">
           <select id="mapQuality" disabled title="Resolution of the map on screen. Axis slices show every data point; normal-plane and slab maps are sampled at the finest data step, twice as fine, or at the points per side set on the Slice page">
@@ -1066,6 +1086,7 @@ html[data-theme="light"] .themeIcon.moon{display:inline-grid}
       <div class="keyRow"><span>First / last slice</span><span><kbd>Home</kbd><kbd>End</kbd></span></div>
       <div class="keyRow"><span>Fixed axis</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></div>
       <div class="keyRow"><span>Three linked slices</span><span><kbd>G</kbd></span></div>
+      <div class="keyRow"><span>Integer grid</span><span><kbd>I</kbd></span></div>
       <div class="keyRow"><span>Zoom the map</span><span><kbd>+</kbd><kbd>&minus;</kbd></span></div>
       <div class="keyRow"><span>Zoom into a box: drag on the map</span><span><kbd>Shift</kbd>+drag when zoomed</span></div>
       <div class="keyRow"><span>Data / comparison</span><span><kbd>C</kbd></span></div>
@@ -1115,12 +1136,12 @@ function themePlot(){
     bg:"#ffffff", grid:"#dbe3ec", zero:"#94a8bc", text:"#243447",
     canvasText:"#0f172a", axisStroke:"rgba(51,65,85,.8)", mutedText:"#4b5b70",
     handle:"#0f172a", handleActive:"#b45309", handleOutline:"#ffffff",
-    shade:"rgba(148,163,184,.35)", frame:"#475569"
+    shade:"rgba(148,163,184,.35)", frame:"#475569", gridLine:"rgba(15,23,42,.26)"
   } : {
     bg:"#070b12", grid:"#1d2836", zero:"#52667f", text:"#c8d5e2",
     canvasText:"#dbe4ee", axisStroke:"rgba(203,213,225,.8)", mutedText:"#9aaec5",
     handle:"#f8fafc", handleActive:"#fde68a", handleOutline:"#0f172a",
-    shade:"rgba(2,6,12,.55)", frame:"#c8d5e2"
+    shade:"rgba(2,6,12,.55)", frame:"#c8d5e2", gridLine:"rgba(226,232,240,.30)"
   };
 }
 function setTheme(t){
@@ -7136,11 +7157,16 @@ function pickColorBarHandle(x, y, b){
   return dMin <= dMax ? "min" : "max";
 }
 
+// The zoom the page is drawn with (1 but on large screens).
+function pageZoom(){
+  return Number(document.documentElement.style.zoom) || 1;
+}
+
 function canvasPoint(ev){
   const cv = $("heatmap");
-  const rect = cv.getBoundingClientRect();
+  const rect = cv.getBoundingClientRect(), z = pageZoom();
   if(!rect.width || !rect.height) return null;
-  return {x:ev.clientX - rect.left, y:ev.clientY - rect.top};
+  return {x:(ev.clientX - rect.left) / z, y:(ev.clientY - rect.top) / z};
 }
 
 function onHeatmapClick(ev){
@@ -7170,7 +7196,54 @@ function symmetricPick(nmin, nmax, picked){
   return [-m, m];
 }
 
+// Two fingers zoom the map by pinching and pan it by moving together; in the
+// three-slice view they act on the panel under them.
+function pinchStart(ev){
+  const t = state.touches || (state.touches = new Map());
+  t.set(ev.pointerId, canvasPoint(ev));
+  if(t.size !== 2) return false;
+  // A second finger ends what the first began.
+  state.box2d = null; state.pan2d = null; state.levelDrag = null; state.cutDrag = null; state.triDrag = null;
+  const [a, b] = [...t.values()];
+  state.pinch = {d:Math.hypot(b.x - a.x, b.y - a.y) || 1, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2};
+  try{ $("heatmap").setPointerCapture(ev.pointerId); }catch(_){}
+  return true;
+}
+
+function pinchMove(ev){
+  const t = state.touches, p = state.pinch;
+  if(!t || !t.has(ev.pointerId)) return false;
+  t.set(ev.pointerId, canvasPoint(ev));
+  if(!p || t.size !== 2) return !!p;
+  const [a, b] = [...t.values()];
+  const d = Math.hypot(b.x - a.x, b.y - a.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  if(triOn()){
+    const panel = triPanelAt({x:mx, y:my}), lp = panel && triLocal(panel, {x:mx, y:my});
+    if(panel) triPanelZoom(panel, d / p.d, lp.x, lp.y);
+  }else{
+    const layout = view2dArea();
+    if(layout){
+      const v = layout.view;
+      if(v.zoom > 1) state.view2d = clampView2d({key:v.key, zoom:v.zoom, panX:v.panX + (mx - p.mx) / layout.area.w, panY:v.panY + (my - p.my) / layout.area.h});
+      zoom2dAt(d / p.d, mx, my);
+      paint2d();
+    }
+  }
+  Object.assign(p, {d, mx, my});
+  return true;
+}
+
+function pinchEnd(ev){
+  const t = state.touches;
+  if(!t || !t.has(ev.pointerId)) return false;
+  t.delete(ev.pointerId);
+  const was = !!state.pinch;
+  if(t.size < 2) state.pinch = null;
+  return was;
+}
+
 function onHeatmapPointerDown(ev){
+  if(ev.pointerType === "touch" && pinchStart(ev)) return;
   const b = state.lastBar;
   if(!state.res || !b) return;
   const pt = canvasPoint(ev);
@@ -7209,6 +7282,7 @@ function onHeatmapPointerDown(ev){
 }
 
 function onHeatmapPointerMove(ev){
+  if(ev.pointerType === "touch" && pinchMove(ev)) return;
   const b = state.lastBar;
   const pt = canvasPoint(ev);
   const cv = $("heatmap");
@@ -7259,6 +7333,7 @@ function onHeatmapPointerMove(ev){
 }
 
 function onHeatmapPointerUp(ev){
+  if(ev.pointerType === "touch" && pinchEnd(ev)) return;
   if(state.triDrag){
     onTriPointerUp(ev);
     return;
@@ -7354,9 +7429,9 @@ function slice2dLayout(sl, cssW, cssH, view=state.view2d){
 // Sizes the 2-D canvas for the device pixel ratio and clears it.
 function prepareHeatmapCanvas(){
   const cv = $("heatmap"), ctx = cv.getContext("2d");
-  const rect = cv.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const cssW = Math.max(1, Math.round(rect.width)), cssH = Math.max(1, Math.round(rect.height));
+  const rect = cv.getBoundingClientRect(), z = pageZoom();
+  const dpr = (window.devicePixelRatio || 1) * z;
+  const cssW = Math.max(1, Math.round(rect.width / z)), cssH = Math.max(1, Math.round(rect.height / z));
   const bkW = Math.round(cssW * dpr), bkH = Math.round(cssH * dpr);
   if(cv.width !== bkW || cv.height !== bkH){ cv.width = bkW; cv.height = bkH; }
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -7492,6 +7567,7 @@ function paint2dOn(ctx, cssW, cssH){
   ctx.closePath();
   ctx.stroke();
   ctx.restore();
+  drawIntegerGrid(ctx, layout, sl);
   if(splitOn() && state.splitImage) paintSplitTags(ctx, layout.area);
 
   drawAxes(ctx, sl, layout, cssH);
@@ -7676,6 +7752,7 @@ function paintTriOn(ctx, cssW, cssH){
     layout.outline.forEach((pt, i) => (i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1])));
     ctx.closePath();
     ctx.stroke();
+    drawIntegerGrid(ctx, layout, p.slice);
     drawTriGuides(ctx, p, layout);
     ctx.restore();
     drawAxes(ctx, p.slice, layout, ph);
@@ -7826,6 +7903,54 @@ function onTriPointerUp(){
     }
   }
   paint2d();
+}
+
+// ---- Integer grid: thin lines at whole-number values of an axis slice's
+// two axes, for lattice coordinates (H, K, L or u, v, w). They follow the
+// slice's true axis directions, so on a hexagonal cell they meet at 60°.
+
+function integerGridApplies(res){
+  const kind = String(res && res.coordKind || "").toLowerCase();
+  return kind === "hkl" || kind === "uvw";
+}
+
+function integerGridOn(){
+  return !!(state.ui && state.ui.grid && integerGridApplies(state.res));
+}
+
+function toggleIntegerGrid(){
+  if(!state.res || !integerGridApplies(state.res)) return;
+  setUi({grid:!state.ui.grid});
+  paint2d();
+}
+
+// Lines at the integers of the slice's two axes within its extent; an axis
+// whose lines would be closer than 6 px gets none.
+function drawIntegerGrid(ctx, layout, sl){
+  if(!integerGridOn() || !sl || sl.type !== "axis" || !layout) return;
+  const {ext, area} = layout;
+  const gap = (du, dv) => {
+    const p = layout.toCanvas(0, 0), q = layout.toCanvas(du, dv);
+    return Math.hypot(q[0] - p[0], q[1] - p[1]);
+  };
+  const x0 = Math.min(ext.x0, ext.x1), x1 = Math.max(ext.x0, ext.x1), y0 = Math.min(ext.y0, ext.y1), y1 = Math.max(ext.y0, ext.y1);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(area.x, area.y, area.w, area.h);
+  ctx.clip();
+  ctx.beginPath();
+  if(gap(1, 0) >= 6 && x1 - x0 < 2000) for(let x=Math.ceil(x0 - 1e-9);x<=x1 + 1e-9;x++){
+    const p = layout.toCanvas(x, y0), q = layout.toCanvas(x, y1);
+    ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+  }
+  if(gap(0, 1) >= 6 && y1 - y0 < 2000) for(let y=Math.ceil(y0 - 1e-9);y<=y1 + 1e-9;y++){
+    const p = layout.toCanvas(x0, y), q = layout.toCanvas(x1, y);
+    ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+  }
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = themePlot().gridLine;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function toggleTri(){
@@ -7993,11 +8118,11 @@ function showReadout(pt){
   if(!o){ box.classList.add("hidden"); return; }
   box.textContent = readoutText(o) + extra;
   box.classList.remove("hidden");
-  const wrap = box.parentElement.getBoundingClientRect();
+  const wrap = box.parentElement, ww = wrap.clientWidth, wh = wrap.clientHeight;
   const w = box.offsetWidth, h = box.offsetHeight;
   let x = pt.x + 16, y = pt.y + 16;
-  if(x + w > wrap.width - 4) x = pt.x - w - 12;
-  if(y + h > wrap.height - 4) y = pt.y - h - 12;
+  if(x + w > ww - 4) x = pt.x - w - 12;
+  if(y + h > wh - 4) y = pt.y - h - 12;
   box.style.left = `${Math.max(4, x)}px`;
   box.style.top = `${Math.max(4, y)}px`;
 }
@@ -8019,7 +8144,7 @@ function pointInMapArea(pt){
 function histPointer(ev){
   const g = state.lastHist, r = $("levelHist").getBoundingClientRect();
   if(!g) return null;
-  const rawX = ev.clientX - r.left, x = clamp(rawX, 0, g.w), span = g.rawMax - g.rawMin;
+  const rawX = (ev.clientX - r.left) / pageZoom(), x = clamp(rawX, 0, g.w), span = g.rawMax - g.rawMin;
   const px = v => (v - g.rawMin) / span * g.w;
   return {g, x, rawX, value:g.rawMin + x / Math.max(1, g.w) * span, x0:px(g.min), x1:px(g.max)};
 }
@@ -8088,10 +8213,10 @@ function bindLevelHistogram(){
 function drawLevelHistogram(hist, levels){
   const cv = $("levelHist");
   if(!cv) return;
-  const rect = cv.getBoundingClientRect();
+  const rect = cv.getBoundingClientRect(), z = pageZoom();
   if(!rect.width || !rect.height) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.round(rect.width), h = Math.round(rect.height);
+  const dpr = (window.devicePixelRatio || 1) * z;
+  const w = Math.round(rect.width / z), h = Math.round(rect.height / z);
   if(cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){ cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -8770,6 +8895,7 @@ function syncControls(){
   $("sliceThick").disabled = !has || !axisMode;
   $("sliceThickUnits").disabled = !has || !axisMode;
   $("triToggle").disabled = !has || !axisMode;
+  $("gridToggle").disabled = !has || !integerGridApplies(state.res);
   updateSliceThickInfo();
   $("axisPick").classList.toggle("hidden", !axisMode);
   $("render3d").classList.toggle("hidden", $("auto3d").checked);
@@ -10903,8 +11029,8 @@ function exportTransparent(){
 // The map as drawn on screen, at scale times its size in pixels, with the
 // interatomic-vector legend when it is shown.
 function mapImageCanvas(scale){
-  const rect = $("heatmap").getBoundingClientRect();
-  const cssW = Math.max(1, Math.round(rect.width)), cssH = Math.max(1, Math.round(rect.height));
+  const rect = $("heatmap").getBoundingClientRect(), z = pageZoom();
+  const cssW = Math.max(1, Math.round(rect.width / z)), cssH = Math.max(1, Math.round(rect.height / z));
   const cv = document.createElement("canvas");
   cv.width = Math.round(cssW * scale);
   cv.height = Math.round(cssH * scale);
@@ -10972,8 +11098,8 @@ function xmlEscape(value){
 function sliceSvg(){
   const last = state.lastSlice;
   if(!state.res || !last || !state.offscreen) return null;
-  const rect = $("heatmap").getBoundingClientRect();
-  const W = Math.max(1, Math.round(rect.width)), H = Math.max(1, Math.round(rect.height));
+  const rect = $("heatmap").getBoundingClientRect(), z = pageZoom();
+  const W = Math.max(1, Math.round(rect.width / z)), H = Math.max(1, Math.round(rect.height / z));
   const {slice:sl, levels} = last;
   const layout = slice2dLayout(sl, W, H);
   const ticks = slice2dTicks(sl, layout);
@@ -11592,7 +11718,7 @@ function showDataset(parsed, {name=parsed.file, note=""}={}){
 // ---- Window layout: side panel pages, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data"};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data", grid:false};
 const PAGE_TITLES = {data:"Data", slice:"Slice", levels:"Levels", compare:"Compare", render:"3-D rendering", process:"Process", export:"Export"};
 
 function loadUiPrefs(){
@@ -11617,14 +11743,15 @@ function loadUiPrefs(){
     if(Number.isFinite(saved.plane3dRes)) ui.plane3dRes = clamp(Math.round(saved.plane3dRes), 32, 520);
     if([1, 2, 3, 4].includes(saved.imageScale)) ui.imageScale = saved.imageScale;
     if(typeof saved.tri === "boolean") ui.tri = saved.tri;
+    if(typeof saved.grid === "boolean") ui.grid = saved.grid;
     if(["data", "double", "custom"].includes(saved.mapQuality)) ui.mapQuality = saved.mapQuality;
   }
   return ui;
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid})); }catch(_){}
 }
 
 function applyUi(){
@@ -11661,6 +11788,8 @@ function applyUi(){
   $("dockMax").title = ui.max === "dock" ? "Restore the layout (Esc)" : "Enlarge the 3-D views";
   $("imageScale").value = String(ui.imageScale);
   $("triToggle").classList.toggle("on", !!ui.tri);
+  $("gridToggle").classList.toggle("on", !!ui.grid);
+  $("gridToggle").setAttribute("aria-pressed", String(!!ui.grid));
   $("mapQuality").value = ui.mapQuality;
   $("triToggle").setAttribute("aria-pressed", String(!!ui.tri));
   updatePlotResInfo();
@@ -11861,6 +11990,10 @@ function onShortcut(ev){
       if(state.res && $("sliceMode").value === "axis") toggleTri();
       else handled = false;
       break;
+    case "i": case "I":
+      if(state.res && integerGridApplies(state.res)) toggleIntegerGrid();
+      else handled = false;
+      break;
     case "?": openHelp(); break;
     case "Escape":
       if(!$("statusLog").classList.contains("hidden")) toggleStatusLog(false);
@@ -11996,6 +12129,11 @@ function syncShowOptions(){
   }
   sel.disabled = !res;
   sel.value = state.showMode || "data";
+  const ab = $("abSwitch");
+  if(ab){
+    ab.classList.toggle("hidden", !comparisonReady(res));
+    for(const b of ab.children) b.classList.toggle("on", b.dataset.ab === (state.showMode || "data"));
+  }
 }
 
 // Signed views (differences) open on a linear scale with a diverging map and
@@ -12917,6 +13055,10 @@ function bind(){
     scheduleRender3d();
   });
   $("showMode").addEventListener("change", () => setShowMode($("showMode").value));
+  $("abSwitch").addEventListener("click", ev => {
+    const b = ev.target.closest("button");
+    if(b && b.dataset.ab) setShowMode(b.dataset.ab);
+  });
   $("cutTool").addEventListener("click", () => setCutMode(!state.cutMode));
   $("planeStyle").addEventListener("change", () => { setUi({planeStyle:$("planeStyle").value}); scheduleRender3d(0, true); });
   $("cutawayFlip").addEventListener("click", () => { setUi({cutawayKeep:state.ui.cutawayKeep === "above" ? "below" : "above"}); scheduleRender3d(0, true); });
@@ -12928,9 +13070,9 @@ function bind(){
       camMenu.classList.toggle("hidden", open);
       if(open) return;
       state.cameraKey = b.dataset.cameraFor;
-      const r = b.getBoundingClientRect();
-      camMenu.style.left = `${Math.max(8, Math.min(window.innerWidth - 262, r.right - 250))}px`;
-      camMenu.style.top = `${Math.max(8, r.top - camMenu.offsetHeight - 8)}px`;
+      const r = b.getBoundingClientRect(), z = pageZoom();
+      camMenu.style.left = `${Math.max(8, Math.min(window.innerWidth / z - 262, r.right / z - 250))}px`;
+      camMenu.style.top = `${Math.max(8, r.top / z - camMenu.offsetHeight - 8)}px`;
     });
   }
   document.addEventListener("pointerdown", ev => {
@@ -12994,6 +13136,7 @@ function bind(){
     if(pointInMapArea(canvasPoint(ev))) resetZoom2d();
   });
   $("triToggle").addEventListener("click", toggleTri);
+  $("gridToggle").addEventListener("click", toggleIntegerGrid);
   $("mapZoomIn").addEventListener("click", () => zoom2dCenter(1.4));
   $("mapZoomOut").addEventListener("click", () => zoom2dCenter(1 / 1.4));
   $("mapZoomReset").addEventListener("click", resetZoom2d);
