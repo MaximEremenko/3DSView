@@ -17,6 +17,8 @@ function volume(app, {h, k, l, meta={}, value}){
 }
 
 const lin = (h, k, l) => 2 * h + 3 * k + l + 10;
+// Whether any triangle of a mesh ({i, j, k}) uses vertex v.
+const usesVertex = (mesh, v) => mesh.i.some((a, n) => a === v || mesh.j[n] === v || mesh.k[n] === v);
 
 test("a line cut averages the voxels along the line, bin by bin", () => {
   const app = loadApp();
@@ -117,15 +119,37 @@ test("the cutaway block has a cut face, a cap and four walls, with holes where d
   const sl = {type:"axis", fixedAxis:2, fixedIndex:2};
   const below = app.context.cutawayMesh(res, sl, "linear", {keep:"below"});
   assert.equal(below.faces, 6);
-  // Cut face 25 - 1 hole, cap 25, four walls of 3 x 5 cells.
-  assert.equal(below.x.length, 24 + 25 + 4 * 15);
-  assert.ok(!below.custom.some(c => c[0] === 0 && c[1] === 0 && c[2] === 0), "the empty voxel leaves a hole");
+  // Every grid point of the faces is a vertex: cut face 25, cap 25, four walls of 3 x 5.
+  assert.equal(below.x.length, 25 + 25 + 4 * 15);
+  const hole = below.custom.findIndex(c => c[0] === 0 && c[1] === 0 && c[2] === 0);
+  assert.ok(hole >= 0 && !usesVertex(below, hole) && !usesVertex(below.fill, hole), "the empty voxel leaves a hole in the cut face");
   assert.ok(below.custom.every(c => c[2] <= 0 + 1e-12), "the block stays below the cut");
   assert.ok(below.i.length > 0);
   const above = app.context.cutawayMesh(res, sl, "linear", {keep:"above"});
   assert.ok(above.custom.every(c => c[2] >= -1e-12), "the other side");
   const top = app.context.cutawayMesh(res, {type:"axis", fixedAxis:2, fixedIndex:4}, "linear", {keep:"above"});
   assert.equal(top.faces, 1, "at the end of the range only the cut face is left");
+});
+
+test("the cut-away cube closes its outer faces and shows its cut planes as they are", () => {
+  const app = loadApp();
+  const ax = axis(5, -1, 0.5);
+  const res = volume(app, {h:ax, k:ax, l:ax, value:lin});
+  res.I[0] = NaN;                       // the corner at h, k, l = -1, on three outer faces
+  res.I[(2 * 5 + 3) * 5 + 3] = NaN;     // h, k, l = 0, 0.5, 0.5, on the cut plane h = 0
+  const m = app.context.cubeMesh(res, "linear", [2, 2, 2]);
+  // Per axis: the far face, the near face as an L of two rectangles, and the cut face.
+  assert.equal(m.faces, 12);
+  assert.equal(m.x.length, 3 * (25 + 15 + 9 + 9), "every grid point of the faces is a vertex");
+  const at = (h, k, l) => m.custom.findIndex(c => c[0] === h && c[1] === k && c[2] === l);
+  const corner = at(-1, -1, -1), inside = at(0, 0.5, 0.5);
+  assert.ok(corner >= 0 && !usesVertex(m, corner), "no coloured cell touches the empty corner");
+  assert.ok(usesVertex(m.fill, corner), "the plain mesh closes the outer faces there");
+  assert.ok(inside >= 0 && !usesVertex(m, inside) && !usesVertex(m.fill, inside), "the cut plane keeps its hole");
+  assert.ok(m.custom.every(c => !(c[0] > 0 && c[1] > 0 && c[2] > 0)), "the corner beyond the cut is gone");
+  // With nothing cut, the six faces are whole and nothing is inside.
+  const whole = app.context.cubeMesh(res, "linear", [4, 4, 4]);
+  assert.equal(whole.faces, 6);
 });
 
 test("lattice directions and rotations for the camera", () => {

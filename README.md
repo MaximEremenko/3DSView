@@ -316,7 +316,11 @@ and slab-average slicing with linked 2-D and 3-D views.
   inside, each coloured like the map. The point is the grid point nearest the origin (the
   middle of an axis without 0), or, with *At the slices*, the slices on the map, so the
   cube follows as you step. *Cut size* runs from no cut, through the point, to the far
-  corner. The axes run along the front edges, which the cube does not hide.
+  corner. The axes run along the front edges, which the cube does not hide. The outer
+  faces stay closed where there are no data, in the empty-voxel colour (a neutral grey
+  when empty voxels are transparent), while the three cut planes show their gaps; the
+  walls and cap of the Cutaway block close the same way. Faces are sampled on grid lines,
+  so their pieces meet without seams.
 - **3-D camera tools** (the compass button on each 3-D view): look along a*, b*, c*, a,
   b or c, or along a typed [hkl] or [uvw] direction. Roll, tilt and turn in steps of a
   chosen angle, and switch to an orthographic projection; the choice is remembered.

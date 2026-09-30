@@ -5923,63 +5923,97 @@ function cutawayMesh(res, sl, mode, {maxCells=150 * 150, keep="below"}={}){
     faces.push({fix:b, at:ranges[b][0], u:a, ur:span, v:c, vr:ranges[c]}, {fix:b, at:ranges[b][1], u:a, ur:span, v:c, vr:ranges[c]});
     faces.push({fix:c, at:ranges[c][0], u:a, ur:span, v:b, vr:ranges[b]}, {fix:c, at:ranges[c][1], u:a, ur:span, v:b, vr:ranges[b]});
   }
-  for(const face of faces) face.step = Math.max(1, Math.ceil(Math.sqrt((face.ur[1] - face.ur[0] + 1) * (face.vr[1] - face.vr[0] + 1) / maxCells)));
+  faces.forEach((face, n) => {
+    face.step = Math.max(1, Math.ceil(Math.sqrt((face.ur[1] - face.ur[0] + 1) * (face.vr[1] - face.vr[0] + 1) / maxCells)));
+    face.fill = n > 0;
+  });
   return facesMesh(res, mode, faces);
 }
 
 // Rectangles of grid faces as one mesh: each face {fix, at, u, ur, v, vr,
-// step} holds axis fix at index at over the index ranges ur and vr, averaged
-// in blocks of step x step voxels; empty blocks leave holes.
+// step, fill} holds axis fix at index at over the index ranges ur and vr.
+// Vertices sit on voxel centres every step voxels, both ends included, so
+// faces that share an edge or a cut line meet exactly; each vertex takes the
+// mean of the voxels within half a step of it. A cell without values leaves
+// a hole, unless its face is filled: such cells go into a second, plain mesh
+// (fill), which keeps an outer face closed.
 function facesMesh(res, mode, faces){
   const [, n1, n2] = res.shape, I = res.I;
-  const x = [], y = [], z = [], intensity = [], custom = [], ti = [], tj = [], tk = [];
+  const x = [], y = [], z = [], intensity = [], custom = [], ti = [], tj = [], tk = [], fi = [], fj = [], fk = [];
+  const ticks = (r, step) => {
+    const out = [];
+    for(let t=r[0];t<r[1];t+=step) out.push(t);
+    out.push(r[1]);
+    return out;
+  };
   for(const face of faces){
-    const nu = face.ur[1] - face.ur[0] + 1, nv = face.vr[1] - face.vr[0] + 1;
-    const step = face.step;
-    const cu = Math.ceil(nu / step), cv = Math.ceil(nv / step);
-    const index = new Int32Array(cu * cv).fill(-1);
+    const us = ticks(face.ur, face.step), vs = ticks(face.vr, face.step), half = Math.floor(face.step / 2);
+    const cu = us.length, cv = vs.length, index = new Int32Array(cu * cv).fill(-1), valued = new Uint8Array(cu * cv);
+    const at = [0, 0, 0];
+    at[face.fix] = face.at;
     for(let p=0;p<cu;p++){
+      const ua = Math.max(face.ur[0], us[p] - half), ub = Math.min(face.ur[1], us[p] + half);
       for(let q=0;q<cv;q++){
-        const u0 = face.ur[0] + p * step, v0 = face.vr[0] + q * step;
-        const u1 = Math.min(face.ur[1], u0 + step - 1), v1 = Math.min(face.vr[1], v0 + step - 1);
+        const va = Math.max(face.vr[0], vs[q] - half), vb = Math.min(face.vr[1], vs[q] + half);
         let s = 0, n = 0;
-        const at = [0, 0, 0];
-        at[face.fix] = face.at;
-        for(let u=u0;u<=u1;u++) for(let v=v0;v<=v1;v++){
+        for(let u=ua;u<=ub;u++){
           at[face.u] = u;
-          at[face.v] = v;
-          const value = I[(at[0] * n1 + at[1]) * n2 + at[2]];
-          if(value === value){ s += value; n++; }
+          for(let v=va;v<=vb;v++){
+            at[face.v] = v;
+            const value = I[(at[0] * n1 + at[1]) * n2 + at[2]];
+            if(value === value){ s += value; n++; }
+          }
         }
-        if(!n) continue;
-        const raw = s / n, shown = transformedValue(raw, mode);
-        if(!Number.isFinite(shown)) continue;
+        const raw = n ? s / n : NaN, shown = n ? transformedValue(raw, mode) : NaN;
         const frac = [0, 0, 0];
         frac[face.fix] = face.at;
-        frac[face.u] = (u0 + u1) / 2;
-        frac[face.v] = (v0 + v1) / 2;
+        frac[face.u] = us[p];
+        frac[face.v] = vs[q];
         const pn = nativeAtFraction(res, frac), pq = plotPoint(res, pn[0], pn[1], pn[2]);
         if(!pq.every(Number.isFinite)) continue;
         index[p * cv + q] = x.length;
+        valued[p * cv + q] = Number.isFinite(shown) ? 1 : 0;
         x.push(pq[0]); y.push(pq[1]); z.push(pq[2]);
-        intensity.push(shown);
+        // Vertices without a value serve the plain mesh only; their colour value is never drawn.
+        intensity.push(Number.isFinite(shown) ? shown : 0);
         custom.push([pn[0], pn[1], pn[2], pq[0], pq[1], pq[2], raw]);
       }
     }
     for(let p=0;p<cu-1;p++) for(let q=0;q<cv-1;q++){
-      const i00 = index[p * cv + q], i01 = index[p * cv + q + 1], i10 = index[(p + 1) * cv + q], i11 = index[(p + 1) * cv + q + 1];
-      if(i00 >= 0 && i01 >= 0 && i11 >= 0){ ti.push(i00); tj.push(i01); tk.push(i11); }
-      if(i00 >= 0 && i11 >= 0 && i10 >= 0){ ti.push(i00); tj.push(i11); tk.push(i10); }
+      const a = p * cv + q, b = a + 1, c = a + cv, d = c + 1;
+      for(const [t0, t1, t2] of [[a, b, d], [a, d, c]]){
+        const i0 = index[t0], i1 = index[t1], i2 = index[t2];
+        if(i0 < 0 || i1 < 0 || i2 < 0) continue;
+        if(valued[t0] && valued[t1] && valued[t2]){ ti.push(i0); tj.push(i1); tk.push(i2); }
+        else if(face.fill){ fi.push(i0); fj.push(i1); fk.push(i2); }
+      }
     }
   }
-  return {x, y, z, intensity, custom, i:ti, j:tj, k:tk, faces:faces.length, transformed:usePlotBasis(res)};
+  return {x, y, z, intensity, custom, i:ti, j:tj, k:tk, fill:{i:fi, j:fj, k:fk}, faces:faces.length, transformed:usePlotBasis(res)};
+}
+
+// The cells of the closed faces that hold no value, in one plain colour: the
+// empty-voxel colour, or a neutral tone when empty voxels are transparent.
+// The colour goes through a one-colour scale: a plain mesh3d colour would be
+// tinted by the colour map of the valued mesh beside it.
+function faceFillTrace(plot){
+  if(!plot || !plot.fill || !plot.fill.i.length) return null;
+  const rgb = EMPTY_VOXEL_RGB[$("nanColor") ? $("nanColor").value : "transparent"];
+  const color = rgb ? `rgb(${rgb.join(",")})` : isLightTheme() ? "#dcd7cc" : "#3d3b36";
+  const labels = nativeAxisLabels(state.res);
+  return {
+    type:"mesh3d", name:"No data", x:plot.x, y:plot.y, z:plot.z, i:plot.fill.i, j:plot.fill.j, k:plot.fill.k,
+    intensity:new Float32Array(plot.x.length), intensitymode:"vertex", colorscale:[[0, color], [1, color]], cmin:0, cmax:1, showscale:false,
+    customdata:plot.custom, flatshading:true, lighting:{ambient:0.82, diffuse:0.3, specular:0, roughness:1, fresnel:0},
+    hovertemplate:`${labels[0]}=%{customdata[0]:.5g}<br>${labels[1]}=%{customdata[1]:.5g}<br>${labels[2]}=%{customdata[2]:.5g}<br>no data<extra></extra>`
+  };
 }
 
 // The cutaway as a Plotly mesh on the map's colour scale and levels.
 function cutawayTrace(sl, mode, levels, maxCells){
   const plot = cutawayMesh(viewRes(), sl, mode, {maxCells, keep:state.ui && state.ui.cutawayKeep || "below"});
-  if(!plot || !plot.i.length) return null;
-  return {plot, trace:faceMeshTrace(plot, levels, {ambient:0.95, diffuse:0.2, specular:0, roughness:1})};
+  if(!plot || !(plot.i.length || plot.fill.i.length)) return null;
+  return {plot, trace:faceMeshTrace(plot, levels, {ambient:0.95, diffuse:0.2, specular:0, roughness:1}), fill:faceFillTrace(plot)};
 }
 
 // ---- The cut-away cube: the faces of the shown volume with the corner
@@ -6006,15 +6040,15 @@ function cubeCutIndex(res){
 function cubeMesh(res, mode, cut, cellsPerSide=150){
   const R = displayIndexRanges(res), faces = [];
   const len = a => R[a][1] - R[a][0] + 1;
-  const add = (fix, at, u, ur, v, vr) => {
-    if(ur[1] >= ur[0] && vr[1] >= vr[0]) faces.push({fix, at, u, ur, v, vr, step:Math.max(1, Math.ceil(Math.sqrt(len(u) * len(v)) / cellsPerSide))});
+  const add = (fix, at, u, ur, v, vr, fill) => {
+    if(ur[1] >= ur[0] && vr[1] >= vr[0]) faces.push({fix, at, u, ur, v, vr, fill, step:Math.max(1, Math.ceil(Math.sqrt(len(u) * len(v)) / cellsPerSide))});
   };
   for(let a=0;a<3;a++){
     const [u, v] = [0, 1, 2].filter(x => x !== a), cu = cut[u], cv = cut[v];
-    add(a, R[a][0], u, R[u], v, R[v]);
-    add(a, R[a][1], u, [R[u][0], cu], v, R[v]);
-    if(cu < R[u][1]) add(a, R[a][1], u, [cu, R[u][1]], v, [R[v][0], cv]);
-    if(cut[a] < R[a][1]) add(a, cut[a], u, [cu, R[u][1]], v, [cv, R[v][1]]);
+    add(a, R[a][0], u, R[u], v, R[v], true);
+    add(a, R[a][1], u, [R[u][0], cu], v, R[v], true);
+    if(cu < R[u][1]) add(a, R[a][1], u, [cu, R[u][1]], v, [R[v][0], cv], true);
+    if(cut[a] < R[a][1]) add(a, cut[a], u, [cu, R[u][1]], v, [cv, R[v][1]], false);
   }
   return facesMesh(res, mode, faces);
 }
@@ -6026,8 +6060,8 @@ function cubeOn(){
 // The cube as a Plotly mesh, shaded flat in the map's colours and levels.
 function cubeTrace(mode, levels){
   const cut = cubeCutIndex(state.res), plot = cubeMesh(viewRes(), mode, cut);
-  if(!plot.i.length) return null;
-  return {plot, cut, trace:faceMeshTrace(plot, levels, {ambient:1, diffuse:0, specular:0, roughness:1, fresnel:0})};
+  if(!plot.i.length && !plot.fill.i.length) return null;
+  return {plot, cut, trace:faceMeshTrace(plot, levels, {ambient:1, diffuse:0, specular:0, roughness:1, fresnel:0}), fill:faceFillTrace(plot)};
 }
 
 // A mesh of grid faces as a Plotly trace, with the hover of the 3-D views.
@@ -11056,7 +11090,8 @@ async function updatePlane3dFast(){
       const liveCamera = keepCamera || readSceneCamera("plot3dPlane") || state.cameras.plane;
       if(liveCamera) state.cameras.plane = liveCamera;
       const current = Array.isArray(gd.data) && gd.data.length ? gd.data[0] : null;
-      if(current && current.type === built.trace.type && typeof Plotly.restyle === "function"){
+      const fill = built.fill || null, currentFill = Array.isArray(gd.data) && gd.data[1] && gd.data[1].name === "No data" ? gd.data[1] : null;
+      if(current && current.type === built.trace.type && !!fill === !!currentFill && typeof Plotly.restyle === "function"){
         if(built.trace.type === "mesh3d"){
           const update = {
             x:[built.trace.x],
@@ -11073,6 +11108,7 @@ async function updatePlane3dFast(){
           };
           if(keepCamera && typeof Plotly.update === "function") await Plotly.update(gd, update, {"scene.camera":keepCamera}, [0]);
           else await Plotly.restyle(gd, update, [0]);
+          if(fill) await Plotly.restyle(gd, {x:[fill.x], y:[fill.y], z:[fill.z], i:[fill.i], j:[fill.j], k:[fill.k], intensity:[fill.intensity], customdata:[fill.customdata], colorscale:[fill.colorscale]}, [1]);
         }else{
           const update = {
             x:[built.trace.x],
@@ -11088,7 +11124,7 @@ async function updatePlane3dFast(){
           else await Plotly.restyle(gd, update, [0]);
         }
       }else{
-        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Slice Plane (${sliceKindName(sl)})`, keepCamera || liveCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
+        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace, ...(fill ? [fill] : [])]), sceneLayout(`Slice Plane (${sliceKindName(sl)})`, keepCamera || liveCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
         wireCamera("plot3dPlane", "plane");
       }
       if(keepCamera) state.cameras.plane = cloneCamera(keepCamera);
@@ -11117,7 +11153,7 @@ async function renderPlane3d(Plotly){
   if(cutawayOn(sl)){
     const built = cutawayTrace(sl, mode, levels, 150 * 150);
     if(built){
-      await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Cutaway ${state.ui.cutawayKeep === "above" ? "above" : "below"} ${sl.plane}`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
+      await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace, ...(built.fill ? [built.fill] : [])]), sceneLayout(`Cutaway ${state.ui.cutawayKeep === "above" ? "above" : "below"} ${sl.plane}`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
       wireCamera("plot3dPlane", "plane");
       captureSceneCamera("plot3dPlane", "plane");
       $("empty3dPlane").style.display = "none";
@@ -11213,7 +11249,7 @@ async function renderIso3d(Plotly){
     }
     const res = state.res, labels = nativeAxisLabels(res), axes = [res.h, res.k, res.l];
     const at = built.cut.map((c, a) => `${labels[a]} ${fmtAxis(axes[a][c], axes[a])}`).join(", ");
-    await Plotly.react("plot3dIso", [built.trace, ...hklAxisOverlayTraces(res, {front:true})], sceneLayout(`Cut-away cube at ${at}`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
+    await Plotly.react("plot3dIso", [built.trace, ...(built.fill ? [built.fill] : []), ...hklAxisOverlayTraces(res, {front:true})], sceneLayout(`Cut-away cube at ${at}`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
     wireCamera("plot3dIso", "iso");
     captureSceneCamera("plot3dIso", "iso");
     $("empty3dIso").style.display = "none";
@@ -13798,7 +13834,7 @@ function bind(){
   $("asinhSoft").addEventListener("change", () => { syncAsinh(); resetDisplayLevels(false); draw2d(); scheduleRender3d(); });
   $("colorMap").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("colorReverse").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
-  $("nanColor").addEventListener("change", () => draw2d());
+  $("nanColor").addEventListener("change", () => { draw2d(); scheduleRender3d(0, true); });
   for(const id of ["levelClip", "levelSymmetric"]){
     $(id).addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   }
