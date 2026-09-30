@@ -139,6 +139,13 @@ and slab-average slicing with linked 2-D and 3-D views.
     histogram follow; clicking a view frames it.
   - Each view zooms (wheel, box, +/−) and pans on its own, and the PNG export holds all
     three.
+  - **Arrangement:** *2 × 2* puts the four tiles in a grid, *Row* the three views side by
+    side with the point and the colour bar beside them, and *Auto* (the default) takes
+    the row on a map more than 2.2 times as wide as it is tall.
+  - **Resize and move:** drag the lines between the tiles to resize them (in the grid,
+    the grip where the lines cross moves both), and drag a view by its title onto another
+    tile to swap the two; the point's tile moves the same way. A double-click on a line
+    evens the tiles again, and one on a title restores their order. Both are remembered.
   - The line cut and the vector overlay work on the single map.
 - **Coordinate handling**: Q and HKL (r.l.u.) axes are auto-detected from file names and
   metadata, with a manual override (Auto / Use Q / Use HKL). When a unit cell is known,

@@ -708,6 +708,7 @@ window.addEventListener("resize", applyPageZoom);
             <option value="k">H-L</option>
           </select>
           <button type="button" id="triToggle" class="iconBtn ghost" title="Three linked slices through one point (G)" aria-pressed="false" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M15 17h4M17 15v4"/></svg></button>
+          <div class="seg hidden" id="triArrange" role="group" aria-label="Three slices"><button type="button" data-arrange="auto" title="A row on a wide map, a 2 x 2 grid otherwise">Auto</button><button type="button" data-arrange="grid" title="Three slices in a 2 x 2 grid">2 &times; 2</button><button type="button" data-arrange="row" title="Three slices side by side">Row</button></div>
           <button type="button" id="gridToggle" class="iconBtn ghost" title="Integer grid: lines at whole-number H, K, L (I)" aria-pressed="false" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v18M16 3v18M3 8h18M3 16h18" opacity=".9"/></svg></button>
         </span>
         <button type="button" class="iconBtn ghost" id="slicePopBtn" data-pop="slicePop" title="Slice settings: map resolution, averaging, the normal plane and the shown volume" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
@@ -7685,7 +7686,7 @@ function onHeatmapPointerMove(ev){
 
 function onHeatmapPointerUp(ev){
   if(ev.pointerType === "touch" && pinchEnd(ev)) return;
-  if(state.triDrag){
+  if(state.triDrag || state.triSplitDrag || state.triMove){
     onTriPointerUp(ev);
     return;
   }
@@ -7993,7 +7994,83 @@ function paintSplitTags(ctx, a){
 // moves the other two through that point, and dashed lines show where they
 // cut. Each panel zooms and pans on its own.
 
-const TRI_SLOTS = {l:[0, 0], k:[1, 0], h:[0, 1]};
+// The tiles of the three-slice view: a 2 x 2 grid, as [column, row], or a
+// row, the slices side by side with the point and the colour bar beside
+// them. Dragging a title swaps two tiles, and dragging the lines between
+// them resizes them. Auto takes the row on a map more than 2.2 times as wide
+// as it is tall.
+const TRI_DEFAULT_SLOTS = {l:[0, 0], k:[1, 0], h:[0, 1], info:[1, 1]};
+const TRI_DEFAULT_ORDER = ["l", "k", "h", "info"];
+const TRI_TILES = ["l", "k", "h", "info"], TRI_TITLE_H = 20, TRI_SPLIT_GRAB = 6;
+
+function triArrangement(cssW, cssH){
+  const a = state.ui && state.ui.triArrange;
+  if(a === "grid" || a === "row") return a;
+  return cssW >= 2.2 * cssH ? "row" : "grid";
+}
+
+function triOrder(){
+  const o = state.ui && state.ui.triOrder;
+  return Array.isArray(o) && o.length === 4 && TRI_TILES.every(n => o.includes(n)) ? o : TRI_DEFAULT_ORDER;
+}
+
+// Widths of the tiles in a row, as fractions of the map: the point and the
+// colour bar take about 300 pixels, and the slices share the rest.
+function triRowWidths(cssW){
+  const saved = state.ui && state.ui.triWidths, info = clamp(300 / Math.max(1, cssW), 0.1, 0.25);
+  const w = Object.fromEntries(TRI_TILES.map(n => [n, saved && saved[n] > 0 ? saved[n] : n === "info" ? info : (1 - info) / 3]));
+  const sum = TRI_TILES.reduce((s, n) => s + w[n], 0);
+  for(const n of TRI_TILES) w[n] /= sum;
+  return w;
+}
+
+function triSlots(){
+  const s = state.ui && state.ui.triSlots;
+  return s && TRI_TILES.every(n => Array.isArray(s[n])) ? s : TRI_DEFAULT_SLOTS;
+}
+
+// The lines between the tiles in canvas pixels (vlines between columns,
+// hlines between rows), and the rectangle of each tile.
+function triGrid(cssW, cssH){
+  const arrange = triArrangement(cssW, cssH);
+  if(arrange === "row"){
+    const order = triOrder(), widths = triRowWidths(cssW), xs = [0];
+    for(const n of order) xs.push(xs[xs.length - 1] + widths[n] * cssW);
+    const bounds = xs.map(Math.round);
+    bounds[4] = cssW;
+    const rect = name => {
+      const c = order.indexOf(name);
+      return {x:bounds[c], y:0, w:bounds[c + 1] - bounds[c], h:cssH};
+    };
+    return {arrange, cssW, cssH, rect, order, bounds, vlines:bounds.slice(1, 4), hlines:[]};
+  }
+  const split = (state.ui && state.ui.triSplit) || [0.5, 0.5];
+  const w0 = Math.round(clamp(Number(split[0]) || 0.5, 0.15, 0.85) * cssW), h0 = Math.round(clamp(Number(split[1]) || 0.5, 0.15, 0.85) * cssH);
+  const cols = [[0, w0], [w0, cssW - w0]], rows = [[0, h0], [h0, cssH - h0]], slots = triSlots();
+  const rect = name => {
+    const [c, r] = slots[name];
+    return {x:cols[c][0], y:rows[r][0], w:cols[c][1], h:rows[r][1]};
+  };
+  return {arrange, cssW, cssH, rect, vlines:[w0], hlines:[h0]};
+}
+
+// Which lines a point is on: v, the index of a line between columns, and h,
+// of one between rows (-1 for none).
+function triSplitAt(pt){
+  const g = state.tri && state.tri.grid;
+  if(!g || !pt) return null;
+  const v = g.vlines.findIndex(x => Math.abs(pt.x - x) <= TRI_SPLIT_GRAB), h = g.hlines.findIndex(y => Math.abs(pt.y - y) <= TRI_SPLIT_GRAB);
+  return v >= 0 || h >= 0 ? {v, h} : null;
+}
+
+function triTileAt(pt, titleOnly=false){
+  const g = state.tri && state.tri.grid;
+  if(!g || !pt) return null;
+  return TRI_TILES.find(name => {
+    const r = g.rect(name);
+    return pt.x >= r.x && pt.x < r.x + r.w && pt.y >= r.y && pt.y < r.y + (titleOnly ? TRI_TITLE_H : r.h);
+  }) || null;
+}
 const AXIS_COLOURS = ["#f87171", "#4ade80", "#60a5fa"];
 
 function triOn(){
@@ -8076,12 +8153,12 @@ function drawTriGuides(ctx, p, layout){
 
 function paintTriOn(ctx, cssW, cssH){
   const last = state.lastSlice, res = state.res, tc = themePlot(), active = $("axis").value;
-  const axes = [res.h, res.k, res.l], labels = nativeAxisLabels(res);
-  const pw = Math.floor(cssW / 2), ph = Math.floor(cssH / 2);
+  const axes = [res.h, res.k, res.l], labels = nativeAxisLabels(res), grid = triGrid(cssW, cssH);
+  state.tri.grid = grid;
   state.vectorMarks = [];
   $("vectorLegend").classList.add("hidden");
   for(const p of state.tri.panels){
-    const ox = TRI_SLOTS[p.axisName][0] * pw, oy = TRI_SLOTS[p.axisName][1] * ph;
+    const r = grid.rect(p.axisName), ox = r.x, oy = r.y, pw = r.w, ph = r.h;
     const layout = slice2dLayout(p.slice, pw, ph, state.tri.views[p.axisName]);
     state.tri.views[p.axisName] = layout.view;
     Object.assign(p, {layout, origin:[ox, oy], size:[pw, ph]});
@@ -8119,19 +8196,55 @@ function paintTriOn(ctx, cssW, cssH){
     ctx.restore();
   }
   // The fourth tile: the shared colour bar and the point.
-  drawColorbar(ctx, last.stops, last.levels, last.transformed, cssW - 28, ph + 20, 18, Math.max(40, cssH - ph - 40));
+  const info = grid.rect("info");
+  drawColorbar(ctx, last.stops, last.levels, last.transformed, info.x + info.w - 28, info.y + 20, 18, Math.max(40, info.h - 40));
   const idx = ["h", "k", "l"].map(triIndexFor);
   ctx.font = "12px Consolas";
   ctx.fillStyle = tc.canvasText;
-  const room = cssW - 28 - 126 - (pw + 18);
-  const hint = wrapCanvasText(ctx, "Click a view to move the other two through it. Drag a box to zoom. The framed view follows the slider and the keys.", room);
+  const room = Math.max(80, info.w - 28 - 126 - 18);
+  const hint = wrapCanvasText(ctx, "Click a view to move the other two through it. Drag a box to zoom. Drag a title to move a view, or the lines between the views to resize them. The framed view follows the slider and the keys.", room);
   const lines = ["Point", ...labels.map((l, a) => `${l} ${fmtAxis(axes[a][idx[a]], axes[a])}   (${idx[a] + 1} / ${res.shape[a]})`), "", ...hint];
-  const fits = Math.max(4, Math.floor((cssH - ph - 30) / 18));
+  const fits = Math.max(4, Math.floor((info.h - 30) / 18));
   lines.slice(0, fits).forEach((text, i) => {
     if(i >= 1 && i <= 3) ctx.fillStyle = AXIS_COLOURS[i - 1];
     else ctx.fillStyle = i === 0 ? tc.canvasText : tc.mutedText;
-    ctx.fillText(text, pw + 18, ph + 30 + i * 18);
+    ctx.fillText(text, info.x + 18, info.y + 30 + i * 18);
   });
+  // The lines between the tiles, brighter while hovered or dragged, with a
+  // grip where they cross.
+  const hot = !!(state.triSplitDrag || state.tri.hoverSplit);
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle = hot ? tc.handleActive : isLightTheme() ? "rgba(42,40,37,.18)" : "rgba(235,232,223,.16)";
+  ctx.lineWidth = hot ? 2 : 1;
+  ctx.beginPath();
+  for(const x of grid.vlines){ ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, cssH); }
+  for(const y of grid.hlines){ ctx.moveTo(0, y + 0.5); ctx.lineTo(cssW, y + 0.5); }
+  ctx.stroke();
+  const grips = grid.hlines.length ? grid.vlines.flatMap(x => grid.hlines.map(y => [x, y])) : grid.vlines.map(x => [x, cssH / 2]);
+  for(const [x, y] of grips){
+    ctx.beginPath();
+    ctx.arc(x + 0.5, y + 0.5, hot ? 5 : 3.5, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  ctx.restore();
+  // A tile being moved: its place dashed, and the one it would swap with lit.
+  const move = state.triMove;
+  if(move && move.moved){
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = tc.mutedText;
+    const from = grid.rect(move.name);
+    ctx.strokeRect(from.x + 3, from.y + 3, from.w - 6, from.h - 6);
+    if(move.target){
+      const to = grid.rect(move.target);
+      ctx.fillStyle = isLightTheme() ? "rgba(125,109,87,.12)" : "rgba(226,216,200,.10)";
+      ctx.fillRect(to.x + 3, to.y + 3, to.w - 6, to.h - 6);
+      ctx.strokeStyle = tc.handleActive;
+      ctx.strokeRect(to.x + 3, to.y + 3, to.w - 6, to.h - 6);
+    }
+    ctx.restore();
+  }
 }
 
 // Words of text in lines no wider than width on the canvas.
@@ -8190,6 +8303,15 @@ function triPanelZoom(p, factor, X, Y){
 }
 
 function onTriPointerDown(ev, pt){
+  const split = triSplitAt(pt), title = !split && triTileAt(pt, true);
+  if(split || title){
+    if(split) state.triSplitDrag = {pointerId:ev.pointerId, ...split};
+    else state.triMove = {name:title, pointerId:ev.pointerId, start:pt, moved:false, target:null};
+    try{ $("heatmap").setPointerCapture(ev.pointerId); }catch(_){}
+    hideReadout();
+    ev.preventDefault();
+    return;
+  }
   const p = triPanelAt(pt);
   if(!p || !inLayoutArea(p.layout, triLocal(p, pt))) return;
   const v = p.layout.view;
@@ -8201,6 +8323,51 @@ function onTriPointerDown(ev, pt){
 
 function onTriPointerMove(ev, pt){
   const d = state.triDrag, cv = $("heatmap");
+  if(state.triSplitDrag){
+    const g = state.tri.grid, s = state.triSplitDrag;
+    if(g.arrange === "row"){
+      // The line between two tiles moves; the tiles beside it trade width.
+      const a = g.order[s.v], b = g.order[s.v + 1], widths = triRowWidths(g.cssW);
+      const left = g.bounds[s.v], right = g.bounds[s.v + 2], min = 0.05 * g.cssW;
+      const x = clamp(pt.x, left + min, right - min);
+      widths[a] = (x - left) / g.cssW;
+      widths[b] = (right - x) / g.cssW;
+      state.ui.triWidths = widths;
+    }else{
+      const split = ((state.ui && state.ui.triSplit) || [0.5, 0.5]).slice();
+      if(s.v >= 0) split[0] = clamp(pt.x / g.cssW, 0.15, 0.85);
+      if(s.h >= 0) split[1] = clamp(pt.y / g.cssH, 0.15, 0.85);
+      state.ui.triSplit = split;
+    }
+    paint2d();
+    return;
+  }
+  if(state.triMove){
+    const m = state.triMove;
+    if(!m.moved && Math.hypot(pt.x - m.start.x, pt.y - m.start.y) > 4) m.moved = true;
+    if(m.moved){
+      const t = triTileAt(pt);
+      m.target = t && t !== m.name ? t : null;
+      cv.style.cursor = "grabbing";
+      paint2d();
+    }
+    return;
+  }
+  if(!d){
+    const split = triSplitAt(pt), wasHot = !!state.tri.hoverSplit;
+    state.tri.hoverSplit = !!split;
+    if(wasHot !== !!split) paint2d();
+    if(split){
+      cv.style.cursor = split.v >= 0 && split.h >= 0 ? "move" : split.v >= 0 ? "col-resize" : "row-resize";
+      hideReadout();
+      return;
+    }
+    if(triTileAt(pt, true)){
+      cv.style.cursor = "grab";
+      hideReadout();
+      return;
+    }
+  }
   if(d){
     const p = state.tri.panels.find(q => q.axisName === d.axisName);
     if(!d.moved && Math.hypot(pt.x - d.start.x, pt.y - d.start.y) > 4) d.moved = true;
@@ -8233,6 +8400,26 @@ function onTriPointerMove(ev, pt){
 }
 
 function onTriPointerUp(){
+  if(state.triSplitDrag || state.triMove){
+    const s = state.triSplitDrag, m = state.triMove;
+    state.triSplitDrag = null;
+    state.triMove = null;
+    try{ $("heatmap").releasePointerCapture((s || m).pointerId); }catch(_){}
+    if(s) setUi(state.tri.grid.arrange === "row" ? {triWidths:state.ui.triWidths} : {triSplit:state.ui.triSplit});
+    else if(m && m.moved && m.target){
+      if(state.tri.grid.arrange === "row"){
+        const order = triOrder().slice(), i = order.indexOf(m.name), j = order.indexOf(m.target);
+        [order[i], order[j]] = [order[j], order[i]];
+        setUi({triOrder:order});
+      }else{
+        const slots = Object.fromEntries(Object.entries(triSlots()).map(([k, v]) => [k, v.slice()]));
+        [slots[m.name], slots[m.target]] = [slots[m.target], slots[m.name]];
+        setUi({triSlots:slots});
+      }
+    }
+    paint2d();
+    return;
+  }
   const d = state.triDrag;
   state.triDrag = null;
   try{ $("heatmap").releasePointerCapture(d.pointerId); }catch(_){}
@@ -9246,6 +9433,7 @@ function syncControls(){
   $("sliceThick").disabled = !has || !axisMode;
   $("sliceThickUnits").disabled = !has || !axisMode;
   $("triToggle").disabled = !has || !axisMode;
+  $("triArrange").classList.toggle("hidden", !(state.ui && state.ui.tri && has && axisMode));
   $("gridToggle").disabled = !has || !integerGridApplies(state.res);
   updateSliceThickInfo();
   $("axisPick").classList.toggle("hidden", !axisMode);
@@ -12103,7 +12291,7 @@ function showDataset(parsed, {name=parsed.file, note=""}={}){
 // ---- Window layout: the panel of steps, the map and the 3-D dock, shortcuts
 
 const UI_KEY = "view3ds-ui";
-const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data", grid:false, volumeStyle:"iso", cubeCut:50, cubeAt:"origin"};
+const UI_DEFAULTS = {layout:"split", dock:"both", tab:"data", side:true, dockW:0.38, stack:0.5, levels:"global", profile:false, profileKind:"line", profileH:0.34, planeStyle:"plane", cutawayKeep:"below", ortho:false, vectors:true, plane3dRes:180, imageScale:2, tri:false, mapQuality:"data", grid:false, volumeStyle:"iso", cubeCut:50, cubeAt:"origin", triSplit:[0.5, 0.5], triSlots:null, triArrange:"auto", triOrder:null, triWidths:null};
 const PAGE_TITLES = {data:"Data", compare:"Compare", process:"Symmetry", mask:"Mask preview"};
 // Settings that open from the views rather than the panel.
 const PAGE_POPS = {slice:["slicePop", "slicePopBtn"], levels:["levelsPop", "levelsPopBtn"], render:["renderPop", "renderPopBtn"], export:["exportPop", "exportBtn"]};
@@ -12128,6 +12316,12 @@ function loadUiPrefs(){
     if(["iso", "cube"].includes(saved.volumeStyle)) ui.volumeStyle = saved.volumeStyle;
     if(Number.isFinite(saved.cubeCut)) ui.cubeCut = clamp(Math.round(saved.cubeCut), 0, 100);
     if(["origin", "slices"].includes(saved.cubeAt)) ui.cubeAt = saved.cubeAt;
+    if(Array.isArray(saved.triSplit) && saved.triSplit.length === 2 && saved.triSplit.every(v => Number.isFinite(v))) ui.triSplit = saved.triSplit.map(v => clamp(v, 0.15, 0.85));
+    const cells = saved.triSlots && TRI_TILES.map(n => saved.triSlots[n]);
+    if(cells && cells.every(c => Array.isArray(c) && c.length === 2 && c.every(v => v === 0 || v === 1)) && new Set(cells.map(c => c.join())).size === 4) ui.triSlots = saved.triSlots;
+    if(["auto", "grid", "row"].includes(saved.triArrange)) ui.triArrange = saved.triArrange;
+    if(Array.isArray(saved.triOrder) && saved.triOrder.length === 4 && TRI_TILES.every(n => saved.triOrder.includes(n))) ui.triOrder = saved.triOrder;
+    if(saved.triWidths && TRI_TILES.every(n => saved.triWidths[n] > 0)) ui.triWidths = saved.triWidths;
     if(typeof saved.ortho === "boolean") ui.ortho = saved.ortho;
     if(typeof saved.vectors === "boolean") ui.vectors = saved.vectors;
     if(Number.isFinite(saved.plane3dRes)) ui.plane3dRes = clamp(Math.round(saved.plane3dRes), 32, 520);
@@ -12140,8 +12334,8 @@ function loadUiPrefs(){
 }
 
 function saveUiPrefs(){
-  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt} = state.ui;
-  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt})); }catch(_){}
+  const {layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt, triSplit, triSlots, triArrange, triOrder, triWidths} = state.ui;
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({layout, dock, tab, side, dockW, stack, levels, profile, profileKind, profileH, planeStyle, cutawayKeep, ortho, vectors, plane3dRes, imageScale, tri, mapQuality, grid, volumeStyle, cubeCut, cubeAt, triSplit, triSlots, triArrange, triOrder, triWidths})); }catch(_){}
 }
 
 function applyUi(){
@@ -12181,6 +12375,8 @@ function applyUi(){
   $("imageScale").value = String(ui.imageScale);
   $("triToggle").classList.toggle("on", !!ui.tri);
   $("gridToggle").classList.toggle("on", !!ui.grid);
+  $("triArrange").classList.toggle("hidden", !(ui.tri && state.res && $("sliceMode").value === "axis"));
+  for(const b of $("triArrange").children) b.classList.toggle("on", b.dataset.arrange === (ui.triArrange || "auto"));
   $("gridToggle").setAttribute("aria-pressed", String(!!ui.grid));
   $("mapQuality").value = ui.mapQuality;
   $("triToggle").setAttribute("aria-pressed", String(!!ui.tri));
@@ -13952,7 +14148,11 @@ function bind(){
   }, {passive:false});
   $("heatmap").addEventListener("dblclick", ev => {
     if(triOn()){
-      const p = triPanelAt(canvasPoint(ev));
+      const pt = canvasPoint(ev);
+      const row = state.tri.grid && state.tri.grid.arrange === "row";
+      if(triSplitAt(pt)){ setUi(row ? {triWidths:null} : {triSplit:[0.5, 0.5]}); paint2d(); return; }
+      if(triTileAt(pt, true)){ setUi(row ? {triOrder:null} : {triSlots:null}); paint2d(); return; }
+      const p = triPanelAt(pt);
       if(p){ state.tri.views[p.axisName] = null; paint2d(); }
       return;
     }
@@ -13960,6 +14160,12 @@ function bind(){
   });
   $("triToggle").addEventListener("click", toggleTri);
   $("gridToggle").addEventListener("click", toggleIntegerGrid);
+  $("triArrange").addEventListener("click", ev => {
+    const b = ev.target.closest("button");
+    if(!b || !b.dataset.arrange) return;
+    setUi({triArrange:b.dataset.arrange});
+    paint2d();
+  });
   $("mapZoomIn").addEventListener("click", () => zoom2dCenter(1.4));
   $("mapZoomOut").addEventListener("click", () => zoom2dCenter(1 / 1.4));
   $("mapZoomReset").addEventListener("click", resetZoom2d);
