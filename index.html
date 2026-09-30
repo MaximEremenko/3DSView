@@ -755,7 +755,7 @@ window.addEventListener("resize", applyPageZoom);
             <label title="Across the cut, in the plot frame; for a cut through the volume, the diameter of the rod it averages (empty: two grid steps)">Width <input id="cutWidth" type="number" step="any" min="0"></label>
             <label title="Along the slice normal (empty: one slice)">Thickness <input id="cutThick" type="number" step="any" min="0"></label>
           </span>
-          <label id="binsField" title="Empty: about one bin per grid step">Bins <input id="profileBins" type="number" min="2" max="20000" step="1" placeholder="auto"></label>
+          <label id="binsField" title="Empty: one bin per voxel along the axis the cut crosses fastest (for |Q|, see ΔQ)">Bins <input id="profileBins" type="number" min="2" max="20000" step="1" placeholder="auto"></label>
           <span id="qFields" class="profileFields hidden">
             <label title="Mantid Rebin parameters: a step such as 0.05; a negative step for logarithmic shells (-0.01 is ΔQ/Q = 1%); or ranges with their own steps, such as 0.5, 0.02, 3, 0.05, 10. Empty is the shortest bin step in |Q|.">ΔQ <input id="qRebin" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" placeholder="auto"></label>
             <input id="qStep" class="qStep" type="range" min="0" max="1000" value="435" aria-label="Shell step" title="Shell step on a log scale, from a tenth of the shortest bin step to 20 times it (ΔQ/Q from 0.1% to 20% for logarithmic shells)">
@@ -5707,7 +5707,10 @@ function lineCutProfile(res, p0, p1, {width, thickness=null, normal=null, bins=n
   const e1 = cross(e2, u);
   const halfW = Math.max(0, Number(width) || 0) / 2, halfT = thickness === null ? halfW : Math.max(0, Number(thickness) || 0) / 2;
   const box = thickness === null ? "cylinder" : "box";
-  const nb = Math.max(2, Math.min(20000, Math.floor(bins) || Math.max(8, Math.round(length / pf.step))));
+  // By default one bin per voxel along the axis the cut crosses fastest, so a
+  // cut along a coarse axis (L on many grids) has no empty bins.
+  const rate = Math.max(...[0, 1, 2].filter(a => res.shape[a] > 1).map(a => Math.abs(u[0] * pf.Gqi[0][a] + u[1] * pf.Gqi[1][a] + u[2] * pf.Gqi[2][a])), 1e-12);
+  const nb = Math.max(2, Math.min(20000, Math.floor(bins) || Math.max(8, Math.round(length * rate))));
   const corners = [];
   for(const q of [q0, q1]) for(const s1 of [-1, 1]) for(const s2 of [-1, 1]) corners.push(q.map((v, c) => v + s1 * halfW * e1[c] + s2 * halfT * e2[c]));
   const [ri, rj, rk] = indexBoxAround(pf, corners, ranges);
@@ -5918,29 +5921,29 @@ function cutawayMesh(res, sl, mode, {maxCells=150 * 150, keep="below"}={}){
   const [b, c] = [0, 1, 2].filter(x => x !== a);
   const span = keep === "above" ? [f, ranges[a][1]] : [ranges[a][0], f];
   const cap = keep === "above" ? ranges[a][1] : ranges[a][0];
+  const mid = r => Math.round((r[0] + r[1]) / 2), inward = (at, r) => ({sign:at <= mid(r) ? 1 : -1, limit:mid(r)});
   const faces = [{fix:a, at:f, u:b, ur:ranges[b], v:c, vr:ranges[c]}];
-  if(cap !== f) faces.push({fix:a, at:cap, u:b, ur:ranges[b], v:c, vr:ranges[c]});
+  if(cap !== f) faces.push({fix:a, at:cap, u:b, ur:ranges[b], v:c, vr:ranges[c], march:{sign:Math.sign(f - cap), limit:mid(span)}});
   if(span[1] > span[0]){
-    faces.push({fix:b, at:ranges[b][0], u:a, ur:span, v:c, vr:ranges[c]}, {fix:b, at:ranges[b][1], u:a, ur:span, v:c, vr:ranges[c]});
-    faces.push({fix:c, at:ranges[c][0], u:a, ur:span, v:b, vr:ranges[b]}, {fix:c, at:ranges[c][1], u:a, ur:span, v:b, vr:ranges[b]});
+    for(const at of ranges[b]) faces.push({fix:b, at, u:a, ur:span, v:c, vr:ranges[c], march:inward(at, ranges[b])});
+    for(const at of ranges[c]) faces.push({fix:c, at, u:a, ur:span, v:b, vr:ranges[b], march:inward(at, ranges[c])});
   }
-  faces.forEach((face, n) => {
-    face.step = Math.max(1, Math.ceil(Math.sqrt((face.ur[1] - face.ur[0] + 1) * (face.vr[1] - face.vr[0] + 1) / maxCells)));
-    face.fill = n > 0;
-  });
+  for(const face of faces) face.step = Math.max(1, Math.ceil(Math.sqrt((face.ur[1] - face.ur[0] + 1) * (face.vr[1] - face.vr[0] + 1) / maxCells)));
   return facesMesh(res, mode, faces);
 }
 
 // Rectangles of grid faces as one mesh: each face {fix, at, u, ur, v, vr,
-// step, fill} holds axis fix at index at over the index ranges ur and vr.
+// step, march} holds axis fix at index at over the index ranges ur and vr.
 // Vertices sit on voxel centres every step voxels, both ends included, so
 // faces that share an edge or a cut line meet exactly; each vertex takes the
-// mean of the voxels within half a step of it. A cell without values leaves
-// a hole, unless its face is filled: such cells go into a second, plain mesh
-// (fill), which keeps an outer face closed.
+// mean of the voxels within half a step of it. An outer face has a march
+// {sign, limit}: where it has no data it recedes along fix, by sign, to the
+// first voxel with a value, up to index limit (a number or a function of the
+// vertex's u and v), so it closes around the measured region. A cell without
+// values leaves a hole.
 function facesMesh(res, mode, faces){
   const [, n1, n2] = res.shape, I = res.I;
-  const x = [], y = [], z = [], intensity = [], custom = [], ti = [], tj = [], tk = [], fi = [], fj = [], fk = [];
+  const x = [], y = [], z = [], intensity = [], custom = [], ti = [], tj = [], tk = [];
   const ticks = (r, step) => {
     const out = [];
     for(let t=r[0];t<r[1];t+=step) out.push(t);
@@ -5950,12 +5953,24 @@ function facesMesh(res, mode, faces){
   for(const face of faces){
     const us = ticks(face.ur, face.step), vs = ticks(face.vr, face.step), half = Math.floor(face.step / 2);
     const cu = us.length, cv = vs.length, index = new Int32Array(cu * cv).fill(-1), valued = new Uint8Array(cu * cv);
-    const at = [0, 0, 0];
-    at[face.fix] = face.at;
+    const at = [0, 0, 0], march = face.march;
     for(let p=0;p<cu;p++){
       const ua = Math.max(face.ur[0], us[p] - half), ub = Math.min(face.ur[1], us[p] + half);
       for(let q=0;q<cv;q++){
         const va = Math.max(face.vr[0], vs[q] - half), vb = Math.min(face.vr[1], vs[q] + half);
+        let depth = face.at;
+        if(march){
+          const limit = typeof march.limit === "function" ? march.limit(us[p], vs[q]) : march.limit;
+          const steps = (limit - face.at) * march.sign;
+          at[face.u] = us[p];
+          at[face.v] = vs[q];
+          for(let n=0, d=face.at;n<=steps;n++, d+=march.sign){
+            at[face.fix] = d;
+            const value = I[(at[0] * n1 + at[1]) * n2 + at[2]];
+            if(value === value){ depth = d; break; }
+          }
+        }
+        at[face.fix] = depth;
         let s = 0, n = 0;
         for(let u=ua;u<=ub;u++){
           at[face.u] = u;
@@ -5967,7 +5982,7 @@ function facesMesh(res, mode, faces){
         }
         const raw = n ? s / n : NaN, shown = n ? transformedValue(raw, mode) : NaN;
         const frac = [0, 0, 0];
-        frac[face.fix] = face.at;
+        frac[face.fix] = depth;
         frac[face.u] = us[p];
         frac[face.v] = vs[q];
         const pn = nativeAtFraction(res, frac), pq = plotPoint(res, pn[0], pn[1], pn[2]);
@@ -5975,7 +5990,7 @@ function facesMesh(res, mode, faces){
         index[p * cv + q] = x.length;
         valued[p * cv + q] = Number.isFinite(shown) ? 1 : 0;
         x.push(pq[0]); y.push(pq[1]); z.push(pq[2]);
-        // Vertices without a value serve the plain mesh only; their colour value is never drawn.
+        // A vertex without a value is never drawn; its colour value is a placeholder.
         intensity.push(Number.isFinite(shown) ? shown : 0);
         custom.push([pn[0], pn[1], pn[2], pq[0], pq[1], pq[2], raw]);
       }
@@ -5983,38 +5998,18 @@ function facesMesh(res, mode, faces){
     for(let p=0;p<cu-1;p++) for(let q=0;q<cv-1;q++){
       const a = p * cv + q, b = a + 1, c = a + cv, d = c + 1;
       for(const [t0, t1, t2] of [[a, b, d], [a, d, c]]){
-        const i0 = index[t0], i1 = index[t1], i2 = index[t2];
-        if(i0 < 0 || i1 < 0 || i2 < 0) continue;
-        if(valued[t0] && valued[t1] && valued[t2]){ ti.push(i0); tj.push(i1); tk.push(i2); }
-        else if(face.fill){ fi.push(i0); fj.push(i1); fk.push(i2); }
+        if(valued[t0] && valued[t1] && valued[t2]){ ti.push(index[t0]); tj.push(index[t1]); tk.push(index[t2]); }
       }
     }
   }
-  return {x, y, z, intensity, custom, i:ti, j:tj, k:tk, fill:{i:fi, j:fj, k:fk}, faces:faces.length, transformed:usePlotBasis(res)};
-}
-
-// The cells of the closed faces that hold no value, in one plain colour: the
-// empty-voxel colour, or a neutral tone when empty voxels are transparent.
-// The colour goes through a one-colour scale: a plain mesh3d colour would be
-// tinted by the colour map of the valued mesh beside it.
-function faceFillTrace(plot){
-  if(!plot || !plot.fill || !plot.fill.i.length) return null;
-  const rgb = EMPTY_VOXEL_RGB[$("nanColor") ? $("nanColor").value : "transparent"];
-  const color = rgb ? `rgb(${rgb.join(",")})` : isLightTheme() ? "#dcd7cc" : "#3d3b36";
-  const labels = nativeAxisLabels(state.res);
-  return {
-    type:"mesh3d", name:"No data", x:plot.x, y:plot.y, z:plot.z, i:plot.fill.i, j:plot.fill.j, k:plot.fill.k,
-    intensity:new Float32Array(plot.x.length), intensitymode:"vertex", colorscale:[[0, color], [1, color]], cmin:0, cmax:1, showscale:false,
-    customdata:plot.custom, flatshading:true, lighting:{ambient:0.82, diffuse:0.3, specular:0, roughness:1, fresnel:0},
-    hovertemplate:`${labels[0]}=%{customdata[0]:.5g}<br>${labels[1]}=%{customdata[1]:.5g}<br>${labels[2]}=%{customdata[2]:.5g}<br>no data<extra></extra>`
-  };
+  return {x, y, z, intensity, custom, i:ti, j:tj, k:tk, faces:faces.length, transformed:usePlotBasis(res)};
 }
 
 // The cutaway as a Plotly mesh on the map's colour scale and levels.
 function cutawayTrace(sl, mode, levels, maxCells){
   const plot = cutawayMesh(viewRes(), sl, mode, {maxCells, keep:state.ui && state.ui.cutawayKeep || "below"});
-  if(!plot || !(plot.i.length || plot.fill.i.length)) return null;
-  return {plot, trace:faceMeshTrace(plot, levels, {ambient:0.95, diffuse:0.2, specular:0, roughness:1}), fill:faceFillTrace(plot)};
+  if(!plot || !plot.i.length) return null;
+  return {plot, trace:faceMeshTrace(plot, levels, {ambient:0.95, diffuse:0.2, specular:0, roughness:1})};
 }
 
 // ---- The cut-away cube: the faces of the shown volume with the corner
@@ -6037,19 +6032,24 @@ function cubeCutIndex(res){
 
 // The faces of the cube: each far face whole, each near face as an L of two
 // rectangles around the removed corner, and the three faces the cut opens.
-// A face orientation keeps one block size, so its pieces match.
+// A face orientation keeps one block size, so its pieces match. The outer
+// faces recede to the data, as far as the middle of the volume, where the
+// opposite face takes over; behind the removed corner, no further than the
+// cut, so they never show what was cut away.
 function cubeMesh(res, mode, cut, cellsPerSide=150){
   const R = displayIndexRanges(res), faces = [];
-  const len = a => R[a][1] - R[a][0] + 1;
-  const add = (fix, at, u, ur, v, vr, fill) => {
-    if(ur[1] >= ur[0] && vr[1] >= vr[0]) faces.push({fix, at, u, ur, v, vr, fill, step:Math.max(1, Math.ceil(Math.sqrt(len(u) * len(v)) / cellsPerSide))});
+  const len = a => R[a][1] - R[a][0] + 1, mid = a => Math.round((R[a][0] + R[a][1]) / 2);
+  const add = (fix, at, u, ur, v, vr, march=null) => {
+    if(ur[1] >= ur[0] && vr[1] >= vr[0]) faces.push({fix, at, u, ur, v, vr, march, step:Math.max(1, Math.ceil(Math.sqrt(len(u) * len(v)) / cellsPerSide))});
   };
   for(let a=0;a<3;a++){
     const [u, v] = [0, 1, 2].filter(x => x !== a), cu = cut[u], cv = cut[v];
-    add(a, R[a][0], u, R[u], v, R[v], true);
-    add(a, R[a][1], u, [R[u][0], cu], v, R[v], true);
-    if(cu < R[u][1]) add(a, R[a][1], u, [cu, R[u][1]], v, [R[v][0], cv], true);
-    if(cut[a] < R[a][1]) add(a, cut[a], u, [cu, R[u][1]], v, [cv, R[v][1]], false);
+    const far = {sign:1, limit:(pu, pv) => (pu > cu && pv > cv ? Math.min(mid(a), cut[a]) : mid(a))};
+    const near = {sign:-1, limit:mid(a)};
+    add(a, R[a][0], u, R[u], v, R[v], far);
+    add(a, R[a][1], u, [R[u][0], cu], v, R[v], near);
+    if(cu < R[u][1]) add(a, R[a][1], u, [cu, R[u][1]], v, [R[v][0], cv], near);
+    if(cut[a] < R[a][1]) add(a, cut[a], u, [cu, R[u][1]], v, [cv, R[v][1]]);
   }
   return facesMesh(res, mode, faces);
 }
@@ -6061,8 +6061,8 @@ function cubeOn(){
 // The cube as a Plotly mesh, shaded flat in the map's colours and levels.
 function cubeTrace(mode, levels){
   const cut = cubeCutIndex(state.res), plot = cubeMesh(viewRes(), mode, cut);
-  if(!plot.i.length && !plot.fill.i.length) return null;
-  return {plot, cut, trace:faceMeshTrace(plot, levels, {ambient:1, diffuse:0, specular:0, roughness:1, fresnel:0}), fill:faceFillTrace(plot)};
+  if(!plot.i.length) return null;
+  return {plot, cut, trace:faceMeshTrace(plot, levels, {ambient:1, diffuse:0, specular:0, roughness:1, fresnel:0})};
 }
 
 // A mesh of grid faces as a Plotly trace, with the hover of the 3-D views.
@@ -8182,6 +8182,7 @@ function paintTriOn(ctx, cssW, cssH){
     ctx.stroke();
     drawIntegerGrid(ctx, layout, p.slice);
     drawTriGuides(ctx, p, layout);
+    drawCutOverlay(ctx, layout, p.slice, {shadow:true});
     ctx.restore();
     drawAxes(ctx, p.slice, layout, ph);
     const a = p.slice.fixedAxis;
@@ -8314,6 +8315,10 @@ function onTriPointerDown(ev, pt){
   }
   const p = triPanelAt(pt);
   if(!p || !inLayoutArea(p.layout, triLocal(p, pt))) return;
+  if(state.cutMode){
+    startCutDrag(ev, pt, p.axisName);
+    return;
+  }
   const v = p.layout.view;
   state.triDrag = {axisName:p.axisName, pointerId:ev.pointerId, start:pt, moved:false,
     pan:v.zoom > 1 && !ev.shiftKey ? {panX:v.panX, panY:v.panY} : null, box:null};
@@ -8323,6 +8328,10 @@ function onTriPointerDown(ev, pt){
 
 function onTriPointerMove(ev, pt){
   const d = state.triDrag, cv = $("heatmap");
+  if(state.cutDrag){
+    moveCutDrag(pt, ev);
+    return;
+  }
   if(state.triSplitDrag){
     const g = state.tri.grid, s = state.triSplitDrag;
     if(g.arrange === "row"){
@@ -8395,7 +8404,7 @@ function onTriPointerMove(ev, pt){
     hideReadout();
     return;
   }
-  cv.style.cursor = p.layout.view.zoom > 1 ? "grab" : "crosshair";
+  cv.style.cursor = !state.cutMode && p.layout.view.zoom > 1 ? "grab" : "crosshair";
   showReadout(pt);
 }
 
@@ -11278,8 +11287,7 @@ async function updatePlane3dFast(){
       const liveCamera = keepCamera || readSceneCamera("plot3dPlane") || state.cameras.plane;
       if(liveCamera) state.cameras.plane = liveCamera;
       const current = Array.isArray(gd.data) && gd.data.length ? gd.data[0] : null;
-      const fill = built.fill || null, currentFill = Array.isArray(gd.data) && gd.data[1] && gd.data[1].name === "No data" ? gd.data[1] : null;
-      if(current && current.type === built.trace.type && !!fill === !!currentFill && typeof Plotly.restyle === "function"){
+      if(current && current.type === built.trace.type && typeof Plotly.restyle === "function"){
         if(built.trace.type === "mesh3d"){
           const update = {
             x:[built.trace.x],
@@ -11296,7 +11304,6 @@ async function updatePlane3dFast(){
           };
           if(keepCamera && typeof Plotly.update === "function") await Plotly.update(gd, update, {"scene.camera":keepCamera}, [0]);
           else await Plotly.restyle(gd, update, [0]);
-          if(fill) await Plotly.restyle(gd, {x:[fill.x], y:[fill.y], z:[fill.z], i:[fill.i], j:[fill.j], k:[fill.k], intensity:[fill.intensity], customdata:[fill.customdata], colorscale:[fill.colorscale]}, [1]);
         }else{
           const update = {
             x:[built.trace.x],
@@ -11312,7 +11319,7 @@ async function updatePlane3dFast(){
           else await Plotly.restyle(gd, update, [0]);
         }
       }else{
-        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace, ...(fill ? [fill] : [])]), sceneLayout(`Slice Plane (${sliceKindName(sl)})`, keepCamera || liveCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
+        await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Slice Plane (${sliceKindName(sl)})`, keepCamera || liveCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
         wireCamera("plot3dPlane", "plane");
       }
       if(keepCamera) state.cameras.plane = cloneCamera(keepCamera);
@@ -11341,7 +11348,7 @@ async function renderPlane3d(Plotly){
   if(cutawayOn(sl)){
     const built = cutawayTrace(sl, mode, levels, 150 * 150);
     if(built){
-      await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace, ...(built.fill ? [built.fill] : [])]), sceneLayout(`Cutaway ${state.ui.cutawayKeep === "above" ? "above" : "below"} ${sl.plane}`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
+      await Plotly.react("plot3dPlane", withHklAxisOverlay([built.trace]), sceneLayout(`Cutaway ${state.ui.cutawayKeep === "above" ? "above" : "below"} ${sl.plane}`, planeCamera || state.cameras.plane, "plot3dPlane"), plotlyConfig());
       wireCamera("plot3dPlane", "plane");
       captureSceneCamera("plot3dPlane", "plane");
       $("empty3dPlane").style.display = "none";
@@ -11437,7 +11444,7 @@ async function renderIso3d(Plotly){
     }
     const res = state.res, labels = nativeAxisLabels(res), axes = [res.h, res.k, res.l];
     const at = built.cut.map((c, a) => `${labels[a]} ${fmtAxis(axes[a][c], axes[a])}`).join(", ");
-    await Plotly.react("plot3dIso", [built.trace, ...(built.fill ? [built.fill] : []), ...hklAxisOverlayTraces(res, {front:true})], sceneLayout(`Cut-away cube at ${at}`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
+    await Plotly.react("plot3dIso", [built.trace, ...hklAxisOverlayTraces(res, {front:true})], sceneLayout(`Cut-away cube at ${at}`, isoCamera || state.cameras.iso, "plot3dIso"), plotlyConfig());
     wireCamera("plot3dIso", "iso");
     captureSceneCamera("plot3dIso", "iso");
     $("empty3dIso").style.display = "none";
@@ -13331,16 +13338,12 @@ function profileOpen(){
 function setProfileOpen(open, kind=null){
   setUi(kind ? {profile:!!open, profileKind:kind} : {profile:!!open});
   const line = !!open && state.ui.profileKind === "line";
-  if(line && !state.cut && !state.cutMode && state.res && !triOn()) setCutMode(true);
+  if(line && !state.cut && !state.cutMode && state.res) setCutMode(true);
   else if(!line && state.cutMode) setCutMode(false);
   if(open) scheduleProfile(true);
 }
 
 function setCutMode(on){
-  if(on && triOn()){
-    status("The line cut works on a single map; turn off the three linked slices (G) first.", "warn");
-    on = false;
-  }
   state.cutMode = !!on;
   $("cutTool").classList.toggle("on", state.cutMode);
   $("cutTool").setAttribute("aria-pressed", String(state.cutMode));
@@ -13396,7 +13399,7 @@ function computeProfile(){
     state.profileCache = {res, key, data};
     return data;
   }
-  const sl = last.slice, cut = state.cut;
+  const sl = cutSlice() || last.slice, cut = state.cut;
   syncCutFields();
   if(cut && cut.free){
     const pf = plotGridFrame(res), autoWidth = 2 * pf.step;
@@ -13594,7 +13597,20 @@ function slicePointOf(sl, p){
 
 // The ends of the cut in the data's coordinates, or null when there is none
 // on this slice.
-function cutEnds(sl){
+// The slice a drawn cut lies in: the map's, or with the three linked slices
+// the view of its plane.
+function cutSlice(){
+  const cut = state.cut;
+  if(!cut || cut.free) return null;
+  if(triOn()){
+    const p = state.tri.panels.find(q => q.slice && sliceKeyForCut(q.slice) === cut.key);
+    return p ? p.slice : null;
+  }
+  const sl = state.lastSlice && state.lastSlice.slice;
+  return sl && sliceKeyForCut(sl) === cut.key ? sl : null;
+}
+
+function cutEnds(sl=cutSlice()){
   const cut = state.cut;
   if(!cut || !state.res) return null;
   if(cut.free) return [cut.p0, cut.p1];
@@ -13611,7 +13627,7 @@ function fmtPoint(p){
 function syncCutFields(){
   const from = $("cutFrom"), to = $("cutTo");
   if(!from || !to) return;
-  const res = state.res, ends = res ? cutEnds(state.lastSlice && state.lastSlice.slice) : null;
+  const res = state.res, ends = res ? cutEnds() : null;
   const names = res ? nativeAxisLabels(res).join(", ") : "H, K, L";
   for(const [el, i] of [[from, 0], [to, 1]]){
     el.placeholder = names;
@@ -13644,7 +13660,6 @@ function applyCutEnds(){
   const p0 = parsePoint(fromText, "From"), p1 = parsePoint(toText, "To");
   const q0 = plotPoint(res, p0[0], p0[1], p0[2]), q1 = plotPoint(res, p1[0], p1[1], p1[2]);
   if(!(normVec(q1.map((v, c) => v - q0[c])) > 1e-12)) throw new Error("From and To are the same point.");
-  if(triOn()) toggleTri();
   let cut = null;
   if($("sliceMode").value === "axis"){
     const f0 = nativeToFraction(res, p0), f1 = nativeToFraction(res, p1), ranges = displayIndexRanges(res);
@@ -13725,9 +13740,14 @@ function drawCutTags(ctx, layout, sl, A, B){
 // A cut through the volume on a slice: its shadow, dashed, with open ends,
 // and a ring where it crosses the slice.
 function drawFreeCut(ctx, layout, sl){
-  const cut = state.cut;
+  drawCutShadow(ctx, layout, sl, state.cut.p0, state.cut.p1);
+}
+
+// The shadow of the cut from p0 to p1 on a slice it does not lie in: dashed,
+// with open ends, and a ring where the cut crosses the slice.
+function drawCutShadow(ctx, layout, sl, p0, p1){
   let s0, s1;
-  try{ s0 = slicePointOf(sl, cut.p0); s1 = slicePointOf(sl, cut.p1); }catch(_){ return; }
+  try{ s0 = slicePointOf(sl, p0); s1 = slicePointOf(sl, p1); }catch(_){ return; }
   const A = layout.toCanvas(s0.x, s0.y), B = layout.toCanvas(s1.x, s1.y), a = layout.area;
   ctx.save();
   ctx.beginPath();
@@ -13768,10 +13788,17 @@ function drawFreeCut(ctx, layout, sl){
   ctx.restore();
 }
 
-// The drawn cut on the map: its integration band, the line and its ends.
-function drawCutOverlay(ctx, layout, sl){
+// The drawn cut on the map: its integration band, the line and its ends. With
+// shadow, a slice the cut does not lie in shows its shadow (the other views of
+// the three linked slices).
+function drawCutOverlay(ctx, layout, sl, {shadow=false}={}){
   const cut = state.cut;
   if(cut && cut.free){ drawFreeCut(ctx, layout, sl); return; }
+  if(cut && shadow && cut.key !== sliceKeyForCut(sl)){
+    const ends = cutEnds();
+    if(ends) drawCutShadow(ctx, layout, sl, ends[0], ends[1]);
+    return;
+  }
   if(!cut || cut.key !== sliceKeyForCut(sl)) return;
   const A = layout.toCanvas(cut.a[0], cut.a[1]), B = layout.toCanvas(cut.b[0], cut.b[1]);
   const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
@@ -13823,8 +13850,21 @@ function drawCutOverlay(ctx, layout, sl){
   ctx.restore();
 }
 
-function startCutDrag(ev, pt){
-  const last = state.lastSlice, sl = last.slice, layout = last.layout, key = sliceKeyForCut(sl);
+// The view a cut is drawn in: the map, or a view of the three linked slices
+// (axisName), with its place on the canvas.
+function cutView(axisName=null){
+  if(axisName){
+    const p = state.tri.panels.find(q => q.axisName === axisName);
+    return p && p.layout ? {sl:p.slice, layout:p.layout, ox:p.origin[0], oy:p.origin[1]} : null;
+  }
+  const last = state.lastSlice;
+  return last && last.layout ? {sl:last.slice, layout:last.layout, ox:0, oy:0} : null;
+}
+
+function startCutDrag(ev, canvasPt, axisName=null){
+  const view = cutView(axisName);
+  if(!view) return;
+  const {sl, layout} = view, key = sliceKeyForCut(sl), pt = {x:canvasPt.x - view.ox, y:canvasPt.y - view.oy};
   const s = ev.shiftKey ? snapSlicePoint(sl, layout.toSlice(pt.x, pt.y)) : layout.toSlice(pt.x, pt.y);
   let handle = "b";
   if(state.cut && !state.cut.free && state.cut.key === key){
@@ -13838,16 +13878,17 @@ function startCutDrag(ev, pt){
     else state.cut = null;
   }
   if(!state.cut || state.cut.key !== key) state.cut = {key, a:s.slice(), b:s.slice()};
-  state.cutDrag = {pointerId:ev.pointerId, handle, start:s, a0:state.cut.a.slice(), b0:state.cut.b.slice()};
+  state.cutDrag = {pointerId:ev.pointerId, handle, start:s, a0:state.cut.a.slice(), b0:state.cut.b.slice(), axisName};
   try{ $("heatmap").setPointerCapture(ev.pointerId); }catch(_){}
   hideReadout();
   ev.preventDefault();
 }
 
-function moveCutDrag(pt, ev){
-  const drag = state.cutDrag, layout = state.lastSlice && state.lastSlice.layout;
-  if(!drag || !layout || !state.cut) return;
-  const s = ev && ev.shiftKey && drag.handle !== "move" ? snapSlicePoint(state.lastSlice.slice, layout.toSlice(pt.x, pt.y)) : layout.toSlice(pt.x, pt.y);
+function moveCutDrag(canvasPt, ev){
+  const drag = state.cutDrag, view = drag && cutView(drag.axisName);
+  if(!drag || !view || !state.cut) return;
+  const layout = view.layout, pt = {x:canvasPt.x - view.ox, y:canvasPt.y - view.oy};
+  const s = ev && ev.shiftKey && drag.handle !== "move" ? snapSlicePoint(view.sl, layout.toSlice(pt.x, pt.y)) : layout.toSlice(pt.x, pt.y);
   if(drag.handle === "a") state.cut.a = s;
   else if(drag.handle === "b") state.cut.b = s;
   else{
@@ -13861,7 +13902,7 @@ function moveCutDrag(pt, ev){
 }
 
 function endCutDrag(ev){
-  const drag = state.cutDrag, layout = state.lastSlice && state.lastSlice.layout;
+  const drag = state.cutDrag, view = drag && cutView(drag.axisName), layout = view && view.layout;
   state.cutDrag = null;
   try{ $("heatmap").releasePointerCapture(ev.pointerId); }catch(_){}
   if(state.cut && !state.cut.free && layout){
@@ -14030,7 +14071,7 @@ function bind(){
   $("asinhSoft").addEventListener("change", () => { syncAsinh(); resetDisplayLevels(false); draw2d(); scheduleRender3d(); });
   $("colorMap").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   $("colorReverse").addEventListener("change", () => { draw2d(); scheduleRender3d(); });
-  $("nanColor").addEventListener("change", () => { draw2d(); scheduleRender3d(0, true); });
+  $("nanColor").addEventListener("change", () => draw2d());
   for(const id of ["levelClip", "levelSymmetric"]){
     $(id).addEventListener("change", () => { draw2d(); scheduleRender3d(); });
   }

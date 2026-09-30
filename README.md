@@ -60,7 +60,9 @@ and slab-average slicing with linked 2-D and 3-D views.
     off, and with it off the map pans and zooms by dragging again. Drag an end to adjust
     the cut, drag the line to move it, or click to clear it. The cut
     averages the voxels in a band of the given width across it and thickness along the
-    slice normal, one slice by default. Distances are in the plot frame (Å⁻¹ for Q), so
+    slice normal, one slice by default, in one bin per voxel along the axis the cut
+    crosses fastest (so a cut along a coarse L axis has no empty bins; *Bins* sets
+    another number). Distances are in the plot frame (Å⁻¹ for Q), so
     skewed and non-orthogonal grids measure true lengths. A drawn cut follows its plane as
     you step through the slices, and its band is drawn on the map. While a cut is drawn or
     dragged, its ends are labelled on the map with their coordinates and the cut with its
@@ -146,7 +148,10 @@ and slab-average slicing with linked 2-D and 3-D views.
     the grip where the lines cross moves both), and drag a view by its title onto another
     tile to swap the two; the point's tile moves the same way. A double-click on a line
     evens the tiles again, and one on a title restores their order. Both are remembered.
-  - The line cut and the vector overlay work on the single map.
+  - The line cut can be drawn or typed in any of the three views; it follows that view's
+    slice, and the other two show its shadow, dashed, with a ring where it crosses them.
+    A cut through the volume shows its shadow in all three. The vector overlay works on
+    the single map.
 - **Coordinate handling**: Q and HKL (r.l.u.) axes are auto-detected from file names and
   metadata, with a manual override (Auto / Use Q / Use HKL). When a unit cell is known,
   HKL data is transformed to Q through the reciprocal basis; without one, the override
@@ -324,10 +329,12 @@ and slab-average slicing with linked 2-D and 3-D views.
   middle of an axis without 0), or, with *At the slices*, the slices on the map, so the
   cube follows as you step. *Cut size* runs from no cut, through the point, to the far
   corner. The axes run along the front edges, which the cube does not hide. The outer
-  faces stay closed where there are no data, in the empty-voxel colour (a neutral grey
-  when empty voxels are transparent), while the three cut planes show their gaps; the
-  walls and cap of the Cutaway block close the same way. Faces are sampled on grid lines,
-  so their pieces meet without seams.
+  faces follow the data: where a face has none, it recedes into the volume to the first
+  voxel that has a value (at most to the middle, where the opposite face takes over, and
+  never past the cut), so the cube closes around the measured region, such as a sphere
+  of coverage, instead of showing holes. The three cut planes are exact slices and show
+  their gaps. The walls and cap of the Cutaway block follow the data the same way. Faces
+  are sampled on grid lines, so their pieces meet without seams.
 - **3-D camera tools** (the compass button on each 3-D view): look along a*, b*, c*, a,
   b or c, or along a typed [hkl] or [uvw] direction. Roll, tilt and turn in steps of a
   chosen angle, and switch to an orthographic projection; the choice is remembered.

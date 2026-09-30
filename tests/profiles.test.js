@@ -53,6 +53,19 @@ test("cut lengths follow the reciprocal metric", () => {
   assertClose(cut.step, 0.5 * s, 1e-12, "grid step in inverse angstrom");
 });
 
+test("by default a cut has one bin per voxel along the axis it crosses fastest", () => {
+  const app = loadApp();
+  // L is three times coarser than H and K.
+  const res = volume(app, {h:axis(13, -1.5, 0.25), k:axis(13, -1.5, 0.25), l:axis(5, -1.5, 0.75), value:lin});
+  const alongL = app.context.lineCutProfile(res, [0, 0, -1.5], [0, 0, 1.5], {width:0.5, thickness:0.5, normal:[1, 0, 0]});
+  assert.equal(alongL.bins, 8, "a floor of eight bins over four L steps");
+  const longL = app.context.lineCutProfile(volume(app, {h:axis(5, -0.5, 0.25), k:axis(5, -0.5, 0.25), l:axis(21, -7.5, 0.75), value:lin}), [0, 0, -7.5], [0, 0, 7.5], {width:0.5, thickness:0.5, normal:[1, 0, 0]});
+  assert.equal(longL.bins, 20, "one bin per L step");
+  assert.ok(Array.from(longL.n).every(n => n > 0), "no bin is empty");
+  const alongH = app.context.lineCutProfile(res, [-1.5, 0, 0], [1.5, 0, 0], {width:0.3, thickness:0.3, normal:[0, 0, 1]});
+  assert.equal(alongH.bins, 12, "one bin per H step");
+});
+
 test("the model and sigma come along with a cut", () => {
   const app = loadApp();
   const ax = axis(5, -1, 0.5);
@@ -122,7 +135,7 @@ test("the cutaway block has a cut face, a cap and four walls, with holes where d
   // Every grid point of the faces is a vertex: cut face 25, cap 25, four walls of 3 x 5.
   assert.equal(below.x.length, 25 + 25 + 4 * 15);
   const hole = below.custom.findIndex(c => c[0] === 0 && c[1] === 0 && c[2] === 0);
-  assert.ok(hole >= 0 && !usesVertex(below, hole) && !usesVertex(below.fill, hole), "the empty voxel leaves a hole in the cut face");
+  assert.ok(hole >= 0 && !usesVertex(below, hole), "the empty voxel leaves a hole in the cut face");
   assert.ok(below.custom.every(c => c[2] <= 0 + 1e-12), "the block stays below the cut");
   assert.ok(below.i.length > 0);
   const above = app.context.cutawayMesh(res, sl, "linear", {keep:"above"});
@@ -131,7 +144,7 @@ test("the cutaway block has a cut face, a cap and four walls, with holes where d
   assert.equal(top.faces, 1, "at the end of the range only the cut face is left");
 });
 
-test("the cut-away cube closes its outer faces and shows its cut planes as they are", () => {
+test("the cut-away cube follows the data where its faces are empty, and shows its cut planes as they are", () => {
   const app = loadApp();
   const ax = axis(5, -1, 0.5);
   const res = volume(app, {h:ax, k:ax, l:ax, value:lin});
@@ -142,14 +155,22 @@ test("the cut-away cube closes its outer faces and shows its cut planes as they 
   assert.equal(m.faces, 12);
   assert.equal(m.x.length, 3 * (25 + 15 + 9 + 9), "every grid point of the faces is a vertex");
   const at = (h, k, l) => m.custom.findIndex(c => c[0] === h && c[1] === k && c[2] === l);
-  const corner = at(-1, -1, -1), inside = at(0, 0.5, 0.5);
-  assert.ok(corner >= 0 && !usesVertex(m, corner), "no coloured cell touches the empty corner");
-  assert.ok(usesVertex(m.fill, corner), "the plain mesh closes the outer faces there");
-  assert.ok(inside >= 0 && !usesVertex(m, inside) && !usesVertex(m.fill, inside), "the cut plane keeps its hole");
-  assert.ok(m.custom.every(c => !(c[0] > 0 && c[1] > 0 && c[2] > 0)), "the corner beyond the cut is gone");
-  // With nothing cut, the six faces are whole and nothing is inside.
-  const whole = app.context.cubeMesh(res, "linear", [4, 4, 4]);
-  assert.equal(whole.faces, 6);
+  assert.ok(at(-1, -1, -1) < 0, "no vertex stays on the empty corner");
+  for(const p of [[-0.5, -1, -1], [-1, -0.5, -1], [-1, -1, -0.5]]){
+    const v = at(...p);
+    assert.ok(v >= 0 && usesVertex(m, v), `each outer face recedes one voxel there, to ${p}`);
+  }
+  const inside = at(0, 0.5, 0.5);
+  assert.ok(inside >= 0 && !usesVertex(m, inside), "the cut plane keeps its hole");
+  assert.ok(m.custom.every(c => !(c[0] > 0 && c[1] > 0 && c[2] > 0)), "nothing beyond the cut shows");
+  // Behind the removed corner a face recedes no further than the cut: in a
+  // column holding data only at h = -0.5, past a cut at h = -1, it finds none.
+  const hollow = volume(app, {h:ax, k:ax, l:ax, value:lin});
+  for(let i=0;i<5;i++) hollow.I[(i * 5 + 4) * 5 + 4] = i === 1 ? 1 : NaN;
+  const cutBig = app.context.cubeMesh(hollow, "linear", [0, 0, 0]);
+  assert.ok(cutBig.custom.findIndex(c => c[0] === -0.5 && c[1] === 1 && c[2] === 1) < 0, "the far face does not reach past the cut");
+  // With nothing cut, the six faces are whole.
+  assert.equal(app.context.cubeMesh(res, "linear", [4, 4, 4]).faces, 6);
 });
 
 test("lattice directions and rotations for the camera", () => {
